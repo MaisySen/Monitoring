@@ -37,7 +37,7 @@
     "@opentelemetry/winston-transport": "^0.35.0"
   },
   "devDependencies": {
-    "autocannon": "^8.0.0",
+    "autocannon": "^9.0.0",
     "bunyan": "^1.8.15",
     "express": "^5.1.0",
     "pino": "^9.0.0",
