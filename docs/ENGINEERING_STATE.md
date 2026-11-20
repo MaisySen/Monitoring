@@ -749,3 +749,7 @@ Unit: 76/76. CI greens through 43f64b9.
 - Rule: regression checks never run against the demo/validation org again.
 - CI green through c482f57 (eab1676, c482f57 confirmed).
 - Note: Docs DD section already points to Organization Settings -> Application Keys for DD-APPLICATION-KEY (checked before editing; no change needed).
+
+## Demo org cleanup completed (2026-11-21, follow-up)
+- First cleanup pass missed aggregate/derived tables; a demo Now-page screenshot exposed the residue (test services still listed, quiet row naming snippet-test). Removed the rest: span_stats rows for test services (17), 8 auto-created default monitors for test services, 1 notification_log row. Verified by screenshot: Now shows ONLY the shop-api validation story (ValueError incident 6x with version chip, 1 quiet service, Services section shop-api only, v1.1.0 prod).
+- Rule updated: cleaning a service requires spans + span_stats + service_versions + host_services + logs + events + monitors + notification_log + metric_points/series.
