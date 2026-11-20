@@ -135,3 +135,25 @@ Verification:
 
 Server-side DIAG_OTLP=1 env gate added to the OTLP logs route (logs decoded count); kept as a
 temporary diagnostic alongside DIAG_LOGS.
+
+## Round 5: interruption fault injection for the transactional rollup (build 07f66f3)
+
+The dedupe POST-pair checks did not themselves prove the crash-window claim; these do:
+
+A. Precommit kill: 3,000-span batch POSTed to resil; server SIGKILLed ~120 ms into processing
+   (client saw 000). After restart: 0 rows, 0 span_stats hits for the batch - the multi-chunk
+   insert rolls back completely (all chunks are one transaction). Retry: 200, 3,000 rows /
+   3,000 hits. A second identical POST: still 3,000 / 3,000. PASS
+
+B. Postcommit lost response: same-shape 400-span batch sent through a proxy that forwards to the
+   server and DESTROYS the client socket when the upstream response arrives (curl exit 52, empty
+   reply - server committed, client believes it failed). Direct retry: 200. Final: 400 rows /
+   400 hits - the re-delivery was dropped by the RETURNING-based dedupe and rollups were not
+   re-counted. PASS
+
+Still outside the transaction (separately scoped, disclosed): recordHostServices (host->service
+links; upsert-shaped, re-derived on any later span from that host) and the derived trace.* metric
+points (append-only metric intake). A postcommit crash before those side effects runs loses them
+for that batch and the re-delivery skips them (rows exist). Span rows + span_stats - the data the
+APM screens read - are transactional; host links self-heal on the next span; trace.* points can
+undercount by one batch in that window. Not claimed safe.
