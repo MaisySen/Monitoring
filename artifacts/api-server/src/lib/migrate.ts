@@ -209,6 +209,20 @@ DO $$ BEGIN
   END IF;
 END $$;
 `,
+  // 13: human workflow status on problems (monitors and error groups). This is deliberately NOT
+  // measured recovery: a resolution here never edits the underlying monitor state or group
+  // counts, and new occurrences after status_at re-surface the problem (see incidents.ts).
+  `
+CREATE TABLE IF NOT EXISTS problem_status (
+  org_id integer NOT NULL,
+  kind text NOT NULL,            -- 'monitor' or 'error_group'
+  ref text NOT NULL,             -- monitor id or error-group fingerprint
+  status text NOT NULL,          -- 'acknowledged', 'muted', 'resolved'
+  status_at bigint NOT NULL,     -- ms; occurrences after this re-surface the problem
+  updated_by text NOT NULL DEFAULT '',
+  PRIMARY KEY (org_id, kind, ref)
+);
+`,
 ];
 
 export async function migrateDatabase() {

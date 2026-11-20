@@ -838,9 +838,19 @@ type NowData = {
   lastDataAt: number | null;
   totals: { spans: number; logs: number };
   services: { service: string; state: "ok" | "degraded" | "low" | "quiet"; note: string; ops5: number; errOps5: number; lastActiveAt: number }[];
-  problems: { monitorId: number; name: string; state: string; service: string | null; auto: boolean; since: number | null; query: string }[];
+  problems: { monitorId: number; name: string; state: string; service: string | null; auto: boolean; since: number | null; query: string; effective: Effective }[];
   exceptions?: ExceptionIncident[];
   exceptionsSupported?: boolean;
+};
+
+// Human workflow status, always shown beside (never instead of) measured state.
+type Effective = {
+  section: "active" | "muted" | "resolved";
+  workflow: "acknowledged" | "muted" | "resolved" | null;
+  statusAt: number | null;
+  updatedBy: string | null;
+  reopened: boolean;
+  newActivityAfterMute: boolean;
 };
 
 type ExceptionIncident = {
@@ -856,6 +866,7 @@ type ExceptionIncident = {
   topEndpoints: { name: string; count: number }[];
   versionsObserved: string[];
   coverage: { matchedTotal: number; groupCount: number; scanned: number; scanTruncated: boolean; windowDays: number };
+  effective: Effective;
 };
 
 // Suggested next steps are investigation aids, not diagnosis: they point at evidence the
@@ -875,10 +886,164 @@ const healthChip: Record<string, { dot: string; label: string }> = {
   quiet: { dot: "#8a94a6", label: "No recent data" },
 };
 
+// Workflow actions on a problem row: small text actions, never a primary button competing
+// with the evidence links. Acknowledge/mute/resolve set human workflow status only; the
+// measured state (alert badge, occurrence counts) always stays visible beside it.
+function ProblemActions({
+  kind,
+  refId,
+  eff,
+  onSet,
+  pending,
+}: {
+  kind: "monitor" | "error_group";
+  refId: string;
+  eff: Effective;
+  onSet: (v: { kind: string; ref: string; status: string }) => void;
+  pending: boolean;
+}) {
+  const act = (status: string) => (e: any) => {
+    e.preventDefault();
+    e.stopPropagation();
+    onSet({ kind, ref: refId, status });
+  };
+  if (eff.workflow) {
+    return (
+      <span className="text-[11px] text-ink-3 shrink-0">
+        {eff.workflow}
+        {eff.updatedBy ? ` by ${eff.updatedBy}` : ""}
+        {eff.statusAt ? ` · ${fmtAgo(eff.statusAt)}` : ""}{" "}
+        <button className="text-primary hover:underline" disabled={pending} onClick={act("open")}>
+          reopen
+        </button>
+      </span>
+    );
+  }
+  return (
+    <span className="text-[11px] shrink-0 whitespace-nowrap">
+      <button className="text-primary hover:underline" disabled={pending} onClick={act("acknowledged")}>
+        acknowledge
+      </button>
+      <span className="text-ink-3"> · </span>
+      <button className="text-primary hover:underline" disabled={pending} onClick={act("muted")}>
+        mute
+      </button>
+      <span className="text-ink-3"> · </span>
+      <button className="text-primary hover:underline" disabled={pending} onClick={act("resolved")}>
+        resolve
+      </button>
+    </span>
+  );
+}
+
 export function Home() {
   const now = useQuery({ queryKey: ["now"], queryFn: () => api<NowData>("/ui/now"), refetchInterval: 30_000 });
+  const qc = useQueryClient();
+  const setStatus = useMutation({
+    mutationFn: (v: { kind: string; ref: string; status: string }) => api("/ui/problems/status", { body: v }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["now"] }),
+  });
   const d = now.data;
   const noData = d && d.totals.spans === 0;
+
+  // One ranked, deduplicated list. A firing "Errors in <service>" monitor and its exception
+  // incidents are one problem: the incident row carries the monitor's badge and link, and the
+  // monitor row is absorbed. Actionable failures sort first; silence stays visible but
+  // collapsed so repeated notices cannot bury a new failure.
+  const monitors = d?.problems ?? [];
+  const incidents = d?.exceptions ?? [];
+  const absorbed = new Set<number>();
+  const incidentRows = incidents.map((x) => {
+    const m = monitors.find(
+      (p) => p.auto && p.service === x.service && p.name.includes("Errors in") && p.effective.section === "active",
+    );
+    if (m) absorbed.add(m.monitorId);
+    return { x, m: m ?? null };
+  });
+  const activeIncidents = incidentRows.filter((r) => r.x.effective.section === "active");
+  const closedIncidents = incidentRows.filter((r) => r.x.effective.section !== "active");
+  const activeMonitors = monitors.filter((p) => !absorbed.has(p.monitorId) && p.effective.section === "active");
+  const firingMonitors = activeMonitors.filter((p) => p.state !== "No Data");
+  const silentMonitors = activeMonitors.filter((p) => p.state === "No Data");
+  const closedMonitors = monitors.filter((p) => !absorbed.has(p.monitorId) && p.effective.section !== "active");
+
+  const guideFor = (r: { x: ExceptionIncident } | { p: (typeof monitors)[number] }): string =>
+    "x" in r
+      ? "Next step: open the group, read a matching trace, judge whether the version concentration is a lead worth investigating - not proof of cause."
+      : nextStepFor(r.p);
+
+  const incidentNode = (r: { x: ExceptionIncident; m: (typeof monitors)[number] | null }, guide: boolean) => {
+    const x = r.x;
+    return (
+      <div key={x.fingerprint} className="px-4 py-2.5 border-b border-line">
+        <div className="flex items-center gap-2 flex-wrap">
+          {r.m && <StatusBadge state={r.m.state} />}
+          {x.effective.reopened && (
+            <span className="mono text-[10px] px-1.5 py-0.5 rounded bg-[#fde8e8] text-bad font-semibold">REOPENED</span>
+          )}
+          {x.isNew && !x.effective.reopened && (
+            <span className="mono text-[10px] px-1.5 py-0.5 rounded bg-[#fde8e8] text-bad font-semibold">NEW</span>
+          )}
+          <span className="mono text-[11px] px-1.5 py-0.5 rounded bg-[#fde8e8] text-bad">{x.errorType || "error"}</span>
+          <Link href={`/errors/${x.fingerprint}`} className="truncate font-medium text-primary">
+            {x.messageExample || "(no message)"}
+          </Link>
+          <Link href={`/apm/services/${encodeURIComponent(x.service)}`} className="text-xs text-primary">
+            {x.service}
+          </Link>
+          {r.m && (
+            <Link href={`/monitors/${r.m.monitorId}`} className="text-xs text-primary">
+              monitor →
+            </Link>
+          )}
+          <span className="ml-auto text-xs text-ink-3 shrink-0">
+            {fmtNum(x.count)}× · first seen {fmtAgo(x.firstSeen)}
+          </span>
+          <ProblemActions kind="error_group" refId={x.fingerprint} eff={x.effective} onSet={(v) => setStatus.mutate(v)} pending={setStatus.isPending} />
+        </div>
+        <div className="text-[11px] text-ink-3 mt-1 ml-1">
+          {x.effective.reopened && "New occurrences after this was marked resolved. "}
+          {x.envs.length ? `Environments: ${x.envs.join(", ")}. ` : ""}
+          {x.versionsObserved.length ? `Observed in versions: ${x.versionsObserved.join(", ")} (among matched spans). ` : ""}
+          {x.topEndpoints.length ? `Mostly in: ${x.topEndpoints.map((e) => `${e.name} (${e.count}×)`).join(", ")}. ` : ""}
+          {guide && guideFor({ x })}
+        </div>
+      </div>
+    );
+  };
+
+  const monitorNode = (p: (typeof monitors)[number], guide: boolean) => (
+    <div key={p.monitorId} className="px-4 py-2.5 border-b border-line">
+      <div className="flex items-center gap-2">
+        <StatusBadge state={p.state} />
+        {p.effective.reopened && (
+          <span className="mono text-[10px] px-1.5 py-0.5 rounded bg-[#fde8e8] text-bad font-semibold">REOPENED</span>
+        )}
+        <Link href={`/monitors/${p.monitorId}`} className="truncate font-medium text-primary">
+          {p.name}
+        </Link>
+        {p.service && (
+          <Link href={`/apm/services/${encodeURIComponent(p.service)}`} className="text-xs text-primary">
+            {p.service}
+          </Link>
+        )}
+        {p.service && p.name.includes("Errors in") && (
+          <Link href={`/errors?service=${encodeURIComponent(p.service)}`} className="text-xs text-primary">
+            Error groups →
+          </Link>
+        )}
+        {p.since && <span className="ml-auto text-xs text-ink-3">{fmtAgo(p.since)}</span>}
+        <ProblemActions kind="monitor" refId={String(p.monitorId)} eff={p.effective} onSet={(v) => setStatus.mutate(v)} pending={setStatus.isPending} />
+      </div>
+      {guide && <div className="text-[11px] text-ink-3 mt-1 ml-1">{guideFor({ p })}</div>}
+    </div>
+  );
+
+  const closedRows = [...closedMonitors.map((p) => ({ p })), ...closedIncidents.map((r) => r)];
+  const mutedRows = closedRows.filter((r) => ("p" in r ? r.p.effective.section : r.x.effective.section) === "muted");
+  const resolvedRows = closedRows.filter((r) => ("p" in r ? r.p.effective.section : r.x.effective.section) === "resolved");
+
+  const activeRowsEmpty = firingMonitors.length === 0 && activeIncidents.length === 0;
   return (
     <div>
       <PageHeader title="Now" sub={d?.receiving ? "Receiving data" : d ? "Not receiving data" : undefined} />
@@ -906,67 +1071,121 @@ export function Home() {
               All monitors →
             </Link>
           </div>
-          {!d ? null : d.problems.length === 0 ? (
+          {!d ? null : activeRowsEmpty && silentMonitors.length === 0 && closedRows.length === 0 && d ? (
             <div className="px-4 py-4 text-ink-3 text-xs">
               {d.totals.spans === 0
                 ? "Nothing to watch yet - problems appear here once your app sends data."
-                : "No monitor is firing right now. Default monitors watch every new service for sustained errors and silence; their thresholds are starting points you can tune."}
+                : "No monitor is firing and no exception group is active right now. Default monitors watch every new service for sustained errors and silence; their thresholds are starting points you can tune."}
             </div>
           ) : (
-            d.problems.map((p) => (
-              <div key={p.monitorId} className="px-4 py-2.5 border-b border-line">
-                <div className="flex items-center gap-2">
-                  <StatusBadge state={p.state} />
-                  <Link href={`/monitors/${p.monitorId}`} className="truncate font-medium text-primary">
-                    {p.name}
-                  </Link>
-                  {p.service && (
-                    <Link href={`/apm/services/${encodeURIComponent(p.service)}`} className="text-xs text-primary">
-                      {p.service}
-                    </Link>
-                  )}
-                  {p.service && p.name.includes("Errors in") && (
-                    <Link href={`/errors?service=${encodeURIComponent(p.service)}`} className="text-xs text-primary">
-                      Error groups →
-                    </Link>
-                  )}
-                  {p.since && <span className="ml-auto text-xs text-ink-3">{fmtAgo(p.since)}</span>}
-                </div>
-                <div className="text-[11px] text-ink-3 mt-1 ml-1">{nextStepFor(p)}</div>
-              </div>
-            ))
+            <>
+              {(() => {
+                // Render ranked: firing monitors and incidents share one ordering.
+                const firing = firingMonitors.map((p) => ({ sortMs: p.since ?? 0, render: (g: boolean) => monitorNode(p, g), key: `m${p.monitorId}` }));
+                const incs = activeIncidents.map((r) => ({ sortMs: r.x.lastSeen, render: (g: boolean) => incidentNode(r, g), key: r.x.fingerprint }));
+                return [...firing, ...incs]
+                  .sort((a, b) => b.sortMs - a.sortMs)
+                  .map((r, i) => <div key={r.key}>{r.render(i === 0)}</div>);
+              })()}
+              {silentMonitors.length > 0 && (
+                <details className="px-4 py-2.5 border-b border-line">
+                  <summary className="text-[13px] cursor-pointer select-none">
+                    <span className="mono text-[10px] px-1.5 py-0.5 rounded bg-panel text-ink-2 font-semibold mr-2">NO DATA</span>
+                    {silentMonitors.length} service{silentMonitors.length > 1 ? "s" : ""} quiet:{" "}
+                    {silentMonitors.map((p) => p.service ?? p.name).join(", ")}
+                  </summary>
+                  <div className="mt-2 space-y-1">
+                    {silentMonitors.map((p) => (
+                      <div key={p.monitorId} className="flex items-center gap-2 text-[13px]">
+                        <Link href={`/monitors/${p.monitorId}`} className="text-primary truncate font-medium">
+                          {p.name}
+                        </Link>
+                        {p.service && (
+                          <Link href={`/apm/services/${encodeURIComponent(p.service)}`} className="text-xs text-primary">
+                            {p.service}
+                          </Link>
+                        )}
+                        {p.since && <span className="ml-auto text-xs text-ink-3">{fmtAgo(p.since)}</span>}
+                        <ProblemActions kind="monitor" refId={String(p.monitorId)} eff={p.effective} onSet={(v) => setStatus.mutate(v)} pending={setStatus.isPending} />
+                      </div>
+                    ))}
+                    <div className="text-[11px] text-ink-3 mt-1">
+                      Silence can mean idle, crashed, or disconnected - Monitoring cannot see why data stopped. If a service should be up,
+                      check that the app and its instrumentation are running.
+                    </div>
+                  </div>
+                </details>
+              )}
+              {resolvedRows.length > 0 && (
+                <details className="px-4 py-2.5 border-b border-line">
+                  <summary className="text-[13px] cursor-pointer select-none text-ink-2">
+                    Resolved ({resolvedRows.length}) - reopen automatically if new activity is measured
+                  </summary>
+                  <div className="mt-2 space-y-1">
+                    {resolvedRows.map((r, i) => (
+                      <div key={i} className="flex items-center gap-2 text-[13px]">
+                        {"p" in r ? (
+                          <>
+                            <Link href={`/monitors/${r.p.monitorId}`} className="text-primary truncate font-medium">
+                              {r.p.name}
+                            </Link>
+                            <ProblemActions kind="monitor" refId={String(r.p.monitorId)} eff={r.p.effective} onSet={(v) => setStatus.mutate(v)} pending={setStatus.isPending} />
+                          </>
+                        ) : (
+                          <>
+                            <span className="mono text-[11px] px-1.5 py-0.5 rounded bg-panel text-ink-2">{r.x.errorType || "error"}</span>
+                            <Link href={`/errors/${r.x.fingerprint}`} className="text-primary truncate font-medium">
+                              {r.x.messageExample || "(no message)"}
+                            </Link>
+                            <ProblemActions kind="error_group" refId={r.x.fingerprint} eff={r.x.effective} onSet={(v) => setStatus.mutate(v)} pending={setStatus.isPending} />
+                          </>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </details>
+              )}
+              {mutedRows.length > 0 && (
+                <details className="px-4 py-2.5 border-b border-line">
+                  <summary className="text-[13px] cursor-pointer select-none text-ink-2">Muted ({mutedRows.length})</summary>
+                  <div className="mt-2 space-y-1">
+                    {mutedRows.map((r, i) => {
+                      const eff = "p" in r ? r.p.effective : r.x.effective;
+                      return (
+                        <div key={i} className="flex items-center gap-2 text-[13px]">
+                          {"p" in r ? (
+                            <>
+                              <Link href={`/monitors/${r.p.monitorId}`} className="text-primary truncate font-medium">
+                                {r.p.name}
+                              </Link>
+                              <ProblemActions kind="monitor" refId={String(r.p.monitorId)} eff={r.p.effective} onSet={(v) => setStatus.mutate(v)} pending={setStatus.isPending} />
+                            </>
+                          ) : (
+                            <>
+                              <span className="mono text-[11px] px-1.5 py-0.5 rounded bg-panel text-ink-2">{r.x.errorType || "error"}</span>
+                              <Link href={`/errors/${r.x.fingerprint}`} className="text-primary truncate font-medium">
+                                {r.x.messageExample || "(no message)"}
+                              </Link>
+                              <ProblemActions kind="error_group" refId={r.x.fingerprint} eff={r.x.effective} onSet={(v) => setStatus.mutate(v)} pending={setStatus.isPending} />
+                            </>
+                          )}
+                          {eff.newActivityAfterMute && (
+                            <span className="text-[11px] text-bad">new activity since mute</span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </details>
+              )}
+            </>
           )}
-          {(d?.exceptions ?? []).map((x) => (
-            <div key={x.fingerprint} className="px-4 py-2.5 border-b border-line">
-              <div className="flex items-center gap-2 flex-wrap">
-                {x.isNew && <span className="mono text-[10px] px-1.5 py-0.5 rounded bg-[#fde8e8] text-bad font-semibold">NEW</span>}
-                <span className="mono text-[11px] px-1.5 py-0.5 rounded bg-[#fde8e8] text-bad">{x.errorType || "error"}</span>
-                <Link href={`/errors/${x.fingerprint}`} className="truncate font-medium text-primary">
-                  {x.messageExample || "(no message)"}
-                </Link>
-                <Link href={`/apm/services/${encodeURIComponent(x.service)}`} className="text-xs text-primary">
-                  {x.service}
-                </Link>
-                <span className="ml-auto text-xs text-ink-3">
-                  {fmtNum(x.count)}× · first seen {fmtAgo(x.firstSeen)}
-                </span>
-              </div>
-              <div className="text-[11px] text-ink-3 mt-1 ml-1">
-                {x.envs.length ? `Environments: ${x.envs.join(", ")}. ` : ""}
-                {x.versionsObserved.length ? `Observed in versions: ${x.versionsObserved.join(", ")} (among matched spans). ` : ""}
-                {x.topEndpoints.length
-                  ? `Mostly in: ${x.topEndpoints.map((e) => `${e.name} (${e.count}×)`).join(", ")}. `
-                  : ""}
-                Next step: open the group, read a matching trace, judge whether the version concentration is a lead worth investigating -
-                not proof of cause.
-              </div>
-            </div>
-          ))}
           {d && d.exceptionsSupported && (d.exceptions ?? []).length > 0 && (
             <div className="px-4 py-2 text-[11px] text-ink-3">
-              Exception incidents come from error groups active in the last {d.exceptions![0].coverage.windowDays * 24}h. First-seen is
+              Exception incidents come from error groups active in the last {(d.exceptions ?? [])[0].coverage.windowDays * 24}h. First-seen is
               when Monitoring first observed the exception; versions are the versions observed among matched spans. Neither says when a
-              deploy happened or that a version caused the errors.
+              deploy happened or that a version caused the errors. Acknowledge, mute and resolve set your workflow status only - measured
+              state stays visible beside them.
             </div>
           )}
         </div>

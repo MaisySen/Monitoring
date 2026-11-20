@@ -13,6 +13,7 @@ import { evaluateMonitor, validateMonitorQuery } from "../jobs/monitors";
 import { computeServiceHealth } from "../query/serviceHealth";
 import { fingerprintFor, normalizeMessage, buildVersionCorrelation } from "../query/errorGroups";
 import { computeExceptionIncidents } from "../query/incidents";
+import { effectiveProblem, loadProblemStatuses } from "../query/problemStatus";
 import { startSampleData, stopSampleData, sampleRunning } from "../jobs/sample";
 import { intakeStats } from "../lib/intakeStats";
 import { getQuotas, setQuotas, parseQuotas, usageToday, bytesThisMinute, seriesCount } from "../lib/quotas";
@@ -20,7 +21,7 @@ import { logger } from "../lib/logger";
 
 const router: Router = Router();
 router.use(
-  ["/v1/dashboard", "/v1/monitor", "/v1/events", "/ui/org", "/ui/events", "/ui/channels", "/ui/monitors", "/ui/now", "/ui/errors", "/v1/integration/webhooks", "/v1/intake"],
+  ["/v1/dashboard", "/v1/monitor", "/v1/events", "/ui/org", "/ui/events", "/ui/channels", "/ui/monitors", "/ui/now", "/ui/errors", "/ui/problems", "/v1/integration/webhooks", "/v1/intake"],
   requireOrg,
 );
 
@@ -400,9 +401,21 @@ router.get(
     // Exception incidents: active error groups with endpoint/version observations from a
     // bounded scan. PG-only (error_groups); on backends without the table, an empty list -
     // the UI must not read that as "no exceptions".
-    let exceptions: unknown[] = [];
+    let exceptions: any[] = [];
     const hasGroups = (await pool.query("select to_regclass('error_groups') is not null as e")).rows[0].e;
     if (hasGroups) exceptions = await computeExceptionIncidents(pool, orgId!, Date.now()); // requireOrg guarantees orgId
+
+    // Human workflow status (acknowledge/mute/resolve) applied as a display layer only; it
+    // never edits measured state, and new activity after the status re-surfaces the problem.
+    const statuses = await loadProblemStatuses(pool, orgId!);
+    const problemsWithStatus = problems.map((p: any) => ({
+      ...p,
+      effective: effectiveProblem(statuses.get(`monitor:${p.monitorId}`), p.since),
+    }));
+    const exceptionsWithStatus = exceptions.map((x: any) => ({
+      ...x,
+      effective: effectiveProblem(statuses.get(`error_group:${x.fingerprint}`), x.lastSeen),
+    }));
 
     res.json({
       now: Date.now(),
@@ -410,10 +423,46 @@ router.get(
       lastDataAt: totals.last_span_ms ? Number(totals.last_span_ms) : null,
       totals: { spans: Number(totals.spans), logs: Number(totals.logs) },
       services,
-      problems,
-      exceptions,
+      problems: problemsWithStatus,
+      exceptions: exceptionsWithStatus,
       exceptionsSupported: !!hasGroups,
     });
+  }),
+);
+
+// ---------- Problem workflow status ----------
+// Sets or clears the human workflow status for one problem. 'open' clears the record. This
+// never changes measured state (monitor evaluations, group counts); see problemStatus.ts.
+router.post(
+  "/ui/problems/status",
+  h(async (req, res) => {
+    const kind = String(req.body?.kind ?? "");
+    const ref = String(req.body?.ref ?? "").slice(0, 200);
+    const status = String(req.body?.status ?? "");
+    if (!["monitor", "error_group"].includes(kind)) throw new HttpError(400, "kind must be monitor or error_group");
+    if (!ref) throw new HttpError(400, "ref is required");
+    if (!["acknowledged", "muted", "resolved", "open"].includes(status))
+      throw new HttpError(400, "status must be acknowledged, muted, resolved or open");
+    // The ref must belong to this org, so a status can never attach to another org's problem.
+    if (kind === "monitor") {
+      const own = (await pool.query("select id from monitors where org_id=$1 and id=$2", [req.orgId, Number(ref) || -1])).rows[0];
+      if (!own) throw new HttpError(404, "monitor not found");
+    } else {
+      const own = (await pool.query("select fingerprint from error_groups where org_id=$1 and fingerprint=$2", [req.orgId, ref])).rows[0];
+      if (!own) throw new HttpError(404, "error group not found");
+    }
+    if (status === "open") {
+      await pool.query("delete from problem_status where org_id=$1 and kind=$2 and ref=$3", [req.orgId, kind, ref]);
+      res.json({ ok: true, status: "open" });
+      return;
+    }
+    const email = req.sessionUser?.email ?? "";
+    await pool.query(
+      `insert into problem_status (org_id, kind, ref, status, status_at, updated_by) values ($1,$2,$3,$4,$5,$6)
+       on conflict (org_id, kind, ref) do update set status=$4, status_at=$5, updated_by=$6`,
+      [req.orgId, kind, ref, status, Date.now(), email],
+    );
+    res.json({ ok: true, status });
   }),
 );
 
