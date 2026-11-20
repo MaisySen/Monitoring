@@ -718,3 +718,10 @@ Unit: 76/76. CI greens through 43f64b9.
 - Fix: real CI artifact 14618621071 (run 44710994706) SHA256SUMS-verified and installed into the downloads dir (gitignored by design; pack/deploy must include binaries).
 - Live verbatim verification of Docs "with agent" path: agent up (4317/4318), SDK with no MONITORING_URL/KEY -> localhost:4318 -> agent -> server; span stored service=checkout, version 1.0.0 env=prod in service_versions.
 - New regression: bench/regression/downloads-artifacts.sh (magic bytes + minimum size per artifact); all 3 PASS against valrun. Placeholder would fail size+magic. Evidence: bench/evidence/agent-path-2026-11-21/.
+
+## Fresh-deployment packaging chain fixed + installer validated (2026-11-21)
+- Release-blocking gap closed: pack-sdks.mjs now packs agent binaries from agent/dist (build.sh output or CI release artifact), each sha256-verified against agent/dist/SHA256SUMS before copying; verified SHA256SUMS is packed alongside for the installer's cross-host fallback. FAILS CLOSED on missing SHA256SUMS, missing listed file, or checksum mismatch. No placeholders can reach downloads.
+- Published installer (downloads.ts template): MONITORING_PREFIX support relocates /opt+/etc into a scratch root for testing (no sudo, no systemd when set); default path unchanged. Unsupported OS/arch still exits 1; checksum still mandatory; plain-HTTP cross-host still refused without a pin.
+- bench/regression/installer-clean-deploy.sh: wipes downloads, clean-packs, verifies served set, runs the published install.sh verbatim (prefix-relocated), asserts installed ELF sha256 == served SHA256SUMS, config 0600 with key, binary executes; negative controls PASS (pack fails closed without SHA256SUMS and with a tampered binary). Full run: ALL CHECKS PASSED (evidence: bench/evidence/agent-path-2026-11-21/installer-clean-deploy.log).
+- Ownership-scoped cleanup: bench/lib/procs.sh (own_start/own_stop/own_stop_all, pid + /proc start-tick verified, pid-reuse safe). Rule recorded: never kill by port/pattern - that took down local Postgres earlier this session.
+- Unit 110/110 after the api-server change.

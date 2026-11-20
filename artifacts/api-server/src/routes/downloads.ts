@@ -72,7 +72,11 @@ DOWNLOAD_URL=\${MONITORING_DOWNLOAD_URL:-${quotedDownloads}}
 ARCH=$(uname -m); case "$ARCH" in x86_64|amd64) ARCH=amd64;; aarch64|arm64) ARCH=arm64;; *) echo "Unsupported architecture: $ARCH"; exit 1;; esac
 OS=$(uname -s | tr A-Z a-z)
 case "$OS" in linux|darwin) ;; *) echo "Unsupported OS: $OS"; exit 1;; esac
+# Test/ staging installs may set MONITORING_PREFIX to relocate /opt and /etc under a scratch root;
+# the default (empty prefix) is the real install. Systemd registration only happens for real installs.
+PREFIX=\${MONITORING_PREFIX:-}
 SUDO=""; [ "$(id -u)" = 0 ] || SUDO=sudo
+[ -n "$PREFIX" ] && SUDO=   # a prefix-relocated install must be user-writable; no sudo
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT HUP INT TERM
 FILE="monitoring-agent-$OS-$ARCH"
@@ -107,13 +111,13 @@ if [ -n "\${MONITORING_VERIFY_REPO:-}" ]; then
   gh attestation verify "$TMP/$FILE" --repo "$MONITORING_VERIFY_REPO" >/dev/null || { echo "Attestation check failed for $FILE"; exit 1; }
   echo "Verified build attestation from $MONITORING_VERIFY_REPO."
 fi
-$SUDO mkdir -p /opt/monitoring-agent/bin /etc/monitoring
-$SUDO install -m 0755 "$TMP/$FILE" /opt/monitoring-agent/bin/monitoring-agent
-curl -fsSL "$DOWNLOAD_URL/monitoring-agent-THIRD_PARTY_NOTICES.txt" -o "$TMP/NOTICES" 2>/dev/null && $SUDO install -m 0644 "$TMP/NOTICES" /opt/monitoring-agent/THIRD_PARTY_NOTICES.txt || true
-if [ ! -f /etc/monitoring/monitoring.yaml ]; then
-  $SUDO touch /etc/monitoring/monitoring.yaml
-  $SUDO chmod 0600 /etc/monitoring/monitoring.yaml
-  $SUDO tee /etc/monitoring/monitoring.yaml >/dev/null <<CFG
+$SUDO mkdir -p "$PREFIX/opt/monitoring-agent/bin" "$PREFIX/etc/monitoring"
+$SUDO install -m 0755 "$TMP/$FILE" "$PREFIX/opt/monitoring-agent/bin/monitoring-agent"
+curl -fsSL "$DOWNLOAD_URL/monitoring-agent-THIRD_PARTY_NOTICES.txt" -o "$TMP/NOTICES" 2>/dev/null && $SUDO install -m 0644 "$TMP/NOTICES" "$PREFIX/opt/monitoring-agent/THIRD_PARTY_NOTICES.txt" || true
+if [ ! -f "$PREFIX/etc/monitoring/monitoring.yaml" ]; then
+  $SUDO touch "$PREFIX/etc/monitoring/monitoring.yaml"
+  $SUDO chmod 0600 "$PREFIX/etc/monitoring/monitoring.yaml"
+  $SUDO tee "$PREFIX/etc/monitoring/monitoring.yaml" >/dev/null <<CFG
 api_key: $MONITORING_API_KEY
 url: $URL
 \${MONITORING_HOSTNAME:+hostname: $MONITORING_HOSTNAME}
@@ -131,7 +135,7 @@ dogstatsd:
 logs: []
 CFG
 fi
-if command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ]; then
+if [ -z "$PREFIX" ] && command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ]; then
   $SUDO tee /etc/systemd/system/monitoring-agent.service >/dev/null <<UNIT
 [Unit]
 Description=Monitoring Agent
@@ -145,7 +149,7 @@ UNIT
   $SUDO systemctl daemon-reload && $SUDO systemctl enable --now monitoring-agent
   echo "Monitoring Agent installed and running (systemctl status monitoring-agent)."
 else
-  echo "Installed. Start it with: /opt/monitoring-agent/bin/monitoring-agent run -c /etc/monitoring/monitoring.yaml"
+  echo "Installed. Start it with: $PREFIX/opt/monitoring-agent/bin/monitoring-agent run -c $PREFIX/etc/monitoring/monitoring.yaml"
 fi
 `);
 });

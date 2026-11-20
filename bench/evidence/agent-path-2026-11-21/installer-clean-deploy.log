@@ -1,0 +1,14 @@
+== 1. clean pack from a wiped downloads dir
+verified binaries packed: 5
+== 2. served artifact set integrity
+PASS [monitoring-agent-linux-amd64]: 135864482 bytes, magic ok
+PASS [monitoring-trace-0.1.0.tgz]: 21734 bytes, magic ok
+PASS [monitoring_trace-0.1.0-py3-none-any.whl]: 23296 bytes, magic ok
+== 3. published installer, verbatim (prefix-relocated)
+installer completed
+== 4. installed-artifact assertions
+installed binary: ELF, sha256 matches served SHA256SUMS, config 0600, executes
+== 5. negative controls: pack fails closed
+PASS: pack refuses to run without SHA256SUMS
+PASS: pack refuses a tampered binary (checksum mismatch)
+ALL CHECKS PASSED
