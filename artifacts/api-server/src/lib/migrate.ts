@@ -223,6 +223,41 @@ CREATE TABLE IF NOT EXISTS problem_status (
   PRIMARY KEY (org_id, kind, ref)
 );
 `,
+  // 14: uptime probing. uptime_checks defines one probe target per row (org-scoped); the
+  // background loop claims due checks atomically via next_run_at. uptime_results keeps one
+  // row per probe execution for history and availability percentages, pruned by age.
+  `
+CREATE TABLE IF NOT EXISTS uptime_checks (
+  id serial PRIMARY KEY,
+  org_id integer NOT NULL,
+  name text NOT NULL,
+  url text NOT NULL,
+  method text NOT NULL DEFAULT 'GET',
+  interval_s integer NOT NULL DEFAULT 60,
+  timeout_ms integer NOT NULL DEFAULT 8000,
+  expect_status_min integer NOT NULL DEFAULT 200,
+  expect_status_max integer NOT NULL DEFAULT 399,
+  enabled boolean NOT NULL DEFAULT true,
+  created_at bigint NOT NULL,
+  next_run_at bigint,
+  consecutive_failures integer NOT NULL DEFAULT 0,
+  last_ok boolean,
+  last_checked_at bigint,
+  last_duration_ms integer,
+  last_error text
+);
+CREATE INDEX IF NOT EXISTS uptime_checks_due ON uptime_checks (next_run_at) WHERE enabled;
+CREATE TABLE IF NOT EXISTS uptime_results (
+  org_id integer NOT NULL,
+  check_id integer NOT NULL,
+  ts bigint NOT NULL,
+  ok boolean NOT NULL,
+  status_code integer,
+  duration_ms integer,
+  error text
+);
+CREATE INDEX IF NOT EXISTS uptime_results_check_ts ON uptime_results (org_id, check_id, ts desc);
+`,
 ];
 
 export async function migrateDatabase() {

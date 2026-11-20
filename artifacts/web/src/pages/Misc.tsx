@@ -841,6 +841,19 @@ type NowData = {
   problems: { monitorId: number; name: string; state: string; service: string | null; auto: boolean; since: number | null; query: string; effective: Effective }[];
   exceptions?: ExceptionIncident[];
   exceptionsSupported?: boolean;
+  uptime?: UptimeProblem[];
+  uptimeSupported?: boolean;
+};
+
+type UptimeProblem = {
+  checkId: number;
+  name: string;
+  url: string;
+  consecutiveFailures: number;
+  lastCheckedAt: number | null;
+  lastError: string | null;
+  lastDurationMs: number | null;
+  effective: Effective;
 };
 
 // Human workflow status, always shown beside (never instead of) measured state.
@@ -896,7 +909,7 @@ function ProblemActions({
   onSet,
   pending,
 }: {
-  kind: "monitor" | "error_group";
+  kind: "monitor" | "error_group" | "uptime";
   refId: string;
   eff: Effective;
   onSet: (v: { kind: string; ref: string; status: string }) => void;
@@ -952,6 +965,7 @@ export function Home() {
   // collapsed so repeated notices cannot bury a new failure.
   const monitors = d?.problems ?? [];
   const incidents = d?.exceptions ?? [];
+  const uptime = d?.uptime ?? [];
   const absorbed = new Set<number>();
   const incidentRows = incidents.map((x) => {
     const m = monitors.find(
@@ -966,6 +980,8 @@ export function Home() {
   const firingMonitors = activeMonitors.filter((p) => p.state !== "No Data");
   const silentMonitors = activeMonitors.filter((p) => p.state === "No Data");
   const closedMonitors = monitors.filter((p) => !absorbed.has(p.monitorId) && p.effective.section !== "active");
+  const activeUptime = uptime.filter((u) => u.effective.section === "active");
+  const closedUptime = uptime.filter((u) => u.effective.section !== "active");
 
   const guideFor = (r: { x: ExceptionIncident } | { p: (typeof monitors)[number] }): string =>
     "x" in r
@@ -1039,11 +1055,67 @@ export function Home() {
     </div>
   );
 
-  const closedRows = [...closedMonitors.map((p) => ({ p })), ...closedIncidents.map((r) => r)];
-  const mutedRows = closedRows.filter((r) => ("p" in r ? r.p.effective.section : r.x.effective.section) === "muted");
-  const resolvedRows = closedRows.filter((r) => ("p" in r ? r.p.effective.section : r.x.effective.section) === "resolved");
+  const uptimeNode = (u: UptimeProblem, guide: boolean) => (
+    <div key={`u${u.checkId}`} className="px-4 py-2.5 border-b border-line">
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="mono text-[10px] px-1.5 py-0.5 rounded bg-[#fde8e8] text-bad font-semibold">DOWN</span>
+        {u.effective.reopened && (
+          <span className="mono text-[10px] px-1.5 py-0.5 rounded bg-[#fde8e8] text-bad font-semibold">REOPENED</span>
+        )}
+        <Link href="/uptime" className="truncate font-medium text-primary">
+          {u.name}
+        </Link>
+        <span className="text-xs text-ink-3 truncate">{u.url}</span>
+        <span className="ml-auto text-xs text-ink-3 shrink-0">
+          {u.consecutiveFailures} failed checks{u.lastCheckedAt ? ` · ${fmtAgo(u.lastCheckedAt)}` : ""}
+        </span>
+        <ProblemActions kind="uptime" refId={String(u.checkId)} eff={u.effective} onSet={(v) => setStatus.mutate(v)} pending={setStatus.isPending} />
+      </div>
+      <div className="text-[11px] text-ink-3 mt-1 ml-1">
+        {u.effective.reopened && "New failures after this was marked resolved. "}
+        {u.lastError ? `Last failure: ${u.lastError}. ` : ""}
+        {guide &&
+          "Next step: open Uptime to see every probe of this target and confirm the URL is reachable from this server. Monitoring reports what its probes measure, not why the target fails."}
+      </div>
+    </div>
+  );
 
-  const activeRowsEmpty = firingMonitors.length === 0 && activeIncidents.length === 0;
+  const closedRows: ({ p: (typeof monitors)[number] } | { x: ExceptionIncident; m: (typeof monitors)[number] | null } | { u: UptimeProblem })[] = [
+    ...closedMonitors.map((p) => ({ p } as const)),
+    ...closedIncidents.map((r) => r),
+    ...closedUptime.map((u) => ({ u } as const)),
+  ];
+  const effOf = (r: (typeof closedRows)[number]) => ("p" in r ? r.p.effective : "x" in r ? r.x.effective : r.u.effective);
+  const mutedRows = closedRows.filter((r) => effOf(r).section === "muted");
+  const resolvedRows = closedRows.filter((r) => effOf(r).section === "resolved");
+
+  const closedRowNode = (r: (typeof closedRows)[number]) =>
+    "p" in r ? (
+      <>
+        <Link href={`/monitors/${r.p.monitorId}`} className="text-primary truncate font-medium">
+          {r.p.name}
+        </Link>
+        <ProblemActions kind="monitor" refId={String(r.p.monitorId)} eff={r.p.effective} onSet={(v) => setStatus.mutate(v)} pending={setStatus.isPending} />
+      </>
+    ) : "x" in r ? (
+      <>
+        <span className="mono text-[11px] px-1.5 py-0.5 rounded bg-panel text-ink-2">{r.x.errorType || "error"}</span>
+        <Link href={`/errors/${r.x.fingerprint}`} className="text-primary truncate font-medium">
+          {r.x.messageExample || "(no message)"}
+        </Link>
+        <ProblemActions kind="error_group" refId={r.x.fingerprint} eff={r.x.effective} onSet={(v) => setStatus.mutate(v)} pending={setStatus.isPending} />
+      </>
+    ) : (
+      <>
+        <span className="mono text-[10px] px-1.5 py-0.5 rounded bg-[#fde8e8] text-bad font-semibold">DOWN</span>
+        <Link href="/uptime" className="text-primary truncate font-medium">
+          {r.u.name}
+        </Link>
+        <ProblemActions kind="uptime" refId={String(r.u.checkId)} eff={r.u.effective} onSet={(v) => setStatus.mutate(v)} pending={setStatus.isPending} />
+      </>
+    );
+
+  const activeRowsEmpty = firingMonitors.length === 0 && activeIncidents.length === 0 && activeUptime.length === 0;
   return (
     <div>
       <PageHeader title="Now" sub={d?.receiving ? "Receiving data" : d ? "Not receiving data" : undefined} />
@@ -1080,10 +1152,11 @@ export function Home() {
           ) : (
             <>
               {(() => {
-                // Render ranked: firing monitors and incidents share one ordering.
+                // Render ranked: firing monitors, incidents and failing uptime checks share one ordering.
                 const firing = firingMonitors.map((p) => ({ sortMs: p.since ?? 0, render: (g: boolean) => monitorNode(p, g), key: `m${p.monitorId}` }));
                 const incs = activeIncidents.map((r) => ({ sortMs: r.x.lastSeen, render: (g: boolean) => incidentNode(r, g), key: r.x.fingerprint }));
-                return [...firing, ...incs]
+                const ups = activeUptime.map((u) => ({ sortMs: u.lastCheckedAt ?? 0, render: (g: boolean) => uptimeNode(u, g), key: `u${u.checkId}` }));
+                return [...firing, ...incs, ...ups]
                   .sort((a, b) => b.sortMs - a.sortMs)
                   .map((r, i) => <div key={r.key}>{r.render(i === 0)}</div>);
               })()}
@@ -1124,22 +1197,7 @@ export function Home() {
                   <div className="mt-2 space-y-1">
                     {resolvedRows.map((r, i) => (
                       <div key={i} className="flex items-center gap-2 text-[13px]">
-                        {"p" in r ? (
-                          <>
-                            <Link href={`/monitors/${r.p.monitorId}`} className="text-primary truncate font-medium">
-                              {r.p.name}
-                            </Link>
-                            <ProblemActions kind="monitor" refId={String(r.p.monitorId)} eff={r.p.effective} onSet={(v) => setStatus.mutate(v)} pending={setStatus.isPending} />
-                          </>
-                        ) : (
-                          <>
-                            <span className="mono text-[11px] px-1.5 py-0.5 rounded bg-panel text-ink-2">{r.x.errorType || "error"}</span>
-                            <Link href={`/errors/${r.x.fingerprint}`} className="text-primary truncate font-medium">
-                              {r.x.messageExample || "(no message)"}
-                            </Link>
-                            <ProblemActions kind="error_group" refId={r.x.fingerprint} eff={r.x.effective} onSet={(v) => setStatus.mutate(v)} pending={setStatus.isPending} />
-                          </>
-                        )}
+                        {closedRowNode(r)}
                       </div>
                     ))}
                   </div>
@@ -1150,25 +1208,10 @@ export function Home() {
                   <summary className="text-[13px] cursor-pointer select-none text-ink-2">Muted ({mutedRows.length})</summary>
                   <div className="mt-2 space-y-1">
                     {mutedRows.map((r, i) => {
-                      const eff = "p" in r ? r.p.effective : r.x.effective;
+                      const eff = effOf(r);
                       return (
                         <div key={i} className="flex items-center gap-2 text-[13px]">
-                          {"p" in r ? (
-                            <>
-                              <Link href={`/monitors/${r.p.monitorId}`} className="text-primary truncate font-medium">
-                                {r.p.name}
-                              </Link>
-                              <ProblemActions kind="monitor" refId={String(r.p.monitorId)} eff={r.p.effective} onSet={(v) => setStatus.mutate(v)} pending={setStatus.isPending} />
-                            </>
-                          ) : (
-                            <>
-                              <span className="mono text-[11px] px-1.5 py-0.5 rounded bg-panel text-ink-2">{r.x.errorType || "error"}</span>
-                              <Link href={`/errors/${r.x.fingerprint}`} className="text-primary truncate font-medium">
-                                {r.x.messageExample || "(no message)"}
-                              </Link>
-                              <ProblemActions kind="error_group" refId={r.x.fingerprint} eff={r.x.effective} onSet={(v) => setStatus.mutate(v)} pending={setStatus.isPending} />
-                            </>
-                          )}
+                          {closedRowNode(r)}
                           {eff.newActivityAfterMute && (
                             <span className="text-[11px] text-bad">new activity since mute</span>
                           )}

@@ -166,6 +166,27 @@ async function ingest(org, service) {
   if (psRowsB !== '0') psLeak.push(`${psRowsB} row(s) written for B`);
   await req('POST', '/api/ui/problems/status', { kind: 'error_group', ref: fpA, status: 'open' }, as(A));
   check('isolation', "problem status: B cannot write against A's monitor/error group; writes stay org-scoped", 'refused + scoped', psLeak.join('; ') || 'refused + scoped', psLeak.length === 0);
+  // uptime checks are org-scoped end to end: B cannot see A's check in its list, cannot
+  // read/mutate/probe it by id, and cannot attach a workflow status to it.
+  const upLeak = [];
+  const upA = await req('POST', '/api/ui/uptime', { name: 'a-probe', url: 'http://127.0.0.1:1/a', intervalS: 300 }, as(A));
+  if (upA.status !== 200) upLeak.push(`A create -> ${upA.status}`);
+  const upId = upA.body?.id;
+  if (upId) {
+    const bList = await req('GET', '/api/ui/uptime', null, as(B));
+    if ((bList.body?.checks ?? []).some((c) => c.id === upId)) upLeak.push("B's list contains A's check");
+    for (const [m, p] of [['PUT', `/api/ui/uptime/${upId}`], ['DELETE', `/api/ui/uptime/${upId}`]]) {
+      const r = await req(m, p, m === 'PUT' ? { name: 'x', url: 'http://127.0.0.1:1/b', intervalS: 300 } : null, as(B));
+      if (r.status !== 404) upLeak.push(`${m} -> ${r.status}`);
+    }
+    const rRun = await req('POST', `/api/ui/uptime/${upId}/run`, null, as(B));
+    if (rRun.status !== 404) upLeak.push(`run -> ${rRun.status}`);
+    const rSt = await req('POST', '/api/ui/problems/status', { kind: 'uptime', ref: String(upId), status: 'resolved' }, as(B));
+    if (rSt.status !== 404) upLeak.push(`status -> ${rSt.status}`);
+    const stillThere = psql(`select count(*) from uptime_checks where id=${upId} and org_id=${A.orgId}`);
+    if (stillThere !== '1') upLeak.push("A's check mutated or deleted by B");
+  }
+  check('isolation', "uptime checks: B cannot list, mutate, probe or set status on A's checks", 'refused + intact', upLeak.join('; ') || 'refused + intact', upLeak.length === 0);
   const byId = [];
   const m1 = await req('GET', `/api/v1/monitor/${monA.id}`, null, as(B)); if (m1.status === 200) byId.push(`GET monitor ${m1.status}`);
   const m2 = await req('PUT', `/api/v1/monitor/${monA.id}`, { name: 'hijacked', type: 'metric alert', query: monA.query }, as(B)); if (m2.status === 200 && json(await req('GET', `/api/v1/monitor/${monA.id}`, null, as(A)))?.name === 'hijacked') byId.push('PUT monitor changed it');

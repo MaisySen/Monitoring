@@ -71,8 +71,8 @@ export function embeddedIpv4(ip: string): string | null {
   return null;
 }
 
-export function isBlockedAddress(ip: string): boolean {
-  if (allowPrivate) return false;
+export function isBlockedAddress(ip: string, allow: boolean = allowPrivate): boolean {
+  if (allow) return false;
   const family = net.isIP(ip);
   if (!family) return true;
   if (family === 6) {
@@ -100,16 +100,20 @@ export function checkWebhookUrl(raw: string): URL {
   return u;
 }
 
-const safeLookup: net.LookupFunction = (hostname, options, callback) => {
-  dns.lookup(hostname, { ...options, all: true }, (err, addresses) => {
-    if (err) return (callback as any)(err);
-    const list = addresses as dns.LookupAddress[];
-    const bad = list.find((a) => isBlockedAddress(a.address));
-    if (bad) return (callback as any)(Object.assign(new Error(`refused: ${hostname} resolves to a private or local address`), { code: "EBLOCKED" }));
-    if ((options as any)?.all) return (callback as any)(null, list);
-    (callback as any)(null, list[0].address, list[0].family);
-  });
-};
+export function makeSafeLookup(allow: boolean = allowPrivate): net.LookupFunction {
+  return (hostname, options, callback) => {
+    dns.lookup(hostname, { ...options, all: true }, (err, addresses) => {
+      if (err) return (callback as any)(err);
+      const list = addresses as dns.LookupAddress[];
+      const bad = list.find((a) => isBlockedAddress(a.address, allow));
+      if (bad) return (callback as any)(Object.assign(new Error(`refused: ${hostname} resolves to a private or local address`), { code: "EBLOCKED" }));
+      if ((options as any)?.all) return (callback as any)(null, list);
+      (callback as any)(null, list[0].address, list[0].family);
+    });
+  };
+}
+
+const safeLookup: net.LookupFunction = makeSafeLookup(allowPrivate);
 
 // Headers that control the connection or message framing; Monitoring sets these itself.
 const RESERVED_HEADERS = new Set(["host", "transfer-encoding", "connection", "content-length", "upgrade", "te", "keep-alive", "proxy-connection", "trailer"]);

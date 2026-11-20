@@ -21,6 +21,7 @@ import {
   ChevronDown,
   Check,
   Bug,
+  Globe,
 } from "lucide-react";
 import { MonitoringMark } from "./Logo";
 import { useAuthUser } from "@/lib/auth";
@@ -49,6 +50,13 @@ const NAV_GROUPS: NavItem[][] = [
         { label: "New Monitor", href: "/monitors/create" },
         { label: "Triggered Monitors", href: "/monitors/manage?status=Alert" },
       ],
+    },
+    {
+      label: "Uptime",
+      icon: Globe,
+      href: "/uptime",
+      match: ["/uptime"],
+      children: [{ label: "Checks", href: "/uptime" }],
     },
   ],
   [

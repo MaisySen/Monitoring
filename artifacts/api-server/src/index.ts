@@ -1,6 +1,7 @@
 import app from "./app";
 import { logger } from "./lib/logger";
 import { startMonitorLoop, startRetentionLoop } from "./jobs/monitors";
+import { startUptimeLoop } from "./jobs/uptime";
 import { migrateDatabase, buildBackgroundIndexes } from "./lib/migrate";
 import { storage, useClickHouse } from "./lib/storage";
 import { ensureChSchema } from "./lib/ch";
@@ -34,6 +35,7 @@ const server = app.listen(port, (err) => {
   // are evaluated (and notifications sent) by exactly one process.
   if (String(process.env.MONITORING_BACKGROUND_JOBS ?? "true").toLowerCase() !== "false") {
     startMonitorLoop();
+    startUptimeLoop();
     startRetentionLoop();
     void buildBackgroundIndexes((msg, extra) => logger.info(extra ?? {}, msg));
   } else logger.info("background jobs disabled (MONITORING_BACKGROUND_JOBS=false)");

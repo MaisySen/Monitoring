@@ -7,6 +7,7 @@ import { DashboardList, DashboardView } from "@/pages/Dashboards";
 import { InfraList, HostMap } from "@/pages/Infrastructure";
 import { MetricsExplorer, MetricsSummary } from "@/pages/Metrics";
 import { MonitorList, MonitorEdit, MonitorStatus } from "@/pages/Monitors";
+import { Uptime } from "@/pages/Uptime";
 import { LogsExplorer } from "@/pages/Logs";
 import { ApmServices, ApmService, TraceExplorer, TraceView } from "@/pages/Apm";
 import { Events, OrgSettings, AgentSetup, Home, Login, Onboarding, Errors, ErrorGroupDetail } from "@/pages/Misc";
@@ -58,6 +59,7 @@ export default function App() {
             <Route path="/monitors">
               <Redirect to="/monitors/manage" />
             </Route>
+            <Route path="/uptime" component={Uptime} />
             <Route path="/apm">
               <Redirect to="/apm/services" />
             </Route>

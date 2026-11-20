@@ -14,6 +14,8 @@ import { computeServiceHealth } from "../query/serviceHealth";
 import { fingerprintFor, normalizeMessage, buildVersionCorrelation } from "../query/errorGroups";
 import { computeExceptionIncidents } from "../query/incidents";
 import { effectiveProblem, loadProblemStatuses } from "../query/problemStatus";
+import { checkUptimeUrl, probeUptime, uptimeAllowsPrivate, MIN_INTERVAL_S, MAX_INTERVAL_S, MIN_TIMEOUT_MS, MAX_TIMEOUT_MS, MAX_CHECKS_PER_ORG } from "../lib/uptime";
+import { SURFACE_AFTER_FAILURES } from "../jobs/uptime";
 import { startSampleData, stopSampleData, sampleRunning } from "../jobs/sample";
 import { intakeStats } from "../lib/intakeStats";
 import { getQuotas, setQuotas, parseQuotas, usageToday, bytesThisMinute, seriesCount } from "../lib/quotas";
@@ -21,7 +23,7 @@ import { logger } from "../lib/logger";
 
 const router: Router = Router();
 router.use(
-  ["/v1/dashboard", "/v1/monitor", "/v1/events", "/ui/org", "/ui/events", "/ui/channels", "/ui/monitors", "/ui/now", "/ui/errors", "/ui/problems", "/v1/integration/webhooks", "/v1/intake"],
+  ["/v1/dashboard", "/v1/monitor", "/v1/events", "/ui/org", "/ui/events", "/ui/channels", "/ui/monitors", "/ui/now", "/ui/errors", "/ui/problems", "/ui/uptime", "/v1/integration/webhooks", "/v1/intake"],
   requireOrg,
 );
 
@@ -417,6 +419,31 @@ router.get(
       effective: effectiveProblem(statuses.get(`error_group:${x.fingerprint}`), x.lastSeen),
     }));
 
+    // Uptime checks with enough consecutive failures to count as a problem. Recovery is
+    // measured (consecutive_failures resets on the first ok probe); workflow status applies
+    // like any other problem and new failures after a resolution re-surface it.
+    let uptime: any[] = [];
+    const hasUptime = (await pool.query("select to_regclass('uptime_checks') is not null as e")).rows[0].e;
+    if (hasUptime) {
+      uptime = (
+        await pool.query(
+          `select id, name, url, consecutive_failures, last_checked_at, last_error, last_duration_ms
+           from uptime_checks where org_id=$1 and enabled and consecutive_failures >= $2
+           order by last_checked_at desc limit 50`,
+          [orgId, SURFACE_AFTER_FAILURES],
+        )
+      ).rows.map((c: any) => ({
+        checkId: c.id,
+        name: c.name,
+        url: c.url,
+        consecutiveFailures: Number(c.consecutive_failures),
+        lastCheckedAt: c.last_checked_at ? Number(c.last_checked_at) : null,
+        lastError: c.last_error,
+        lastDurationMs: c.last_duration_ms == null ? null : Number(c.last_duration_ms),
+        effective: effectiveProblem(statuses.get(`uptime:${c.id}`), c.last_checked_at ? Number(c.last_checked_at) : null),
+      }));
+    }
+
     res.json({
       now: Date.now(),
       receiving: Number(totals.last_span_ms ?? 0) > Date.now() - 5 * 60_000,
@@ -426,6 +453,8 @@ router.get(
       problems: problemsWithStatus,
       exceptions: exceptionsWithStatus,
       exceptionsSupported: !!hasGroups,
+      uptime,
+      uptimeSupported: !!hasUptime,
     });
   }),
 );
@@ -439,7 +468,7 @@ router.post(
     const kind = String(req.body?.kind ?? "");
     const ref = String(req.body?.ref ?? "").slice(0, 200);
     const status = String(req.body?.status ?? "");
-    if (!["monitor", "error_group"].includes(kind)) throw new HttpError(400, "kind must be monitor or error_group");
+    if (!["monitor", "error_group", "uptime"].includes(kind)) throw new HttpError(400, "kind must be monitor, error_group or uptime");
     if (!ref) throw new HttpError(400, "ref is required");
     if (!["acknowledged", "muted", "resolved", "open"].includes(status))
       throw new HttpError(400, "status must be acknowledged, muted, resolved or open");
@@ -447,6 +476,9 @@ router.post(
     if (kind === "monitor") {
       const own = (await pool.query("select id from monitors where org_id=$1 and id=$2", [req.orgId, Number(ref) || -1])).rows[0];
       if (!own) throw new HttpError(404, "monitor not found");
+    } else if (kind === "uptime") {
+      const own = (await pool.query("select id from uptime_checks where org_id=$1 and id=$2", [req.orgId, Number(ref) || -1])).rows[0];
+      if (!own) throw new HttpError(404, "uptime check not found");
     } else {
       const own = (await pool.query("select fingerprint from error_groups where org_id=$1 and fingerprint=$2", [req.orgId, ref])).rows[0];
       if (!own) throw new HttpError(404, "error group not found");
@@ -463,6 +495,182 @@ router.post(
       [req.orgId, kind, ref, status, Date.now(), email],
     );
     res.json({ ok: true, status });
+  }),
+);
+
+// ---------- Uptime checks ----------
+// HTTP(S) probing of org-defined targets. Every target URL is validated against the SSRF
+// rules in lib/uptime.ts both when the check is saved and on every probe (each redirect hop
+// re-validated), so a saved check cannot become a probe of the internal network later.
+// With private targets refused (the default; MONITORING_UPTIME_ALLOW_PRIVATE is a test-only
+// override), a fresh install shows an empty list - not an implied "everything is up".
+
+function parseUptimeBody(req: Request): {
+  name: string;
+  url: string;
+  method: "GET" | "HEAD";
+  intervalS: number;
+  timeoutMs: number;
+  expectMin: number;
+  expectMax: number;
+} {
+  const name = String(req.body?.name ?? "").trim().slice(0, 120);
+  if (!name) throw new HttpError(400, "name is required");
+  const url = String(req.body?.url ?? "").trim().slice(0, 2048);
+  checkUptimeUrl(url); // throws HttpError(400) on an invalid or refused target
+  const method = String(req.body?.method ?? "GET").toUpperCase() === "HEAD" ? "HEAD" : "GET";
+  const intervalS = Math.round(Number(req.body?.intervalS ?? 60));
+  if (!Number.isFinite(intervalS) || intervalS < MIN_INTERVAL_S || intervalS > MAX_INTERVAL_S)
+    throw new HttpError(400, `intervalS must be ${MIN_INTERVAL_S}-${MAX_INTERVAL_S}`);
+  const timeoutMs = Math.round(Number(req.body?.timeoutMs ?? 8000));
+  if (!Number.isFinite(timeoutMs) || timeoutMs < MIN_TIMEOUT_MS || timeoutMs > MAX_TIMEOUT_MS)
+    throw new HttpError(400, `timeoutMs must be ${MIN_TIMEOUT_MS}-${MAX_TIMEOUT_MS}`);
+  const expectMin = Math.round(Number(req.body?.expectMin ?? 200));
+  const expectMax = Math.round(Number(req.body?.expectMax ?? 399));
+  for (const v of [expectMin, expectMax])
+    if (!Number.isFinite(v) || v < 100 || v > 599) throw new HttpError(400, "expectMin/expectMax must be 100-599");
+  if (expectMin > expectMax) throw new HttpError(400, "expectMin must be <= expectMax");
+  return { name, url, method, intervalS, timeoutMs, expectMin, expectMax };
+}
+
+router.get(
+  "/ui/uptime",
+  h(async (req, res) => {
+    const hasTable = (await pool.query("select to_regclass('uptime_checks') is not null as e")).rows[0].e;
+    if (!hasTable) {
+      res.json({ supported: false, checks: [] });
+      return;
+    }
+    const dayAgo = Date.now() - 24 * 3600_000;
+    const checks = (
+      await pool.query(
+        `select id, name, url, method, interval_s, timeout_ms, expect_status_min, expect_status_max, enabled,
+                consecutive_failures, last_ok, last_checked_at, last_duration_ms, last_error, created_at
+         from uptime_checks where org_id=$1 order by name`,
+        [req.orgId],
+      )
+    ).rows;
+    // 24h availability from measured results only; a check with no results reports null, not 100%.
+    const avail = (
+      await pool.query(
+        `select check_id, count(*) as n, count(*) filter (where ok) as ok_n
+         from uptime_results where org_id=$1 and ts >= $2 group by check_id`,
+        [req.orgId, dayAgo],
+      )
+    ).rows;
+    const availBy = new Map(avail.map((a: any) => [Number(a.check_id), { n: Number(a.n), pct: (100 * Number(a.ok_n)) / Number(a.n) }]));
+    const recent = (
+      await pool.query(
+        `select check_id, ts, ok, status_code, duration_ms, error from (
+           select check_id, ts, ok, status_code, duration_ms, error,
+                  row_number() over (partition by check_id order by ts desc) as rn
+           from uptime_results where org_id=$1
+         ) t where rn <= 40 order by check_id, ts`,
+        [req.orgId],
+      )
+    ).rows;
+    const recentBy = new Map<number, any[]>();
+    for (const r of recent) {
+      const arr = recentBy.get(Number(r.check_id)) ?? [];
+      arr.push({ ts: Number(r.ts), ok: r.ok, status: r.status_code, durationMs: r.duration_ms, error: r.error });
+      recentBy.set(Number(r.check_id), arr);
+    }
+    res.json({
+      supported: true,
+      privateTargetsAllowed: uptimeAllowsPrivate,
+      checks: checks.map((c: any) => ({
+        id: c.id,
+        name: c.name,
+        url: c.url,
+        method: c.method,
+        intervalS: Number(c.interval_s),
+        timeoutMs: Number(c.timeout_ms),
+        expectMin: Number(c.expect_status_min),
+        expectMax: Number(c.expect_status_max),
+        enabled: c.enabled,
+        consecutiveFailures: Number(c.consecutive_failures),
+        lastOk: c.last_ok,
+        lastCheckedAt: c.last_checked_at ? Number(c.last_checked_at) : null,
+        lastDurationMs: c.last_duration_ms == null ? null : Number(c.last_duration_ms),
+        lastError: c.last_error,
+        createdAt: Number(c.created_at),
+        availability24h: availBy.has(Number(c.id)) ? Math.round(availBy.get(Number(c.id))!.pct * 10) / 10 : null,
+        samples24h: availBy.get(Number(c.id))?.n ?? 0,
+        recent: recentBy.get(Number(c.id)) ?? [],
+      })),
+    });
+  }),
+);
+
+router.post(
+  "/ui/uptime",
+  h(async (req, res) => {
+    const b = parseUptimeBody(req);
+    const count = Number((await pool.query("select count(*) as n from uptime_checks where org_id=$1", [req.orgId])).rows[0].n);
+    if (count >= MAX_CHECKS_PER_ORG) throw new HttpError(400, `An organization can define at most ${MAX_CHECKS_PER_ORG} uptime checks`);
+    const row = (
+      await pool.query(
+        `insert into uptime_checks (org_id, name, url, method, interval_s, timeout_ms, expect_status_min, expect_status_max, enabled, created_at, next_run_at)
+         values ($1,$2,$3,$4,$5,$6,$7,$8,true,$9,$9) returning id`,
+        [req.orgId, b.name, b.url, b.method, b.intervalS, b.timeoutMs, b.expectMin, b.expectMax, Date.now()],
+      )
+    ).rows[0];
+    res.json({ ok: true, id: row.id });
+  }),
+);
+
+router.put(
+  "/ui/uptime/:id",
+  h(async (req, res) => {
+    const id = intId(req.params.id, "uptime check");
+    const b = parseUptimeBody(req);
+    const enabled = req.body?.enabled === false ? false : true;
+    const r = await pool.query(
+      `update uptime_checks set name=$3, url=$4, method=$5, interval_s=$6, timeout_ms=$7,
+         expect_status_min=$8, expect_status_max=$9, enabled=$10 where id=$1 and org_id=$2`,
+      [id, req.orgId, b.name, b.url, b.method, b.intervalS, b.timeoutMs, b.expectMin, b.expectMax, enabled],
+    );
+    if (!r.rowCount) throw new HttpError(404, "Uptime check not found");
+    res.json({ ok: true });
+  }),
+);
+
+router.delete(
+  "/ui/uptime/:id",
+  h(async (req, res) => {
+    const id = intId(req.params.id, "uptime check");
+    const r = await pool.query("delete from uptime_checks where id=$1 and org_id=$2", [id, req.orgId]);
+    if (!r.rowCount) throw new HttpError(404, "Uptime check not found");
+    await pool.query("delete from uptime_results where check_id=$1 and org_id=$2", [id, req.orgId]);
+    res.json({ ok: true });
+  }),
+);
+
+// Manual run: probes immediately (through the same validated path as the background loop),
+// records the result and returns it. Used to confirm a check works when it is created.
+router.post(
+  "/ui/uptime/:id/run",
+  h(async (req, res) => {
+    const id = intId(req.params.id, "uptime check");
+    const c = (
+      await pool.query(
+        "select id, org_id, url, method, timeout_ms, expect_status_min, expect_status_max from uptime_checks where id=$1 and org_id=$2",
+        [id, req.orgId],
+      )
+    ).rows[0];
+    if (!c) throw new HttpError(404, "Uptime check not found");
+    const r = await probeUptime(c.url, { method: c.method, timeoutMs: c.timeout_ms, expectMin: c.expect_status_min, expectMax: c.expect_status_max });
+    const now = Date.now();
+    await pool.query(
+      `insert into uptime_results (org_id, check_id, ts, ok, status_code, duration_ms, error) values ($1,$2,$3,$4,$5,$6,$7)`,
+      [c.org_id, c.id, now, r.ok, r.status, Math.round(r.durationMs), r.error],
+    );
+    await pool.query(
+      `update uptime_checks set consecutive_failures = case when $2 then 0 else consecutive_failures + 1 end,
+         last_ok=$2, last_checked_at=$3, last_duration_ms=$4, last_error=$5 where id=$1`,
+      [c.id, r.ok, now, Math.round(r.durationMs), r.error],
+    );
+    res.json({ ok: r.ok, status: r.status, durationMs: Math.round(r.durationMs), error: r.error, redirects: r.redirects, finalUrl: r.finalUrl });
   }),
 );
 
