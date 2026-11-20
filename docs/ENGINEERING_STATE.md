@@ -738,3 +738,7 @@ Unit: 76/76. CI greens through 43f64b9.
 - Harness bug found by the suite's first run: the OTLP check used FIXED trace/span ids, and intake is idempotent (store.ts: on conflict (org_id, trace_id, span_id) do nothing), so the second run's replay was correctly deduped and the check flapped. Fixed to fresh random ids per run; two consecutive runs PASS. Note: this also corrects the older "no idempotency keys" remark (2026-11-21 00:31 entry) - span intake IS idempotent per (org, trace_id, span_id).
 - Served web bundle confirmed current (monitoring-run python app.py present in served asset).
 - systemd/default privileged install remains UNVERIFIED (no docker/systemd in this environment).
+
+## Datadog-compat published API verified (2026-11-21)
+- bench/regression/onboarding-dd-compat.sh: the 4 published DD-compat curl commands verbatim (v2/series, v2/logs, v1/events with API+app key, v1/monitor create + cleanup) plus wrong-app-key negative. Initial run: series "accepted but not queryable" was MY check bug (POST /api/v1/query with JSON body; the real read API is GET /api/v1/query?query=, telemetryCh.ts) - intake had stored the point correctly (verified in metric_points). Fixed; ALL 5 PASS.
+- Prerequisite verified to exist: Organization Settings has both API Keys and Application Keys tabs (kind api/app); app key created via the UI's own endpoint POST /api/ui/org/keys.
