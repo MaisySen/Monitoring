@@ -24,6 +24,7 @@ fail=0
 step() { echo "== $*"; }
 
 step "1. clean pack from a wiped downloads dir"
+mkdir -p "$DL"
 cp -a "$DL" "$WORK/downloads.bak"
 rm -rf "$DL"
 if ! node "$ROOT/scripts/pack-sdks.mjs" > "$WORK/pack.log" 2>&1; then
