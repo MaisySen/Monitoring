@@ -657,3 +657,13 @@ Unit: 76/76. CI greens through 43f64b9.
   of cause". Measured vs workflow distinction preserved inline (counts/first-seen measured;
   acknowledge/mute/resolve + resolved-by workflow).
 - Screenshots: dense-now.png (collapsed), dense-now-open.png (one disclosure open).
+
+## 2026-11-21: validation-bar run (empty account to first useful answer)
+
+- Fresh server (4731) + empty db (valrun); real path: setup form -> Connect your app
+  (waiting state) -> API key via the UI's own endpoint -> shop app v1.0.0 healthy -> v1.1.0
+  with a /checkout bug. Now page answered with zero configuration: ALERT NEW ValueError
+  with auto-created monitor linked, version-timing chip (v1.1.0 · prod), honest low-traffic
+  service note. Connect page flipped to "Receiving data from shop-api".
+- Stopwatch 190s first-load-to-answer (scripted path; human slower). Evidence:
+  bench/evidence/validation-2026-11-21/ (4 screenshots + README with API confirmation).
