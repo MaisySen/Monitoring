@@ -286,3 +286,18 @@ queue). 100 spans/s, 60s runs, fault at 20s. Evidence: bench/evidence/recovery/s
 - Harness learning: login returns clearing+new sid cookies; bench cookie jars must be last-wins.
 - Live verification against a real Multies instance remains the external dependency for B1; B2 unchanged
   (Multies write authority needed).
+
+## 2026-11-21 00:31 resilience bench, agent topology (run wo501, 6/6 scenarios, DB-verified)
+- Harness: recovery.js TOPOLOGY=agent strips MONITORING_URL from the generator (SDK config.js would otherwise go app->server direct), sets MONITORING_AGENT_URL, and asserts every stored row carries the agent resource identity (env=recovery, host=recovery-bench-host), failing as topology_violation otherwise. 0 violations.
+- Agent: otelcol-contrib, file_storage disk queue, memory_limiter, batch. Instrumentation delta vs generated default config verified by diff: debug tap, pprof ext, bench.log path, telemetry metrics only; receivers/processors/exporter queue/retry/batch/memory_limiter/storage byte-identical, so routing/buffering/retry behavior is the shipped behavior.
+- SDK: RetryingLogExporter + maxQueueSize 65536 (commit e4ef049).
+- Results (rows vs unique ids in PostgreSQL, per service):
+  - baseline: 18000/18000 spans, 9000/9000 logs, 0 missing, 0 dup, fresh 1.037s
+  - backend_outage (server SIGKILL 60s): 18000/18000, 9000/9000, 0/0, fresh 11.767s, drained 25.235s. Same fault app-direct (pre-fix SDK) lost 617 spans + 3888 logs.
+  - agent_restart (SIGTERM): 18000/18000, 9000/9000, 0/0, fresh 1.564s
+  - db_restart: 18000/18000, 9000/9000, 0/0, fresh 0.521s
+  - long_outage (240s outage at 600 spans/s): 180000/180000, 90000/90000, 0/0, fresh 25.955s, drained 0.374s after end
+  - agent_kill_pending (SIGKILL with pending disk queue, files snapshotted at kill: traces 16MiB, logs 8MiB; only 5867/18000 spans stored at kill): 18000/18000, 9000/9000, 0/0 after agent restart. Disk queue survives SIGKILL; no redelivery duplicates.
+- Stage counters (566 prometheus scrapes, 2s cadence): max queue depth 581/1000 trace requests, 244/1000 log requests; receiver_refused = 0 for both signals across the whole suite (memory_limiter never engaged at 600 spans/s); exporter send_failed/enqueue_failed series never appeared.
+- Caveats: baseline rows verified live at collection but absent from final DB (recagent recreated between wrapper attempts; other 5 scenarios present in final DB state). Server intake has no idempotency keys: end-to-end semantics are at-least-once; 0 duplicates observed in these runs does not prove duplicates impossible (a response lost after commit would redeliver).
+- Evidence: bench/evidence/recovery/agent-2026-11-21.json, recovery-agent2.jsonl, tele-agent2.out; app-direct comparison in app-direct-2026-11-20.json + original-logs-2026-11-20/.

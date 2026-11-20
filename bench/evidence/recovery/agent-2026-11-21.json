@@ -1,0 +1,202 @@
+{
+ "date": "2026-11-21",
+ "run": "wo501",
+ "topology": "agent",
+ "harness": "recovery.js TOPOLOGY=agent; MONITORING_URL stripped from generator; MONITORING_AGENT_URL set; stored-row resource identity asserted (env=recovery, host=recovery-bench-host) or topology_violation",
+ "agent": "otelcol-contrib custom config /tmp/agent-debug-collector.yaml: file_storage disk queue, memory_limiter, batch; instrumentation delta vs generated default = debug tap + pprof + bench.log + telemetry metrics only; receivers/processors/exporter queue-retry-batch-storage identical",
+ "sdk": "RetryingLogExporter + maxQueueSize 65536 (commit e4ef049)",
+ "scenarios": [
+  {
+   "scenario": "baseline",
+   "lang": "node",
+   "topology": "agent",
+   "service": "recovery-node-baseline-arvtj",
+   "resource_env": "recovery",
+   "resource_host": "recovery-bench-host",
+   "rate_spans_per_s": 200,
+   "seconds": 90,
+   "fault_started_s": 30.007,
+   "fault_duration_s": 0,
+   "sent": {
+    "spans": 18000,
+    "logs": 9000
+   },
+   "spans_rows": 18000,
+   "spans_unique": 18000,
+   "logs_rows": 9000,
+   "logs_unique": 9000,
+   "spans_missing": 0,
+   "spans_duplicates": 0,
+   "logs_missing": 0,
+   "logs_duplicates": 0,
+   "seconds_to_fresh_data_after_recovery": 1.037,
+   "seconds_to_fully_drained_after_end": 5.071
+  },
+  {
+   "scenario": "backend_outage",
+   "lang": "node",
+   "topology": "agent",
+   "service": "recovery-node-backend-outage-wo501",
+   "resource_env": "recovery",
+   "resource_host": "recovery-bench-host",
+   "rate_spans_per_s": 200,
+   "seconds": 90,
+   "fault_started_s": 30.007,
+   "fault_duration_s": 60,
+   "sent": {
+    "spans": 18000,
+    "logs": 9000
+   },
+   "spans_rows": 18000,
+   "spans_unique": 18000,
+   "logs_rows": 9000,
+   "logs_unique": 9000,
+   "spans_missing": 0,
+   "spans_duplicates": 0,
+   "logs_missing": 0,
+   "logs_duplicates": 0,
+   "seconds_to_fresh_data_after_recovery": 11.767,
+   "seconds_to_fully_drained_after_end": 25.235
+  },
+  {
+   "scenario": "agent_restart",
+   "lang": "node",
+   "topology": "agent",
+   "service": "recovery-node-agent-restart-wo501",
+   "resource_env": "recovery",
+   "resource_host": "recovery-bench-host",
+   "rate_spans_per_s": 200,
+   "seconds": 90,
+   "fault_started_s": 30.001,
+   "fault_duration_s": 1.106,
+   "sent": {
+    "spans": 18000,
+    "logs": 9000
+   },
+   "spans_rows": 18000,
+   "spans_unique": 18000,
+   "logs_rows": 9000,
+   "logs_unique": 9000,
+   "spans_missing": 0,
+   "spans_duplicates": 0,
+   "logs_missing": 0,
+   "logs_duplicates": 0,
+   "seconds_to_fresh_data_after_recovery": 1.564,
+   "seconds_to_fully_drained_after_end": 5.1
+  },
+  {
+   "scenario": "db_restart",
+   "lang": "node",
+   "topology": "agent",
+   "service": "recovery-node-db-restart-wo501",
+   "resource_env": "recovery",
+   "resource_host": "recovery-bench-host",
+   "rate_spans_per_s": 200,
+   "seconds": 90,
+   "fault_started_s": 30.003,
+   "fault_duration_s": 0.21,
+   "sent": {
+    "spans": 18000,
+    "logs": 9000
+   },
+   "spans_rows": 18000,
+   "spans_unique": 18000,
+   "logs_rows": 9000,
+   "logs_unique": 9000,
+   "spans_missing": 0,
+   "spans_duplicates": 0,
+   "logs_missing": 0,
+   "logs_duplicates": 0,
+   "seconds_to_fresh_data_after_recovery": 0.521,
+   "seconds_to_fully_drained_after_end": 5.086
+  },
+  {
+   "scenario": "long_outage",
+   "lang": "node",
+   "topology": "agent",
+   "service": "recovery-node-long-outage-wo501",
+   "resource_env": "recovery",
+   "resource_host": "recovery-bench-host",
+   "rate_spans_per_s": 600,
+   "seconds": 300,
+   "fault_started_s": 20.003,
+   "fault_duration_s": 240,
+   "sent": {
+    "spans": 180000,
+    "logs": 90000
+   },
+   "spans_rows": 180000,
+   "spans_unique": 180000,
+   "logs_rows": 90000,
+   "logs_unique": 90000,
+   "spans_missing": 0,
+   "spans_duplicates": 0,
+   "logs_missing": 0,
+   "logs_duplicates": 0,
+   "seconds_to_fresh_data_after_recovery": 25.955,
+   "seconds_to_fully_drained_after_end": 0.374
+  },
+  {
+   "scenario": "agent_kill_pending",
+   "lang": "node",
+   "topology": "agent",
+   "service": "recovery-node-agent-kill-pending-wo501",
+   "resource_env": "recovery",
+   "resource_host": "recovery-bench-host",
+   "rate_spans_per_s": 200,
+   "seconds": 90,
+   "fault_started_s": 30.004,
+   "fault_duration_s": 1.225,
+   "sent": {
+    "spans": 18000,
+    "logs": 9000
+   },
+   "spans_rows": 18000,
+   "spans_unique": 18000,
+   "logs_rows": 9000,
+   "logs_unique": 9000,
+   "spans_missing": 0,
+   "spans_duplicates": 0,
+   "logs_missing": 0,
+   "logs_duplicates": 0,
+   "seconds_to_fresh_data_after_recovery": 2.092,
+   "seconds_to_fully_drained_after_end": 5.098,
+   "rows_at_agent_kill": {
+    "spans": 5867,
+    "logs": 2926
+   },
+   "queue_files_at_agent_kill": [
+    {
+     "file": "exporter_otlphttp_monitoring_logs",
+     "bytes": 8388608,
+     "mtime_ms": 1795181263505
+    },
+    {
+     "file": "exporter_otlphttp_monitoring_metrics",
+     "bytes": 32768,
+     "mtime_ms": 1795180680565
+    },
+    {
+     "file": "exporter_otlphttp_monitoring_traces",
+     "bytes": 16777216,
+     "mtime_ms": 1795181263533
+    }
+   ]
+  }
+ ],
+ "stage_counters": {
+  "source": "/tmp/tele-agent2.out (2s prometheus scrapes, 566 samples 23:29:50-00:26:17)",
+  "max_queue_traces_requests": 581,
+  "max_queue_logs_requests": 244,
+  "queue_capacity_requests_per_signal": 1000,
+  "receiver_refused_spans_total": 0,
+  "receiver_refused_logs_total": 0,
+  "exporter_send_failed_series_seen": false,
+  "exporter_enqueue_failed_series_seen": false
+ },
+ "caveats": [
+  "baseline scenario rows verified live at collection (18000/18000 spans, 9000/9000 logs) but absent from final DB state: recagent DB was recreated between the first wrapper attempt and the definitive run; wrapper skipped baseline on resume because its jsonl line existed. Other 5 scenarios verified live AND present in final DB.",
+  "agent2-diag-gen.log empty: GEN_DEBUG_DIAG=1 app-side diagnostics only active in direct topology.",
+  "Zero duplicates observed does not prove the disk queue never double-delivers; server intake has no idempotency keys, end-to-end semantics are at-least-once."
+ ]
+}
