@@ -194,3 +194,22 @@ queue). 100 spans/s, 60s runs, fault at 20s. Evidence: bench/evidence/recovery/s
 - Options (need a decision): (a) make the Monitoring repo public so build checks run free - exceeds the
   granted "private" scope, would publish source; (b) wait for the monthly quota reset and keep the repo
   private meanwhile; (c) provide a larger runner/host. The agent binary remains unbuilt.
+
+## 2026-11-20 20:18 - CI failure cause grounded (per parent) + db_restart clean rerun
+- GitHub check-run annotation (the authoritative job error): "The job was not started because recent
+  account payments have failed or your spending limit needs to be increased. Please check the 'Billing &
+  plans' section in your settings." That is the whole verified cause; which of the two billing branches
+  applies is unknown from here. Reported to parent, who owns any permission/cost question. No visibility
+  change, no more reruns.
+- Harness bug fixed: pg_ctl restart inherited the execSync stdio pipe (postmaster keeps it open), so node
+  never saw EOF and the runner froze. PG_RESTART_CMD now redirects to a log file.
+- db_restart CLEAN rerun (SECONDS=110, fault at 20s, ~90s of post-restart traffic): 11,000/11,000 spans,
+  5,500/5,500 logs, 0 duplicates - zero loss through a real Postgres fast restart under load, with the
+  pool error handler holding. Earlier "polluted" reading was the harness PATH/pipe bugs, not the product.
+
+## 2026-11-20 20:19 - server_outage_long clean rerun (SECONDS=110, post-recovery traffic present)
+- Server down 45s at 100 spans/s: 52/11,000 spans lost (0.47%), 0 duplicates; 1,880/5,500 logs lost
+  (stock OTEL log exporter retry is weaker - matches upstream README's known limitation); fresh data
+  visible 13ms after recovery. Evidence: bench/evidence/recovery/server-only-2026-11-20-rerun.json.
+- READINESS.md updated with these numbers; the "pending rerun" gap is closed. Remaining explicit gap:
+  the agent disk-queue layer (upstream claims) - needs the agent binary.

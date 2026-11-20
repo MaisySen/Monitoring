@@ -32,8 +32,11 @@ anything without one is listed under Not yet verified. Dates are 2026-11-20 (Syd
   - baseline: 6,000/6,000 spans and 3,000/3,000 logs stored, zero duplicates;
   - server down 15s (inside the client libraries' 30s retry budget): zero span loss, zero duplicates,
     51/3,000 logs lost (stock OpenTelemetry log exporter retries less - known limitation);
-  - Postgres fast restart during load: server keeps serving (pg pool error handling, fixed 2026-11-20);
-  - server down 45s: bounded app-side loss; see the evidence JSON for exact numbers.
+  - Postgres fast restart during load (11,000 spans + 5,500 logs at 100 spans/s): zero loss, zero
+    duplicates, fresh data visible 14ms after recovery (pg pool error handling, fixed 2026-11-20);
+  - server down 45s at 100 spans/s (past the 30s client retry budget): 52/11,000 spans lost (0.47%),
+    zero duplicates, 1,880/5,500 logs lost (stock OTEL log exporter), fresh data 13ms after recovery.
+    This is the bounded app-side loss the agent's disk queue exists to absorb (agent layer untested here).
 - Alerting journey (dashboard -> alert -> webhook -> recovery): 14/14.
 - Unit suite: 63/63.
 
@@ -51,8 +54,6 @@ anything without one is listed under Not yet verified. Dates are 2026-11-20 (Syd
     server outages) are upstream results, NOT re-verified here;
   - no real host has ever been onboarded; `/account/agent` and `/install.sh` were verified server-side
     only (endpoint, page, config translation tests, placeholder safety).
-- **Long-outage post-recovery behavior**: first 45s-outage run ended the generator before the server
-  returned; rerun numbers pending (see ENGINEERING_STATE.md).
 - **SSO revocation timing**: bounded by the 12h absolute session TTL plus issuance-time ordering; this is
   an explicit exposure limit, not prompt revocation. A fresh callback from an old provider login renewing
   stale claims is covered by iat-ordering + fail-closed ties, but identity-provider-specific behaviors

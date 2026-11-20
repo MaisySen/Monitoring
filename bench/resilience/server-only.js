@@ -129,11 +129,15 @@ async function runScenario(name) {
     setTimeout(() => { try { gen.kill('SIGKILL'); } catch {} }, 500).unref();
   });
 
+  process.stderr.write(`  ${name}: t+${((Date.now()-t0)/1000).toFixed(0)}s generator spawned, waiting ${FAULT_AT}s\n`);
   await sleep(FAULT_AT * 1000);
+  process.stderr.write(`  ${name}: t+${((Date.now()-t0)/1000).toFixed(0)}s fault starting\n`);
   const faultStart = Date.now();
   const info = await faults[name].run();
+  process.stderr.write(`  ${name}: t+${((Date.now()-t0)/1000).toFixed(0)}s fault cleared, awaiting generator summary\n`);
 
   const sent = await sentP;
+  process.stderr.write(`  ${name}: t+${((Date.now()-t0)/1000).toFixed(0)}s summary received ${JSON.stringify(sent)}\n`);
 
   // Wait for stored counts to stabilize, then count unique/duplicate sequence numbers.
   let counts = { spans_rows: 0, spans_unique: 0, logs_rows: 0, logs_unique: 0 }, stableSince = Date.now(), last = '';

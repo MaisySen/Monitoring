@@ -1,0 +1,57 @@
+[
+  {
+    "scenario": "db_restart",
+    "service": "resilience-so-db_restart",
+    "rate_spans_per_s": 100,
+    "seconds": 110,
+    "fault_started_s": 20.003,
+    "fault": {
+      "cleared": 1795166098719,
+      "down_s": 0.209
+    },
+    "sent": {
+      "spans": 11000,
+      "logs": 5500
+    },
+    "stored": {
+      "spans_rows": 11000,
+      "spans_unique": 11000,
+      "logs_rows": 5500,
+      "logs_unique": 5500
+    },
+    "spans_missing": 0,
+    "spans_duplicates": 0,
+    "logs_missing": 0,
+    "logs_duplicates": 0,
+    "first_span_after_recovery_s": 0.014,
+    "stderr_tail": ""
+  },
+  {
+    "scenario": "server_outage_long",
+    "service": "resilience-so-server_outage_long",
+    "rate_spans_per_s": 100,
+    "seconds": 110,
+    "fault_started_s": 20.002,
+    "fault": {
+      "cleared": 1795166260681,
+      "down_s": 45,
+      "restarted": true
+    },
+    "sent": {
+      "spans": 11000,
+      "logs": 5500
+    },
+    "stored": {
+      "spans_rows": 10948,
+      "spans_unique": 10948,
+      "logs_rows": 3620,
+      "logs_unique": 3620
+    },
+    "spans_missing": 52,
+    "spans_duplicates": 0,
+    "logs_missing": 1880,
+    "logs_duplicates": 0,
+    "first_span_after_recovery_s": 0.013,
+    "stderr_tail": ""
+  }
+]
