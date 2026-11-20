@@ -1,0 +1,140 @@
+{
+  "run": "ubhjs",
+  "results": [
+    {
+      "scenario": "baseline",
+      "lang": "node",
+      "service": "recovery-node-baseline-ubhjs",
+      "rate_spans_per_s": 200,
+      "seconds": 90,
+      "fault_started_s": 30.004,
+      "fault_duration_s": 0,
+      "sent": {
+        "spans": 18000,
+        "logs": 9000
+      },
+      "spans_rows": 18000,
+      "spans_unique": 18000,
+      "logs_rows": 9000,
+      "logs_unique": 9000,
+      "spans_missing": 0,
+      "spans_duplicates": 0,
+      "logs_missing": 0,
+      "logs_duplicates": 0,
+      "seconds_to_fresh_data_after_recovery": 0.561,
+      "seconds_to_fully_drained_after_end": 0.064
+    }
+  ]
+}
+{
+  "run": "u3vtn",
+  "results": [
+    {
+      "scenario": "backend_outage",
+      "lang": "node",
+      "service": "recovery-node-backend-outage-u3vtn",
+      "rate_spans_per_s": 200,
+      "seconds": 90,
+      "fault_started_s": 30.01,
+      "fault_duration_s": 60,
+      "sent": {
+        "spans": 18000,
+        "logs": 9000
+      },
+      "spans_rows": 17383,
+      "spans_unique": 17383,
+      "logs_rows": 5112,
+      "logs_unique": 5112,
+      "spans_missing": 617,
+      "spans_duplicates": 0,
+      "logs_missing": 3888,
+      "logs_duplicates": 0,
+      "seconds_to_fresh_data_after_recovery": 3.42,
+      "seconds_to_fully_drained_after_end": 0.072
+    }
+  ]
+}
+{
+  "run": "3dfyz",
+  "results": [
+    {
+      "scenario": "agent_restart",
+      "lang": "node",
+      "service": "recovery-node-agent-restart-3dfyz",
+      "rate_spans_per_s": 200,
+      "seconds": 90,
+      "fault_started_s": 30.004,
+      "fault_duration_s": 1.212,
+      "sent": {
+        "spans": 18000,
+        "logs": 9000
+      },
+      "spans_rows": 18000,
+      "spans_unique": 18000,
+      "logs_rows": 9000,
+      "logs_unique": 9000,
+      "spans_missing": 0,
+      "spans_duplicates": 0,
+      "logs_missing": 0,
+      "logs_duplicates": 0,
+      "seconds_to_fresh_data_after_recovery": 0.556,
+      "seconds_to_fully_drained_after_end": 0.076
+    }
+  ]
+}
+{
+  "run": "r1w1k",
+  "results": [
+    {
+      "scenario": "db_restart",
+      "lang": "node",
+      "service": "recovery-node-db-restart-r1w1k",
+      "rate_spans_per_s": 200,
+      "seconds": 90,
+      "fault_started_s": 30.004,
+      "fault_duration_s": 0.21,
+      "sent": {
+        "spans": 18000,
+        "logs": 9000
+      },
+      "spans_rows": 18000,
+      "spans_unique": 18000,
+      "logs_rows": 9000,
+      "logs_unique": 9000,
+      "spans_missing": 0,
+      "spans_duplicates": 0,
+      "logs_missing": 0,
+      "logs_duplicates": 0,
+      "seconds_to_fresh_data_after_recovery": 0.559,
+      "seconds_to_fully_drained_after_end": 0.079
+    }
+  ]
+}
+{
+  "run": "92r1h",
+  "results": [
+    {
+      "scenario": "long_outage",
+      "lang": "node",
+      "service": "recovery-node-long-outage-92r1h",
+      "rate_spans_per_s": 600,
+      "seconds": 300,
+      "fault_started_s": 20.004,
+      "fault_duration_s": 240,
+      "sent": {
+        "spans": 180000,
+        "logs": 90000
+      },
+      "spans_rows": 56078,
+      "spans_unique": 56078,
+      "logs_rows": 19931,
+      "logs_unique": 19931,
+      "spans_missing": 123922,
+      "spans_duplicates": 0,
+      "logs_missing": 70069,
+      "logs_duplicates": 0,
+      "seconds_to_fresh_data_after_recovery": 2.847,
+      "seconds_to_fully_drained_after_end": 0.108
+    }
+  ]
+}

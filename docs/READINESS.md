@@ -49,16 +49,20 @@ anything without one is listed under Not yet verified. Dates are 2026-11-20 (Syd
 
 ## Not yet verified (explicit gaps)
 
-- **Full-stack agent recovery, measured 2026-11-20** (app -> CI-built agent -> server -> Postgres,
-  evidence bench/evidence/recovery/agent-2026-11-20.json, all counts DB-verified):
-  - baseline, agent SIGTERM restart, and Postgres fast restart: zero loss, zero duplicates;
-  - **backend_outage 60s: FAILING GATE** - 617/18,000 spans and 3,888/9,000 logs lost. Root cause under
-    fix: agent intake refusal under outage accumulation + stock app-side log exporter without retry
-    (span path retries and lost only the ~3s kill window). See ENGINEERING_STATE 23:05;
+- **Recovery, app -> server direct, measured 2026-11-20** (evidence
+  bench/evidence/recovery/app-direct-2026-11-20.json, all counts DB-verified). A harness wiring bug
+  (MONITORING_URL leaking to the generator, which the SDK config reads as "direct mode") made the
+  first full-stack run bypass the agent; the agent-mediated rerun with a topology assertion in the
+  harness is in flight. Direct-mode results:
+  - baseline and Postgres fast restart: zero loss, zero duplicates;
+  - **backend_outage 60s: FAILING GATE** - 617/18,000 spans and 3,888/9,000 logs lost, entirely
+    app-side vs a dead server: the stock OTLP log exporter drops a batch on the first transport
+    error; the patched span exporter's 30s retry covers all but the kill window. SDK fix in flight
+    (sdks/node/lib/retry-log-exporter.js + larger log queue), to be validated in both topologies;
   - long_outage 240s at 600 spans/s: bounded loss (56,078/180,000 spans, 19,931/90,000 logs stored,
-    0 duplicates) dominated by app-side buffering limits, not agent queue failures;
-  - the agent's graceful-restart result does not by itself prove ungraceful-kill queue survival; the
-    dedicated agent_kill_pending scenario for that is pending.
+    0 duplicates) dominated by app-side buffering limits;
+  - the agent-mediated scenarios (agent restart, ungraceful agent kill with a pending disk queue,
+    server outage absorbed by the agent) have NO valid measurements yet.
 - **SSO revocation timing**: bounded by the 12h absolute session TTL plus issuance-time ordering; this is
   an explicit exposure limit, not prompt revocation. A fresh callback from an old provider login renewing
   stale claims is covered by iat-ordering + fail-closed ties, but identity-provider-specific behaviors

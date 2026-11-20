@@ -244,28 +244,36 @@ queue). 100 spans/s, 60s runs, fault at 20s. Evidence: bench/evidence/recovery/s
 - Commit 65f27d7. Full app->agent->server->Postgres recovery bench (all 5 scenarios) launched against
   the same artifact binary under its own restart loop; measured results in the 23:05 section below.
 
-## 2026-11-20 23:05 Full-stack agent recovery bench - measured (app -> agent -> server -> Postgres)
-- CI-built agent binary (CI run 44710994706, artifact 14618621071, SHA256SUMS-verified) under its own
-  restart loop; numbered spans/logs carry seq attributes; every claim below verified against Postgres
-  directly after the run. Evidence: bench/evidence/recovery/agent-2026-11-20.json.
+## 2026-11-20 23:05 Recovery bench - measured, then found to be app -> server DIRECT (agent bypassed)
+- CORRECTION (23:25): the generator env passed MONITORING_URL through, and in the SDK config
+  MONITORING_URL means "talk straight to the server" (sdks/node/config.js base resolution) - so the
+  agent was a healthy bystander in all 5 scenarios. Proof: stored rows carry the generator's resource
+  identity (env=resilience, host=modal), not the agent's (env=recovery, host=recovery-bench-host), and
+  agent internal telemetry showed zero receiver traffic in a rerun. The numbers below are valid
+  app->server-direct measurements (they supersede the lower-rate server-only runs); the agent_restart
+  scenario was vacuous (it killed a process nothing was using); agent-mediated results are pending the
+  wired rerun (recovery.js now has TOPOLOGY=agent with an empirical resource-identity assertion so a
+  wiring regression fails loudly). Evidence file renamed: bench/evidence/recovery/app-direct-2026-11-20.json.
+- CI-built agent binary (CI run 44710994706, artifact 14618621071, SHA256SUMS-verified) was running
+  under its own restart loop; numbered spans/logs carry seq attributes; every claim below verified
+  against Postgres directly after the run.
 - baseline (200 spans/s, 90s): 18,000/18,000 spans, 9,000/9,000 logs, 0 duplicates.
-- agent_restart (SIGTERM, health-gated restart): 18,000/18,000 spans, 9,000/9,000 logs, 0 duplicates.
-  Caveat: SIGTERM allows a graceful drain; ungraceful-kill queue survival is proven by the separate
-  agent_kill_pending scenario, not by this result.
+- agent_restart (SIGTERM, health-gated restart): 18,000/18,000 spans, 9,000/9,000 logs, 0 duplicates -
+  VACUOUS under the wiring bug (nothing routed through the agent); stricken from the record.
 - db_restart (Postgres fast restart): 18,000/18,000 spans, 9,000/9,000 logs, 0 duplicates, fresh data
-  0.56s after recovery.
-- backend_outage (server SIGKILL, 60s): FAILING GATE - 617/18,000 spans lost (one contiguous
-  kill-window range, seq 5810-6426) and 3,888/9,000 logs lost (one contiguous ~32s window starting at
-  the kill, plus three short windows later in the outage). The agent logged zero export failures.
-  Mechanism under investigation: the loss asymmetry (32s of logs vs ~3s of spans) points to agent-side
-  intake refusal under outage accumulation (memory_limiter 256MiB limit / 64MiB spike in every
-  pipeline) with the stock app-side OTLP log exporter dropping refused batches silently (no retry),
-  while the patched span exporter survives ~30s of refusal. Fix in flight: retrying log exporter in
-  the SDK (sdks/node/lib/retry-log-exporter.js) + larger log processor queue.
-- long_outage (server SIGKILL, 240s at 600 spans/s): bounded-loss profile - 56,078/180,000 spans and
-  19,931/90,000 logs stored, 0 duplicates. Loss is dominated by app-side buffering limits (batch
-  processor queue sizes, 30s export retry budget) over an outage far beyond app-side capacity; zero
-  duplicates confirms the agent's disk queue never double-delivers.
+  0.56s after recovery. Valid as an app-direct measurement.
+- backend_outage (server SIGKILL, 60s), app-direct: 617/18,000 spans lost (one contiguous kill-window
+  range, seq 5810-6426) and 3,888/9,000 logs lost (one contiguous ~32s window from the kill plus three
+  short windows later in the outage). With the agent idle, this loss is entirely app-side vs a dead
+  server: the stock OTLP log exporter drops a batch on the first transport error and the
+  BatchLogRecordProcessor discards it, while the patched span exporter's 30s retry budget covers all
+  but the kill window. SDK fix in flight (retrying log exporter + 65536-record log queue) will be
+  validated against this exact scenario in both topologies.
+- long_outage (server SIGKILL, 240s at 600 spans/s), app-direct: bounded-loss profile -
+  56,078/180,000 spans and 19,931/90,000 logs stored, 0 duplicates. Loss is dominated by app-side
+  buffering limits (batch processor queue sizes, 30s export retry budget) over an outage far beyond
+  app-side capacity. Note: zero duplicates reflects this run's server intake + app exporters; it is
+  not evidence about the agent's disk queue, which carried no app data.
 
 ## 2026-11-20 22:35 B1 Multies bridge - Monitoring half built + tested (11/11)
 - Migration 10 (multies_bindings), lib/multies.ts (verify via Multies v1 GET /api/v1/domains through the
