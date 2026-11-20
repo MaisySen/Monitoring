@@ -42,6 +42,8 @@ MONITORING_URL=https://your-monitoring.example MONITORING_API_KEY="$YOUR_KEY" \
 MONITORING_SERVICE=checkout node -r @monitoring/trace/init app.js
 ```
 
+Delivery guarantees. With the spool disabled (default), spans and logs are retried in memory for `MONITORING_EXPORT_RETRY_SECONDS` and then dropped; a process crash loses what is in memory. With `MONITORING_EXPORT_SPOOL_DIR` set, span and log batches are persisted before retry and reclaimed if the process dies mid-drain (60 s stale-claim timeout). Span intake is idempotent per `(trace_id, span_id)`, so a batch re-delivered after a server-side commit with a lost response does not duplicate rows or rollups. Logs and metrics have no producer-assigned key: re-delivery after a lost response can duplicate log rows, and metrics are not spooled at all (dropped after the in-memory retry window). Delivery is therefore **at-least-once**, never exactly-once.
+
 `MONITORING_URL` is the application origin, **without** `/otlp`; signals go to `/otlp/v1/{traces,metrics,logs}` with `DC-API-KEY`. No key is needed when using an agent.
 
 | Variable | Meaning / default |
@@ -56,6 +58,8 @@ MONITORING_SERVICE=checkout node -r @monitoring/trace/init app.js
 | `MONITORING_LOG_SHIPPING` | Ship log records over OTLP from the app, default `true`; set `false` when the Monitoring Agent tails the app's log files (IDs are still injected) |
 | `MONITORING_HANDLE_SIGNALS` | Flush spans, logs and metrics on SIGTERM/SIGINT before the process exits, default `true` |
 | `MONITORING_EXPORT_RETRY_SECONDS` | How long a span batch is retried while the agent/endpoint is unreachable or returns 408/429/502/503/504, default `30` |
+| `MONITORING_EXPORT_SPOOL_DIR` | Disk spool directory for spans and logs; unset (default) disables spooling. While the destination is unreachable, batches are written to disk and drained oldest-first when it recovers, surviving process restarts |
+| `MONITORING_EXPORT_SPOOL_MAX_MB` | Per-signal spool cap in MB, default `50`; counts files in flight to a drainer. Oldest files are evicted when the cap is exceeded, and a single batch larger than the cap is dropped; delivery is at-least-once only while the spool has room |
 | `MONITORING_TRACE_DB_CONNECT` | Connection-pool checkout spans (`pg-pool.connect`), default `false` |
 | `MONITORING_SAMPLE_RATE` | Parent-based root sampling probability `[0,1]`; fallback `OTEL_TRACES_SAMPLER_ARG`, default `1` |
 | `MONITORING_RUNTIME_METRICS` | Event-loop delay, heap and OTel runtime metrics; default `false` |

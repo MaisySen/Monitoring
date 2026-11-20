@@ -37,13 +37,28 @@ class Spool {
           try { return now - fs.statSync(path.join(this.dir, f)).mtimeMs > 60000; } catch { return false; }
         }
         return false;
-      }).sort();
+      }).sort((a, b) => {
+        // oldest-first by the write timestamp embedded in the name (works for both plain and
+        // claim-renamed files: spans~<pid>~spans-<ts>-... vs spans-<ts>-...)
+        const ta = Number(/-(\d+)-/.exec(a)?.[1] ?? 0);
+        const tb = Number(/-(\d+)-/.exec(b)?.[1] ?? 0);
+        return ta - tb || (a < b ? -1 : 1);
+      });
     } catch {
       return [];
     }
   }
+  // All bytes this prefix is responsible for, including in-flight .claim files: excluding them
+  // would let concurrent claimants each stay under the cap while the directory grows past it.
   bytes() {
-    return this.files().reduce((s, f) => { try { return s + fs.statSync(path.join(this.dir, f)).size; } catch { return s; } }, 0);
+    let total = 0;
+    try {
+      for (const f of fs.readdirSync(this.dir)) {
+        if (!f.startsWith(this.prefix + '-') && !f.startsWith(this.prefix + '~')) continue;
+        try { total += fs.statSync(path.join(this.dir, f)).size; } catch { /* gone */ }
+      }
+    } catch { /* unreadable dir: treat as empty, write() will report the real error */ }
+    return total;
   }
   // Persist a payload; never throws: a spool failure must not crash the application.
   write(payload) {

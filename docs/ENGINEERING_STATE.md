@@ -10,6 +10,17 @@ Working copy of the Monitoring feature build. Local only: not published anywhere
   series cap, per-minute bytes), GET/PUT /api/ui/org/quotas, Usage & Limits UI tab. bench/security/quotas.js 21/21;
   memberships 30/30 + isolation 13/13 + e2e re-run green after quota changes.
 
+## Spool hardening + intake idempotency (2026-11-21, evidence: bench/evidence/resilience/spool-idempotency-2026-11-21.md)
+- Spool: cap accounting counts in-flight .claim files; oversized batches self-evict without throwing;
+  read-only-dir writes never throw; stale claims (60 s) reclaimed with oldest-first drain order
+  (sort fixed to use embedded write ts); concurrent writers bounded at cap + one batch.
+- Intake: spans idempotent per (org_id, trace_id, span_id) - dedupe SELECT before insert,
+  spans_uniq unique index (new migration collapses pre-existing dupes), ON CONFLICT backstop,
+  rollups/trace-metrics fed fresh spans only. Verified: double POST of 5 spans = 5 rows, stats hits 5;
+  new-trace negative control inserts.
+- Still at-least-once by design: logs duplicate-able on lost response, metrics unspooled, CH path
+  no dedupe, spool cap + outage drops oldest. Documented in sdks/node/README.md.
+
 ## Local environment
 - Rootless PostgreSQL 14.24: ~/pgsql (binaries), ~/pgdata (cluster), port 5433, user monitoring.
   Start: PATH=$HOME/pgsql/usr/lib/postgresql/14/bin:$PATH pg_ctl -D ~/pgdata -l ~/pg.log -o "-k /tmp -p 5433 -c listen_addresses='127.0.0.1'" start

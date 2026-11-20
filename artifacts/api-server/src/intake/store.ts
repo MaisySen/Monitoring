@@ -467,6 +467,26 @@ export async function writeSpans(orgId: number, spans: SpanIn[]) {
     if (s.service) s.service = s.service.toLowerCase();
     if (s.env) s.env = s.env.toLowerCase();
   }
+  // Idempotent intake (PostgreSQL): OTLP (trace_id, span_id) is unique per org, so a re-delivered
+  // batch (at-least-once export, spool drain after a lost response, exporter retry after a
+  // server-side commit with a lost response) is dropped here instead of duplicating span rows and
+  // double-counting the per-minute rollups below. The spans_uniq unique index (migrate.ts) is the
+  // backstop for two racing deliveries that both pass this SELECT.
+  let fresh = spans;
+  if (!useClickHouse) {
+    const seen = new Set<string>();
+    for (let i = 0; i < spans.length; i += 500) {
+      const chunk = spans.slice(i, i + 500);
+      const pairs = chunk.map((_, j) => `($${j * 2 + 2}, $${j * 2 + 3})`).join(",");
+      const r = await pool.query(
+        `select trace_id, span_id from spans where org_id = $1 and (trace_id, span_id) in (${pairs})`,
+        [orgId, ...chunk.flatMap((s) => [s.traceId, s.spanId])],
+      );
+      for (const row of r.rows) seen.add(row.trace_id + "\0" + row.span_id);
+    }
+    fresh = spans.filter((s) => !seen.has(s.traceId + "\0" + s.spanId));
+    if (!fresh.length) return; // pure re-delivery: rows and rollups already exist
+  }
   if (useClickHouse) {
     await ensureChSchema();
     const toStr = (o: Record<string, any> | undefined) => {
@@ -503,8 +523,8 @@ export async function writeSpans(orgId: number, spans: SpanIn[]) {
     );
   } else {
     const stmts: [string, any[]][] = [];
-    for (let i = 0; i < spans.length; i += 300) {
-      const chunk = spans.slice(i, i + 300);
+    for (let i = 0; i < fresh.length; i += 300) {
+      const chunk = fresh.slice(i, i + 300);
       const vals: any[] = [];
       const rows: string[] = [];
       for (const s of chunk) {
@@ -532,24 +552,26 @@ export async function writeSpans(orgId: number, spans: SpanIn[]) {
       }
       stmts.push([
         `insert into spans (org_id, trace_id, span_id, parent_id, service, name, resource, type, env, host, start, start_ms, duration, error, is_top_level, meta, metrics)
-       values ${rows.join(",")}`,
+       values ${rows.join(",")}
+       on conflict (org_id, trace_id, span_id) do nothing`,
         vals,
       ]);
     }
     await runAll(stmts);
   }
-  await recordHostServices(orgId, spans);
+  const stored = useClickHouse ? spans : fresh;
+  await recordHostServices(orgId, stored);
   // Per-minute APM rollups (service/resource counts and latency histograms) for the APM screens.
   // With ClickHouse a materialized view on spans maintains them (lib/ch.ts).
   if (!useClickHouse)
     try {
-      await recordSpanStats(orgId, spans);
+      await recordSpanStats(orgId, stored);
     } catch (e) {
       logger.warn({ err: e }, "span stats rollup failed");
     }
   // Derive trace metrics (trace.<operation>.hits/errors/duration) from top-level spans
   const agg = new Map<string, { metric: string; tags: string[]; host: string; ts: number; hits: number; errors: number; dur: number }>();
-  for (const s of spans) {
+  for (const s of stored) {
     if (!s.isTopLevel) continue;
     const ts = Math.floor(s.start / 1e9 / 10) * 10;
     const tags = [`service:${s.service}`, `resource_name:${s.resource}`, `env:${s.env || "none"}`];

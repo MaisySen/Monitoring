@@ -168,6 +168,16 @@ CREATE TABLE IF NOT EXISTS multies_connections (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 `,
+  `
+-- Idempotent span intake: keep one row per (org_id, trace_id, span_id). Re-delivered OTLP batches
+-- (at-least-once export, spool drain after a lost response, exporter retry after a server-side
+-- commit with a lost response) are dropped by writeSpans before insert; this index is the race
+-- backstop and resolves ON CONFLICT DO NOTHING. Pre-existing duplicates are collapsed to the
+-- earliest row. Logs stay at-least-once: they have no producer-assigned natural key to dedupe on.
+DELETE FROM spans a USING spans b
+ WHERE a.org_id = b.org_id AND a.trace_id = b.trace_id AND a.span_id = b.span_id AND a.id > b.id;
+CREATE UNIQUE INDEX IF NOT EXISTS spans_uniq ON spans(org_id, trace_id, span_id);
+`,
 ];
 
 export async function migrateDatabase() {
