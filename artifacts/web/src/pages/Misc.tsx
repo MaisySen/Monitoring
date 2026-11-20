@@ -832,36 +832,39 @@ export function SampleDataButton() {
   );
 }
 
+type NowData = {
+  now: number;
+  receiving: boolean;
+  lastDataAt: number | null;
+  totals: { spans: number; logs: number };
+  services: { service: string; state: "ok" | "degraded" | "low" | "quiet"; note: string; ops5: number; errOps5: number; lastActiveAt: number }[];
+  problems: { monitorId: number; name: string; state: string; service: string | null; auto: boolean; since: number | null; query: string }[];
+};
+
+const healthChip: Record<string, { dot: string; label: string }> = {
+  ok: { dot: "#2ca05a", label: "No errors observed" },
+  degraded: { dot: "#d33b4c", label: "Degraded" },
+  low: { dot: "#e8a317", label: "Low traffic" },
+  quiet: { dot: "#8a94a6", label: "No recent data" },
+};
+
 export function Home() {
-  const { user } = useAuthUser();
-  const hosts = useQuery({ queryKey: ["hosts"], queryFn: () => api<{ hosts: any[] }>("/ui/hosts") });
-  const mons = useQuery({ queryKey: ["monitors"], queryFn: () => api<any[]>("/v1/monitor") });
-  const dash = useQuery({ queryKey: ["dashboards"], queryFn: () => api<{ dashboards: any[] }>("/v1/dashboard") });
-  const now = Math.floor(Date.now() / 1000);
-  const svcs = useQuery({ queryKey: ["home-svcs"], queryFn: () => api<{ services: any[] }>(`/ui/apm/services?from=${now - 3600}&to=${now}`) });
-  const logs = useQuery({
-    queryKey: ["home-logs"],
-    queryFn: () => api<{ total: number }>("/ui/logs/search", { body: { query: "*", from: now - 3600, to: now, limit: 1 } }),
-  });
-  const alerting = (mons.data ?? []).filter((m) => m.overall_state === "Alert" || m.overall_state === "Warn");
-  const tiles = [
-    { label: "Active hosts", value: hosts.data?.hosts.filter((h) => h.up).length, href: "/infrastructure", icon: Server },
-    { label: "Services", value: svcs.data?.services.length, href: "/apm/services", icon: Activity },
-    { label: "Logs (past hour)", value: logs.data?.total, href: "/logs", icon: ScrollText },
-    { label: "Monitors alerting", value: alerting.length, href: "/monitors/manage?status=Alert", icon: Bell },
-    { label: "Dashboards", value: dash.data?.dashboards.length, href: "/dashboard/lists", icon: LayoutDashboard },
-  ];
-  const empty = hosts.data && hosts.data.hosts.length === 0 && (svcs.data?.services.length ?? 0) === 0;
+  const now = useQuery({ queryKey: ["now"], queryFn: () => api<NowData>("/ui/now"), refetchInterval: 30_000 });
+  const d = now.data;
+  const noData = d && d.totals.spans === 0;
   return (
     <div>
-      <PageHeader title={`Welcome${user?.firstName ? ", " + user.firstName : ""}`} sub={user?.orgName} />
-      <div className="p-6 space-y-6">
-        {empty && (
+      <PageHeader title="Now" sub={d?.receiving ? "Receiving data" : d ? "Not receiving data" : undefined} />
+      <div className="p-6 space-y-4 max-w-4xl">
+        {noData && (
           <div className="card p-6 flex items-center gap-5 bg-[#eef2fc] border-brand-100">
             <MonitoringMark size={48} />
             <div className="flex-1">
-              <div className="section-title">Start sending data to Monitoring</div>
-              <div className="text-ink-2">Add Monitoring to your code (Node.js or Python) or install the host agent. It takes about ten minutes.</div>
+              <div className="section-title">Connect your app</div>
+              <div className="text-ink-2">
+                Add Monitoring to your code (Node.js or Python). This page fills in by itself the moment the first data arrives - nothing to
+                configure, no dashboards to build.
+              </div>
             </div>
             <SampleDataButton />
             <Link href="/docs/getting-started" className="btn-primary">
@@ -869,70 +872,62 @@ export function Home() {
             </Link>
           </div>
         )}
-        <div className="grid grid-cols-5 gap-4">
-          {tiles.map((t) => (
-            <Link key={t.label} href={t.href} className="card p-4 hover:border-brand-400">
-              <div className="flex items-center gap-2 text-ink-2 text-xs">
-                <t.icon size={14} />
-                {t.label}
-              </div>
-              <div className="text-[28px] font-light mt-1">{t.value === undefined ? "—" : fmtNum(t.value)}</div>
+        <div className="card">
+          <div className="px-4 py-2 border-b border-line font-semibold flex">
+            Problems
+            <Link href="/monitors/manage" className="ml-auto text-xs text-primary font-normal">
+              All monitors →
             </Link>
-          ))}
-        </div>
-        <div className="grid grid-cols-2 gap-4">
-          <div className="card">
-            <div className="px-4 py-2 border-b border-line font-semibold flex">
-              Triggered monitors
-              <Link href="/monitors/manage" className="ml-auto text-xs text-primary font-normal">
-                All monitors →
-              </Link>
-            </div>
-            {alerting.length === 0 ? (
-              <div className="px-4 py-4 text-ink-3 text-xs">All monitors are OK.</div>
-            ) : (
-              alerting.map((m) => (
-                <Link key={m.id} href={`/monitors/${m.id}`} className="flex items-center gap-2 px-4 py-2 border-b border-line hover:bg-[#eef2fc]">
-                  <StatusBadge state={m.overall_state} />
-                  <span className="truncate">{m.name}</span>
-                </Link>
-              ))
-            )}
           </div>
-          <div className="card">
-            <div className="px-4 py-2 border-b border-line font-semibold flex">
-              Services
-              <Link href="/apm/services" className="ml-auto text-xs text-primary font-normal">
-                Service Catalog →
-              </Link>
+          {!d ? null : d.problems.length === 0 ? (
+            <div className="px-4 py-4 text-ink-3 text-xs">
+              {d.totals.spans === 0
+                ? "Nothing to watch yet - problems appear here once your app sends data."
+                : "No monitor is firing right now. Default monitors watch every new service for sustained errors and silence; their thresholds are starting points you can tune."}
             </div>
-            {(svcs.data?.services ?? []).slice(0, 8).map((s) => (
+          ) : (
+            d.problems.map((p) => (
+              <Link key={p.monitorId} href={`/monitors/${p.monitorId}`} className="flex items-center gap-2 px-4 py-2.5 border-b border-line hover:bg-[#eef2fc]">
+                <StatusBadge state={p.state} />
+                <span className="truncate font-medium">{p.name}</span>
+                {p.service && (
+                  <Link href={`/apm/services/${encodeURIComponent(p.service)}`} className="text-xs text-primary">
+                    {p.service}
+                  </Link>
+                )}
+                {p.since && <span className="ml-auto text-xs text-ink-3">{fmtAgo(p.since)}</span>}
+              </Link>
+            ))
+          )}
+        </div>
+        <div className="card">
+          <div className="px-4 py-2 border-b border-line font-semibold flex">
+            Services
+            <Link href="/apm/services" className="ml-auto text-xs text-primary font-normal">
+              Service Catalog →
+            </Link>
+          </div>
+          {!d ? null : d.services.length === 0 ? (
+            <div className="px-4 py-4 text-ink-3 text-xs">No services have sent data in the last 24 hours.</div>
+          ) : (
+            d.services.map((s) => (
               <Link
                 key={s.service}
                 href={`/apm/services/${encodeURIComponent(s.service)}`}
-                className="flex items-center gap-2 px-4 py-2 border-b border-line hover:bg-[#eef2fc] text-xs"
+                className="flex items-center gap-3 px-4 py-2.5 border-b border-line hover:bg-[#eef2fc]"
               >
-                <span className="flex-1 font-medium text-primary">{s.service}</span>
-                <span className="text-ink-2">p95 {fmtDuration(s.p95)}</span>
-                <span className={s.error_rate > 0.05 ? "text-alert" : "text-ink-2"}>{(s.error_rate * 100).toFixed(1)}% err</span>
+                <span className="w-2 h-2 rounded-full shrink-0" style={{ background: healthChip[s.state]?.dot }} title={healthChip[s.state]?.label} />
+                <span className="font-medium text-primary shrink-0">{s.service}</span>
+                <span className="text-xs text-ink-2 truncate">{s.note}</span>
               </Link>
-            ))}
-            {!svcs.data?.services.length && <div className="px-4 py-4 text-ink-3 text-xs">No services reporting in the past hour.</div>}
-          </div>
-        </div>
-        <div className="flex gap-2 flex-wrap">
-          <Link href="/metric/explorer" className="btn">
-            <LineChart size={14} />
-            Explore metrics
-          </Link>
-          <Link href="/monitors/create" className="btn">
-            <Bell size={14} />
-            New monitor
-          </Link>
-          <Link href="/dashboard/lists?new=1" className="btn">
-            <LayoutDashboard size={14} />
-            New dashboard
-          </Link>
+            ))
+          )}
+          {d && d.services.length > 0 && (
+            <div className="px-4 py-2 text-[11px] text-ink-3">
+              Health is computed from the last 5 minutes of traffic. No errors observed is not proof a service is healthy; silence and low
+              traffic are shown, never hidden.
+            </div>
+          )}
         </div>
       </div>
     </div>

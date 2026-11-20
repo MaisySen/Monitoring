@@ -42,7 +42,7 @@ export async function ensureServiceMonitors(orgId: number, service: string): Pro
     const ids: number[] = [];
     ids.push(
       await ins(
-        `Errors in ${svc}`,
+        `[Default] Errors in ${svc}`,
         "trace-analytics alert",
         `spans("service:${svc} status:error").rollup("count").last("10m") >= 5`,
         `5 or more error spans in ${svc} within 10 minutes. This is a default starting threshold, not tuned detection - tune it to your traffic. The service page lists the failing operations and an example trace.`,
@@ -51,7 +51,7 @@ export async function ensureServiceMonitors(orgId: number, service: string): Pro
     );
     ids.push(
       await ins(
-        `${svc} stopped sending data`,
+        `[Default] ${svc} stopped sending data`,
         "trace-analytics alert",
         `spans("service:${svc}").rollup("count").last("10m") < 0`, // never true with data: OK while receiving, No Data when silent
         `${svc} sent no trace data for 10 minutes. It may be down, redeploying, or simply idle - Monitoring cannot tell the difference from silence alone.`,

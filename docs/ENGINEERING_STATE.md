@@ -445,3 +445,15 @@ queue). 100 spans/s, 60s runs, fault at 20s. Evidence: bench/evidence/recovery/s
   inverted comparator bug caught by the live check, fixed to < 0.
 - Pending: silence monitor actually firing after 10m quiet (needs a timed soak); Now page UI;
   onboarding flow UI. Harness: /tmp/p0-verify.js.
+
+## 2026-11-21 06:06 - /ui/now request-level correctness + Now page UI
+- Parent correctness concern verified: span counts are NOT request counts. Finding:
+  aggregateSpanStats already filters to entry spans (isTopLevel only), so span_stats hits ARE
+  operation counts - verified equal to count(spans where is_top_level=1) per service with a
+  nested-span control (frontend: 50 entry spans vs 200 total stored spans). /ui/now wording now
+  says "operations", "No errors observed" (not proof of health), and default monitors carry a
+  [Default] prefix so the untuned thresholds stay visibly provisional.
+- Now page UI replaces the tile home (pages/Misc.tsx Home): Problems feed (firing monitors,
+  service link, since), Services health list (state dot + honest note), honest empty state,
+  30s refetch, footer disclaimer. Visually verified (headless Chrome, real login): billing
+  degraded 12/120 (10.0%) with ALERT problem row; frontend/shop-api "No errors observed".

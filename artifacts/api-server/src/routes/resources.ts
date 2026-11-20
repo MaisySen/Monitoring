@@ -349,47 +349,50 @@ router.get(
     const prev60Start = nowS - 65 * 60;
     const day = nowS - 24 * 3600;
 
-    let services: unknown[] = [];
+    // span_stats aggregates ENTRY SPANS ONLY (accumulate() skips non-top-level spans), so its
+    // hits/errors are operation counts, not raw span counts - verified equal to
+    // count(spans where is_top_level=1) per service. Notes still say "observed": no errors in
+    // a window is not proof a service is healthy.
     const hasStats = (await pool.query("select to_regclass('span_stats') is not null as e")).rows[0].e;
-    if (hasStats) {
-      const stats = (
-        await pool.query(
-          `select service, max(bucket) as last_bucket,
-                  coalesce(sum(case when bucket >= $2 then hits end),0) as hits5,
-                  coalesce(sum(case when bucket >= $2 then errors end),0) as errors5,
-                  coalesce(sum(case when bucket >= $3 and bucket < $2 then hits end),0) as hits_prev,
-                  coalesce(sum(case when bucket >= $3 and bucket < $2 then errors end),0) as errors_prev
-           from span_stats where org_id=$1 and bucket >= $4 group by service order by service`,
-          [orgId, w5, prev60Start, day],
-        )
-      ).rows;
-      services = stats.map((r: any) => {
-        const hits5 = Number(r.hits5);
-        const errors5 = Number(r.errors5);
-        const hitsPrev = Number(r.hits_prev);
-        const errorsPrev = Number(r.errors_prev);
-        const lastActiveS = Number(r.last_bucket) + 60;
-        const quietMin = Math.floor((nowS - lastActiveS) / 60);
-        let state = "ok";
-        let note = "No errors in the last 5 minutes";
-        if (quietMin >= 10) {
-          state = "quiet";
-          note = `No data for ${quietMin} minutes - the service may be idle or stopped; silence alone is not proof of failure`;
-        } else if (hits5 < 20) {
-          state = "low";
-          note = `Only ${hits5} requests in the last 5 minutes - too little traffic to judge health`;
-        } else if (errors5 > 0) {
-          const rate = errors5 / hits5;
-          const baseRate = hitsPrev >= 100 ? errorsPrev / hitsPrev : null;
-          note = `${errors5} errors in ${hits5} requests (${(rate * 100).toFixed(1)}%) in the last 5 minutes`;
-          if (rate >= 0.02 && (baseRate === null ? errors5 >= 5 : rate >= 3 * baseRate)) {
-            state = "degraded";
-            if (baseRate !== null) note += ` - previous-hour baseline ${(baseRate * 100).toFixed(2)}%`;
-          }
+    const stats = hasStats
+      ? (
+          await pool.query(
+            `select service, max(bucket) as last_bucket,
+                    coalesce(sum(case when bucket >= $2 then hits end),0) as ops5,
+                    coalesce(sum(case when bucket >= $2 then errors end),0) as err_ops5,
+                    coalesce(sum(case when bucket >= $3 and bucket < $2 then hits end),0) as ops_prev,
+                    coalesce(sum(case when bucket >= $3 and bucket < $2 then errors end),0) as err_ops_prev
+             from span_stats where org_id=$1 and bucket >= $4 group by service order by service`,
+            [orgId, w5, prev60Start, day],
+          )
+        ).rows
+      : [];
+    const services = stats.map((r: any) => {
+      const ops5 = Number(r.ops5);
+      const errOps5 = Number(r.err_ops5);
+      const opsPrev = Number(r.ops_prev);
+      const errOpsPrev = Number(r.err_ops_prev);
+      const lastActiveS = Number(r.last_bucket) + 60;
+      const quietMin = Math.floor((nowS - lastActiveS) / 60);
+      let state = "ok";
+      let note = `No errors observed in ${ops5} operations in the last 5 minutes`;
+      if (quietMin >= 10) {
+        state = "quiet";
+        note = `No data for ${quietMin} minutes - the service may be idle or stopped; silence alone is not proof of failure`;
+      } else if (ops5 < 20) {
+        state = "low";
+        note = `Only ${ops5} operations in the last 5 minutes - too little traffic to judge health`;
+      } else if (errOps5 > 0) {
+        const rate = errOps5 / ops5;
+        const baseRate = opsPrev >= 100 ? errOpsPrev / opsPrev : null;
+        note = `${errOps5} errors in ${ops5} operations (${(rate * 100).toFixed(1)}%) in the last 5 minutes`;
+        if (rate >= 0.02 && (baseRate === null ? errOps5 >= 5 : rate >= 3 * baseRate)) {
+          state = "degraded";
+          if (baseRate !== null) note += ` - previous-hour baseline ${(baseRate * 100).toFixed(2)}%`;
         }
-        return { service: r.service, state, note, hits5, errors5, lastActiveAt: lastActiveS * 1000 };
-      });
-    }
+      }
+      return { service: r.service, state, note, ops5, errOps5, lastActiveAt: lastActiveS * 1000 };
+    });
 
     const problems = (
       await pool.query(
