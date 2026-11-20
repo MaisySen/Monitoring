@@ -117,3 +117,17 @@ Working copy of the Monitoring feature build. Local only: not published anywhere
   checksum, and /account/agent renders the correct one-liner (screenshot, visually inspected).
 - datacat.example.yaml renamed to monitoring.example.yaml (README/verify.sh already referenced that name).
 - NEXT: bounded bench/scale + bench/resilience runs; docs/READINESS.md + MODIFICATIONS.md refresh.
+
+## 2026-11-20 19:06 - Bounded scale run + install placeholder fix
+- bench/scale/loadgen.js bounded run (RUN=scale-1795161821, 20 hosts/10 svc/50 tps/60s/2k cardinality):
+  sent 19,281 spans + 3,191 logs + 12,640 counter points; intake p50 10ms p99 73ms; 0 errors.
+  Stored: spans 19,281/19,281 exact; logs 3,191/3,191 exact; metric points under the run tag 13,440
+  (>= 12,640 sent; overage consistent with host-metric gauge points also carrying the tag but not counted
+  in the generator's sent counter - counting ambiguity only, no loss). Org-scoped queries used for checks.
+- /account/agent placeholder was shell-unsafe (MONITORING_API_KEY=<YOUR_API_KEY> parses as redirection);
+  fixed to PASTE-YOUR-API-KEY in Misc.tsx + Docs.tsx; copy target verified identical to rendered text;
+  no real key was present in the demo org, so no secret appeared in screenshots (commit 303f95c).
+- Agent build authority gap (for parent): the repo's release workflow (ubuntu-latest runners) would compile
+  the unchanged agent, but it triggers on pushing a v* tag to a GitHub remote = publishing the working copy
+  + account/release changes. Not authorized. No no-cost route exists inside current authority; sandbox RAM
+  (2GB) OOMs on two giant SDK packages. Needs: approval to use a CI-backed remote (e.g. private fork).
