@@ -841,6 +841,16 @@ type NowData = {
   problems: { monitorId: number; name: string; state: string; service: string | null; auto: boolean; since: number | null; query: string }[];
 };
 
+// Suggested next steps are investigation aids, not diagnosis: they point at evidence the
+// product actually has, and say so when the product cannot see the cause (e.g. silence).
+function nextStepFor(p: { name: string; state: string; service: string | null }): string {
+  if (p.name.includes("Errors in"))
+    return "Next step: open the top error group, read a matching trace, and check whether errors concentrate on one version or environment - a lead to investigate, not proof of cause.";
+  if (p.name.includes("stopped sending data"))
+    return "Next step: if the service should be up, check that the app and its instrumentation are running. Monitoring cannot see why data stopped - silence can mean idle, crashed, or disconnected.";
+  return "Next step: open the monitor to see the underlying query and recent evaluations.";
+}
+
 const healthChip: Record<string, { dot: string; label: string }> = {
   ok: { dot: "#2ca05a", label: "No errors observed" },
   degraded: { dot: "#d33b4c", label: "Degraded" },
@@ -887,21 +897,26 @@ export function Home() {
             </div>
           ) : (
             d.problems.map((p) => (
-              <Link key={p.monitorId} href={`/monitors/${p.monitorId}`} className="flex items-center gap-2 px-4 py-2.5 border-b border-line hover:bg-[#eef2fc]">
-                <StatusBadge state={p.state} />
-                <span className="truncate font-medium">{p.name}</span>
-                {p.service && (
-                  <Link href={`/apm/services/${encodeURIComponent(p.service)}`} className="text-xs text-primary">
-                    {p.service}
+              <div key={p.monitorId} className="px-4 py-2.5 border-b border-line">
+                <div className="flex items-center gap-2">
+                  <StatusBadge state={p.state} />
+                  <Link href={`/monitors/${p.monitorId}`} className="truncate font-medium text-primary">
+                    {p.name}
                   </Link>
-                )}
-                {p.service && p.name.includes("Errors in") && (
-                  <Link href={`/errors?service=${encodeURIComponent(p.service)}`} className="text-xs text-primary">
-                    Error groups →
-                  </Link>
-                )}
-                {p.since && <span className="ml-auto text-xs text-ink-3">{fmtAgo(p.since)}</span>}
-              </Link>
+                  {p.service && (
+                    <Link href={`/apm/services/${encodeURIComponent(p.service)}`} className="text-xs text-primary">
+                      {p.service}
+                    </Link>
+                  )}
+                  {p.service && p.name.includes("Errors in") && (
+                    <Link href={`/errors?service=${encodeURIComponent(p.service)}`} className="text-xs text-primary">
+                      Error groups →
+                    </Link>
+                  )}
+                  {p.since && <span className="ml-auto text-xs text-ink-3">{fmtAgo(p.since)}</span>}
+                </div>
+                <div className="text-[11px] text-ink-3 mt-1 ml-1">{nextStepFor(p)}</div>
+              </div>
             ))
           )}
         </div>

@@ -540,3 +540,13 @@ Parent review found the first correlation card non-comparable. Fixed:
 - Rows are split by (env, version) on both sides so a staging-only version cannot read as a
   production regression. buildVersionCorrelation extracted to query/errorGroups.ts; unit
   76/76 (env separation, traffic-only rows, untagged labels, truncated + full coverage).
+
+## 2026-11-21 07:48 AEDT - Actionable next steps on problems (this commit)
+
+Now-page problem rows carry an honest next-step line derived from the monitor kind: error
+alerts point at top error group -> matching trace -> version/env concentration (lead, not
+proof); silence problems say check app+instrumentation if the service should be up, with the
+explicit "Monitoring cannot see why data stopped - silence can mean idle, crashed, or
+disconnected". Problem rows restructured (monitor link on the name, no nested-link whole-row).
+Visually verified with a live firing error monitor + a silent service in one screen.
+CI: 43f64b9 success (correlation comparability), bf9caf1 success.
