@@ -705,3 +705,10 @@ Unit: 76/76. CI greens through 43f64b9.
 - Fix: run line changed to `monitoring-run python app.py`. Web rebuilt; bundle verified to contain the corrected line.
 - Positive control: verbatim corrected snippet in fresh venv (/tmp/vtest + /tmp/vtest-app) produced spans for service snippet-test in valrun. (First 0-count was a stale plain-python process still holding :4902, not the fix failing.)
 - Docs.tsx monitoring-run references (3) already correct.
+
+## Verbatim published-snippet regression checks (2026-11-21, 210a977 + follow-up)
+- bench/regression/onboarding-snippet.sh (python), onboarding-snippet-node.sh, onboarding-snippet-otlp.sh: each EXTRACTS the snippet from the published web source (Misc.tsx template literals) and runs it verbatim against a live server, asserting spans land. No paraphrased guide/demo commands can mask a broken published snippet again.
+- Live results vs valrun (:4731): python PASS 0->1, node PASS 1->2, otlp PASS 0->1 (raw hand-encoded protobuf ExportTraceServiceRequest through the published endpoint + DC-API-KEY header).
+- Negative controls: python check against the pre-fix source correctly FAILs (evidence in bench/evidence/onboarding-snippet-2026-11-21/). Node/OTLP had no incident; their checks guard regressions only.
+- Failed-path evidence preserved: bench/evidence/onboarding-snippet-2026-11-21/ (before/after snippets, diff, verbatim negative run logs, span count 0).
+- Process note: an over-broad port-cleanup kill took down Postgres and the e2e server mid-session; both restored (fast shutdown after smart shutdown hung on pooled connections; e2e :4730 relaunched with MONITORING_UPTIME_ALLOW_PRIVATE=true). No data loss; valrun/e2e dbs intact.
