@@ -1120,6 +1120,11 @@ interface ErrorGroupDetailData {
   spans: { traceId: string; spanId: string; startMs: number; durationNs: number; errorType: string; errorMessage: string }[];
   scanned: number;
   scanTruncated: boolean;
+  versionCorrelation: {
+    errorsByVersion: { version: string; count: number }[];
+    trafficByVersion: { version: string; count: number }[];
+    windowDays: number;
+  };
 }
 
 export function ErrorGroupDetail() {
@@ -1139,6 +1144,41 @@ export function ErrorGroupDetail() {
               <span className="font-semibold">{fmtNum(g.count)} occurrences</span> · first {fmtAgo(g.firstSeen)} · last {fmtAgo(g.lastSeen)}
             </div>
             <div className="text-ink-2">Environments observed in this group: {g.envs.length ? g.envs.join(", ") : "no env tag"}</div>
+          </div>
+        )}
+        {d.data && d.data.versionCorrelation.errorsByVersion.length > 0 && (
+          <div className="card p-4">
+            <div className="section-title mb-2">Version correlation (hypothesis only)</div>
+            <div className="text-[12px] text-ink-2 mb-2">
+              Where this group's errors and the service's overall traffic fell in the last {d.data.versionCorrelation.windowDays} days. A
+              concentration is a lead to investigate, not proof a version caused the errors.
+            </div>
+            <table className="w-full text-[12px]">
+              <thead>
+                <tr className="text-left text-ink-3 border-b border-line">
+                  <th className="py-1 font-medium">version</th>
+                  <th className="py-1 font-medium">errors in this group</th>
+                  <th className="py-1 font-medium">all spans (traffic)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(() => {
+                  const traffic = new Map(d.data.versionCorrelation.trafficByVersion.map((t) => [t.version, t.count]));
+                  const versions = [...new Set([...d.data.versionCorrelation.errorsByVersion.map((e) => e.version), ...traffic.keys()])];
+                  return versions.map((v) => {
+                    const errs = d.data!.versionCorrelation.errorsByVersion.find((e) => e.version === v)?.count ?? 0;
+                    const all = traffic.get(v) ?? 0;
+                    return (
+                      <tr key={v} className="border-b border-line">
+                        <td className="py-1 mono">{v}</td>
+                        <td className="py-1">{errs}</td>
+                        <td className="py-1">{all}</td>
+                      </tr>
+                    );
+                  });
+                })()}
+              </tbody>
+            </table>
           </div>
         )}
         <div className="card">

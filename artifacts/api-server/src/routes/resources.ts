@@ -469,21 +469,41 @@ router.get(
       )
     ).rows;
     const matched = [];
+    const errByVersion = new Map<string, number>();
     for (const s of cand) {
       const meta = (s.meta ?? {}) as Record<string, string>;
       const sfp = fingerprintFor(g.service, (meta["error.type"] ?? "").slice(0, 200), normalizeMessage(meta["error.message"] ?? ""));
       if (sfp !== fp) continue;
-      matched.push({
-        traceId: s.trace_id,
-        spanId: s.span_id,
-        startMs: Number(s.start_ms),
-        durationNs: Number(s.duration),
-        errorType: meta["error.type"] ?? "",
-        errorMessage: meta["error.message"] ?? "",
-      });
-      if (matched.length >= 50) break;
+      const v = meta["version"] || "(no version tag)";
+      errByVersion.set(v, (errByVersion.get(v) ?? 0) + 1);
+      // The version histogram counts every match in the scan; only the returned list is capped.
+      if (matched.length < 50)
+        matched.push({
+          traceId: s.trace_id,
+          spanId: s.span_id,
+          startMs: Number(s.start_ms),
+          durationNs: Number(s.duration),
+          errorType: meta["error.type"] ?? "",
+          errorMessage: meta["error.message"] ?? "",
+          version: meta["version"] ?? "",
+        });
     }
+    // Base rate for honest correlation: how the service's overall traffic splits across
+    // versions in the same window. Without this, "most errors are on version X" can simply
+    // mean "most traffic is on version X".
+    const allByVersion = (
+      await pool.query(
+        `select coalesce(nullif(meta->>'version',''), '(no version tag)') as v, count(*)::int as c
+         from spans where org_id=$1 and service=$2 and start_ms >= $3 group by 1 order by 2 desc limit 20`,
+        [req.orgId, g.service, sinceMs],
+      )
+    ).rows;
     res.json({
+      versionCorrelation: {
+        errorsByVersion: [...errByVersion.entries()].map(([version, count]) => ({ version, count })).sort((a, b) => b.count - a.count),
+        trafficByVersion: allByVersion.map((r: any) => ({ version: r.v, count: Number(r.c) })),
+        windowDays: 7,
+      },
       group: {
         fingerprint: fp,
         service: g.service,

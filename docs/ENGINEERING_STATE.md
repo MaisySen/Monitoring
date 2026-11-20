@@ -518,3 +518,13 @@ Harness lesson recorded: /ui/orgs does not switch the session; /ui/org/select is
 bench/security/isolation.js now covers error groups: org A's groups invisible in org B's
 list, cross-org group detail 404, plus org-A sanity. Ran against a fresh server+database:
 16/16 pass (was 13/13 before error groups; +3 new checks).
+
+## 2026-11-21 07:09 AEDT - Deploy/version correlation, hypothesis-labeled (this commit)
+
+GET /api/ui/errors/:fingerprint/spans now returns versionCorrelation: errorsByVersion (all
+scanned matches, NOT capped by the 50-row list limit) and trafficByVersion (base rate over
+the same 7-day window). Detail page shows a "Version correlation (hypothesis only)" card with
+both columns: "A concentration is a lead to investigate, not proof a version caused the
+errors." Live verify: seeded 4 errors on v1.4.0 + 26 clean spans on v1.3.0 -> card shows
+1.4.0: 4 errors / 4 spans vs 1.3.0: 0 / 26, making the concentration visibly real rather than
+traffic-proportional. Version source: OTLP service.version (already parsed at intake).
