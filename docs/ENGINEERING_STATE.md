@@ -308,3 +308,15 @@ queue). 100 spans/s, 60s runs, fault at 20s. Evidence: bench/evidence/recovery/s
 - Default onboarding/recovery therefore matches the instrumented diagnostic runs in all measured scenarios. Scope note preserved: measured scenarios only, at-least-once semantics, zero observed duplicates is not a proof.
 - Direct-topology SDK-fix validation (run okoz5): backend_outage log loss 3888->100, long_outage log loss 70069->6489; span-path cause attribution limited to timing+app-log evidence per parent 00:41.
 - Evidence: bench/evidence/recovery/acceptance-2026-11-21.json, recovery-acceptance.jsonl, direct-fixed-2026-11-21.json.
+
+## 2026-11-21 01:04 M5 remainder closed: regression rerun on current tree
+- memberships.js 40/40 PASS (fresh memtest2, server 4601, current build). The suite now covers the M5
+  remainder items: a user in two orgs sees only the active org's data (sections 8/14), a removed member
+  loses access with session fallback (section 11), last-admin guards, per-org roles. The 18:06 note
+  listing these as TODO was stale.
+- isolation.js 13/13 PASS (fresh iso2, server 4602, current build): org boundaries, key revocation,
+  malformed payloads, redaction.
+- Restore test executed earlier this run (see 01:00 entry above + bench/evidence/restore-test-2026-11-21.json).
+- Evidence: bench/evidence/security/memberships-2026-11-21.json, isolation-2026-11-21.json.
+- M5 is now fully closed. Remaining build items: M4 demo journey + UI screenshots; M6 readiness document
+  assembly; B2 Multies OIDC (blocked on Multies-write authority); hosting/deployment (blocked, not authorized).

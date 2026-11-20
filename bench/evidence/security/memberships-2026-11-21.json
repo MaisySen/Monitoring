@@ -1,0 +1,287 @@
+{
+ "suite": "memberships",
+ "total": 40,
+ "failed": 0,
+ "results": [
+  {
+   "area": "memberships",
+   "name": "setup creates first admin",
+   "expected": 200,
+   "actual": 200,
+   "pass": true
+  },
+  {
+   "area": "memberships",
+   "name": "alice has one org, active",
+   "expected": 1,
+   "actual": 1,
+   "pass": true
+  },
+  {
+   "area": "memberships",
+   "name": "invite link issued",
+   "expected": true,
+   "actual": true,
+   "pass": true
+  },
+  {
+   "area": "memberships",
+   "name": "bob joins org A",
+   "expected": 200,
+   "actual": 200,
+   "pass": true
+  },
+  {
+   "area": "memberships",
+   "name": "bob is member of A",
+   "expected": "member",
+   "actual": "member",
+   "pass": true
+  },
+  {
+   "area": "memberships",
+   "name": "member cannot create keys",
+   "expected": 403,
+   "actual": 403,
+   "pass": true
+  },
+  {
+   "area": "memberships",
+   "name": "alice creates org C",
+   "expected": true,
+   "actual": true,
+   "pass": true
+  },
+  {
+   "area": "memberships",
+   "name": "alice has two orgs, A still active",
+   "expected": 2,
+   "actual": 2,
+   "pass": true
+  },
+  {
+   "area": "memberships",
+   "name": "select org C",
+   "expected": 200,
+   "actual": 200,
+   "pass": true
+  },
+  {
+   "area": "memberships",
+   "name": "C shows only alice",
+   "expected": 1,
+   "actual": 1,
+   "pass": true
+  },
+  {
+   "area": "memberships",
+   "name": "select unknown org refused",
+   "expected": "403/404",
+   "actual": 403,
+   "pass": true
+  },
+  {
+   "area": "memberships",
+   "name": "invite to C issued",
+   "expected": true,
+   "actual": true,
+   "pass": true
+  },
+  {
+   "area": "memberships",
+   "name": "bob accepts C invite signed-in",
+   "expected": 200,
+   "actual": 200,
+   "pass": true
+  },
+  {
+   "area": "memberships",
+   "name": "bob has two orgs",
+   "expected": 2,
+   "actual": 2,
+   "pass": true
+  },
+  {
+   "area": "memberships",
+   "name": "used invite refused",
+   "expected": "4xx",
+   "actual": 404,
+   "pass": true
+  },
+  {
+   "area": "memberships",
+   "name": "bob sees org C",
+   "expected": 2,
+   "actual": 2,
+   "pass": true
+  },
+  {
+   "area": "memberships",
+   "name": "bob member in C",
+   "expected": "member",
+   "actual": "member",
+   "pass": true
+  },
+  {
+   "area": "memberships",
+   "name": "member cannot create keys in C",
+   "expected": 403,
+   "actual": 403,
+   "pass": true
+  },
+  {
+   "area": "memberships",
+   "name": "org A lists both members",
+   "expected": 2,
+   "actual": 2,
+   "pass": true
+  },
+  {
+   "area": "memberships",
+   "name": "alice promotes bob in C",
+   "expected": 200,
+   "actual": 200,
+   "pass": true
+  },
+  {
+   "area": "memberships",
+   "name": "admin bob creates key in C",
+   "expected": 200,
+   "actual": 200,
+   "pass": true
+  },
+  {
+   "area": "memberships",
+   "name": "alice demotes bob in C",
+   "expected": 200,
+   "actual": 200,
+   "pass": true
+  },
+  {
+   "area": "memberships",
+   "name": "last admin cannot self-demote",
+   "expected": 400,
+   "actual": 400,
+   "pass": true
+  },
+  {
+   "area": "memberships",
+   "name": "last admin cannot be removed",
+   "expected": 400,
+   "actual": 400,
+   "pass": true
+  },
+  {
+   "area": "memberships",
+   "name": "alice removes bob from C",
+   "expected": 200,
+   "actual": 200,
+   "pass": true
+  },
+  {
+   "area": "memberships",
+   "name": "bob back to one org",
+   "expected": 1,
+   "actual": 1,
+   "pass": true
+  },
+  {
+   "area": "memberships",
+   "name": "session falls back to org A",
+   "expected": 1,
+   "actual": 1,
+   "pass": true
+  },
+  {
+   "area": "memberships",
+   "name": "removed org select refused",
+   "expected": 403,
+   "actual": 403,
+   "pass": true
+  },
+  {
+   "area": "memberships",
+   "name": "bob still member of A",
+   "expected": "member",
+   "actual": "member",
+   "pass": true
+  },
+  {
+   "area": "memberships",
+   "name": "invite for another email refused",
+   "expected": 403,
+   "actual": 403,
+   "pass": true
+  },
+  {
+   "area": "memberships",
+   "name": "org A api key for isolation",
+   "expected": true,
+   "actual": true,
+   "pass": true
+  },
+  {
+   "area": "memberships",
+   "name": "log written to org A",
+   "expected": 200,
+   "actual": 200,
+   "pass": true
+  },
+  {
+   "area": "memberships",
+   "name": "A log invisible while C active",
+   "expected": 0,
+   "actual": 0,
+   "pass": true
+  },
+  {
+   "area": "memberships",
+   "name": "A log visible after switching back",
+   "expected": 1,
+   "actual": 1,
+   "pass": true
+  },
+  {
+   "area": "memberships",
+   "name": "member reads org data",
+   "expected": 1,
+   "actual": 1,
+   "pass": true
+  },
+  {
+   "area": "memberships",
+   "name": "member sees org A usage",
+   "expected": 1,
+   "actual": 1,
+   "pass": true
+  },
+  {
+   "area": "memberships",
+   "name": "alice removes bob from A",
+   "expected": 200,
+   "actual": 200,
+   "pass": true
+  },
+  {
+   "area": "memberships",
+   "name": "org-less member cannot search logs",
+   "expected": true,
+   "actual": true,
+   "pass": true
+  },
+  {
+   "area": "memberships",
+   "name": "org-less member cannot read usage",
+   "expected": true,
+   "actual": true,
+   "pass": true
+  },
+  {
+   "area": "memberships",
+   "name": "intake with org key still works after member removal",
+   "expected": 200,
+   "actual": 200,
+   "pass": true
+  }
+ ]
+}

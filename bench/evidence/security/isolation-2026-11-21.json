@@ -1,0 +1,151 @@
+{
+  "run": "6a37f4",
+  "server": "http://127.0.0.1:4602",
+  "passed": 13,
+  "total": 13,
+  "results": [
+    {
+      "area": "isolation",
+      "name": "both orgs can ingest with their own key",
+      "expected": "2xx",
+      "actual": "200,200,200 / 200,200,200",
+      "pass": true
+    },
+    {
+      "area": "isolation",
+      "name": "org B sees none of org A's data (15 read surfaces)",
+      "expected": "no leaks",
+      "actual": "no leaks",
+      "pass": true
+    },
+    {
+      "area": "isolation",
+      "name": "org A sees none of org B's data (15 read surfaces)",
+      "expected": "no leaks",
+      "actual": "no leaks",
+      "pass": true
+    },
+    {
+      "area": "isolation",
+      "name": "org A sees its own spans (sanity)",
+      "expected": ">=1",
+      "actual": 1,
+      "pass": true
+    },
+    {
+      "area": "isolation",
+      "name": "cross-org access by id (monitor GET/PUT/DELETE, dashboard GET/DELETE, channel DELETE, key revoke)",
+      "expected": "all refused, nothing changed",
+      "actual": "all refused, nothing changed",
+      "pass": true
+    },
+    {
+      "area": "isolation",
+      "name": "org override headers ignored: B's key writes only into B",
+      "expected": "2",
+      "actual": "2",
+      "pass": true
+    },
+    {
+      "area": "isolation",
+      "name": "unauthenticated UI/API requests refused",
+      "expected": "401",
+      "actual": "401/403",
+      "pass": true
+    },
+    {
+      "area": "revocation",
+      "name": "new key accepted, then refused right after revocation (OTLP and Agent intake)",
+      "expected": "2xx then 403/401",
+      "actual": "200 then 403/403 after 3 ms",
+      "pass": true
+    },
+    {
+      "area": "malformed",
+      "name": "malformed payloads get 4xx (or bounded 2xx), never 5xx; server healthy after each",
+      "expected": "no 5xx, healthy",
+      "actual": "garbage protobuf: 400; truncated protobuf: 400; invalid JSON: 400; wrong content type: 400; 60 MB body: 413; gzip bomb (100 KB -> 1 GB): 413; deeply nested JSON (100k levels): 200; 10 MB attribute value: 200; NaN/Infinity metric values: 202; negative / far-future timestamps: 200",
+      "pass": true
+    },
+    {
+      "area": "malformed",
+      "name": "server memory bounded after the malformed payloads (incl. 60 MB body and gzip bomb)",
+      "expected": "< +300 MB",
+      "actual": "123 -> 206 MB",
+      "pass": true
+    },
+    {
+      "area": "malformed",
+      "name": "10 MB attribute is truncated or rejected, not stored whole",
+      "expected": "< 10 MB stored",
+      "actual": "25012 chars stored",
+      "pass": true
+    },
+    {
+      "area": "redaction",
+      "name": "secrets in log message, log attributes and span attributes are masked before storage",
+      "expected": "none stored",
+      "actual": "none stored",
+      "pass": true
+    },
+    {
+      "area": "redaction",
+      "name": "ordinary values are untouched",
+      "expected": "order 1234 / ord-555 / amount=10 kept",
+      "actual": "kept",
+      "pass": true
+    }
+  ],
+  "malformed": [
+    {
+      "name": "garbage protobuf",
+      "status": 400,
+      "healthy": true
+    },
+    {
+      "name": "truncated protobuf",
+      "status": 400,
+      "healthy": true
+    },
+    {
+      "name": "invalid JSON",
+      "status": 400,
+      "healthy": true
+    },
+    {
+      "name": "wrong content type",
+      "status": 400,
+      "healthy": true
+    },
+    {
+      "name": "60 MB body",
+      "status": 413,
+      "healthy": true
+    },
+    {
+      "name": "gzip bomb (100 KB -> 1 GB)",
+      "status": 413,
+      "healthy": true
+    },
+    {
+      "name": "deeply nested JSON (100k levels)",
+      "status": 200,
+      "healthy": true
+    },
+    {
+      "name": "10 MB attribute value",
+      "status": 200,
+      "healthy": true
+    },
+    {
+      "name": "NaN/Infinity metric values",
+      "status": 202,
+      "healthy": true
+    },
+    {
+      "name": "negative / far-future timestamps",
+      "status": 200,
+      "healthy": true
+    }
+  ]
+}
