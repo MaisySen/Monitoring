@@ -175,3 +175,22 @@ queue). 100 spans/s, 60s runs, fault at 20s. Evidence: bench/evidence/recovery/s
   data discarded, clean rerun queued.
 - Harness hardening: don't await gen 'exit' (lost SIGCHLD left zombie + pending promise; sandbox-specific).
   Poll summary line + child liveness instead, then SIGKILL the child.
+
+## 2026-11-20 20:02 - Private repo created + build checks pushed; CI blocked by account quota
+- User approved (WhatsApp "Yes" 19:57) creating a private GitHub repo for Monitoring + automated build
+  checks (no release/deploy). Parent relayed the scope: private source upload + build checks only.
+- Created https://github.com/MaisySen/Monitoring (private) via API using the stored GitHub credential
+  (vault write-file, sandbox file deleted after use). Credential scan of the working copy before upload:
+  only test IDs/lockfile hashes, no secrets. Pushed branch `develop` only; no tags (release.yml stays
+  untriggered). Legal NOTICE/LICENSE/MODIFICATIONS.md included as-is.
+- Added .github/workflows/build.yml: on push to develop, agent job (go test ./... + agent/release.sh,
+  artifact upload, 7d retention) + server job (Postgres 14 service + api-server unit tests). contents:read
+  only; no release/publish/deploy job.
+- BLOCKER: both jobs fail at provisioning in seconds with zero steps and no logs. Evidence it is
+  account-level, not the workflow: private repo another private account repo fails identically today (0 steps, 3s),
+  another private account repo yesterday; public MaisySen/Mnet CI succeeded today. November usage API shows ~34,871
+  Actions minutes consumed - private-repo hosted minutes are over quota and GitHub does not provision
+  (public repos are unaffected). Rerun attempt failed the same way.
+- Options (need a decision): (a) make the Monitoring repo public so build checks run free - exceeds the
+  granted "private" scope, would publish source; (b) wait for the monthly quota reset and keep the repo
+  private meanwhile; (c) provide a larger runner/host. The agent binary remains unbuilt.
