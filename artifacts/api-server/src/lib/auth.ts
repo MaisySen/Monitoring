@@ -43,6 +43,12 @@ export async function getSession(sid: string): Promise<SessionData | null> {
 }
 
 export async function updateSession(sid: string, data: SessionData): Promise<void> {
+  // SSO sessions keep their original absolute expiry: org switches and similar updates must not extend
+  // the bounded revocation window. Local sessions slide as before.
+  if (data.kind === "sso") {
+    await db.update(sessionsTable).set({ sess: data as unknown as Record<string, unknown> }).where(eq(sessionsTable.sid, sid));
+    return;
+  }
   await db
     .update(sessionsTable)
     .set({ sess: data as unknown as Record<string, unknown>, expire: new Date(Date.now() + SESSION_TTL) })

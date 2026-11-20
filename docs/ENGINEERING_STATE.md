@@ -80,3 +80,14 @@ Working copy of the Monitoring feature build. Local only: not published anywhere
 - NEXT: Go agent build died OOM (compile signal: killed during go mod tidy/build with go1.26.11 toolchain).
   Retry staged: cd agent/_build && GOFLAGS=-p=1 go mod tidy, then go test/build with -p 1. Builder + _build
   exist. Then verify.sh end-to-end onboarding, bench/scale + bench/resilience bounded runs, READINESS.md.
+
+## 2026-11-20 18:38 - SSO renewal loophole closed (uncommitted-then-committed in next entry context)
+- updateSession (org switch) reset expire to now+7d for ALL sessions, silently extending SSO sessions past
+  the 12h bound. Fixed: sso-kind sessions keep their original absolute expiry on update.
+- IN REVIEW (parent 18:35): ordering clock must be iat only (auth_time dates authentication, not claim
+  issuance; long-lived provider sessions keep a constant auth_time and would block fresh claims forever).
+  Equal-iat ties must fail closed (apply removals/downgrades, never grants/upgrades). Stub must resolve
+  claims at token-exchange time (real provider contract), with force-iat test hooks. Tests to add: repeated
+  logins with constant auth_time still sync; out-of-order completion returns current claims; equal-iat tie
+  never restores grants; org switch does not extend SSO expiry. NOT YET DONE - code still uses
+  auth_time-preferred syncClock and lacks tie handling; oidc.js 32/32 reflects the old model.
