@@ -40,3 +40,40 @@ Not changed (documented in sdks/node/README.md "Delivery guarantees"):
 - Delivery claim stays at-least-once, never exactly-once: the disk-full window (cap reached +
   destination down) still drops oldest data by design, and duplicate-free observed runs are not
   promoted to exactly-once.
+
+## Round 2 (same day, after review): real failure/concurrency windows
+
+Review correctly flagged that round 1 was narrower than claimed. Round 2:
+
+Spool (real processes, real failure injection):
+- A. Four INDEPENDENT node processes (fork), 10x100B each, cap 1000B: directory total = 1000B. PASS
+- B. Slow-send window: send lasting 3x staleMs (1200ms vs 400ms) was NOT reclaimed by a rival
+  drainer polling every 120ms. Found and fixed first: the claim mtime was set at claim time and
+  never refreshed, so any send > staleMs WAS reclaimable (duplicate delivery). Fix: heartbeat
+  refreshes claim mtime every staleMs/3 during send; a live claim is never stale. PASS after fix.
+- C. Claimant SIGKILLed mid-send (send promise never resolves): heartbeat stops, rival reclaims
+  after staleMs and delivers the payload exactly once, no leftovers. PASS
+- D. ENOSPC-class failure: ulimit -f 1 forces EFBIG on write: write() does not throw. PASS
+  (read-only-dir from round 1 remains as the EACCES case; true /dev-full ENOSPC not simulated:
+  no mount privileges in this sandbox - the fs error path is the same catch).
+
+Intake idempotency (PostgreSQL):
+- E. Racing identical intake: 4 PARALLEL identical 5-span POSTs. Round-1 code (dedupe SELECT +
+  ON CONFLICT) gave 5 rows but span_stats hits = 10: every racer passed its SELECT and fed the
+  rollups. Fix: ON CONFLICT ... DO NOTHING RETURNING trace_id, span_id; rollups/host-links/trace
+  metrics are fed ONLY the rows this request actually inserted; all insert chunks run in one
+  transaction so a mid-batch failure rolls back every row. Re-verified: 4 parallel POSTs -> 5 rows,
+  5 hits. Sequential double-POST -> 5 rows, 5 hits. New-trace negative control inserts. PASS
+- F. Migration on populated duplicate data (scratch table, old shape, 3+1+1 dupes incl. cross-org
+  same trace/span ids): dedupe collapses to one row per (org_id, trace_id, span_id), unique index
+  created, ON CONFLICT reinsert is a no-op, cross-org rows preserved (org_id in the key). PASS
+- G. Cross-org separation: structural - spans_uniq keys on org_id; verified in F that identical
+  (trace_id, span_id) under different orgs both survive.
+
+Known remaining gap (disclosed, not claimed safe): span-row insert and span_stats rollup are NOT in
+one transaction (recordSpanStats uses its own pool queries). A server crash between insert-commit
+and rollup leaves rows whose rollup contribution is lost, and the retry then looks like a pure
+re-delivery. Rows stay correct (no duplicates); per-minute rollups can undercount by one batch in
+that crash window. Fix (transactional rollup) queued.
+
+ClickHouse path and logs/metrics differences preserved and documented as before.

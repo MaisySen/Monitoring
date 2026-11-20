@@ -19,11 +19,12 @@ const fs = require('fs');
 const path = require('path');
 
 class Spool {
-  constructor(dir, { maxBytes = Number(process.env.MONITORING_EXPORT_SPOOL_MAX_MB ?? 50) * 1024 * 1024, prefix = 'spool', log = console.error } = {}) {
+  constructor(dir, { maxBytes = Number(process.env.MONITORING_EXPORT_SPOOL_MAX_MB ?? 50) * 1024 * 1024, prefix = 'spool', log = console.error, staleMs = Number(process.env.MONITORING_EXPORT_SPOOL_STALE_MS ?? 60000) } = {}) {
     this.dir = dir;
     this.maxBytes = maxBytes;
     this.prefix = prefix;
     this.log = log;
+    this.staleMs = staleMs;
     this.droppedTotal = 0;
     fs.mkdirSync(dir, { recursive: true });
   }
@@ -32,9 +33,11 @@ class Spool {
       const now = Date.now();
       return fs.readdirSync(this.dir).filter((f) => {
         if (f.startsWith(this.prefix + '-')) return true;
-        // a .claim file whose claimant crashed becomes drainable again after 60 s
+        // a .claim file whose claimant crashed becomes drainable again after staleMs (60 s default).
+        // A live claimant refreshes the mtime with a heartbeat while its send is in progress, so a
+        // slow send is never reclaimed; a dead claimant stops heartbeating.
         if (f.startsWith(this.prefix + '~') && f.endsWith('.claim')) {
-          try { return now - fs.statSync(path.join(this.dir, f)).mtimeMs > 60000; } catch { return false; }
+          try { return now - fs.statSync(path.join(this.dir, f)).mtimeMs > this.staleMs; } catch { return false; }
         }
         return false;
       }).sort((a, b) => {
@@ -103,14 +106,22 @@ class Spool {
         try { fs.unlinkSync(claim); } catch { /* gone */ }
         continue;
       }
+      // Heartbeat the claim while the send is in progress: without it, a send longer than
+      // staleMs could be reclaimed by a concurrent drainer and delivered twice.
+      const hb = setInterval(() => {
+        try { const t = new Date(); fs.utimesSync(claim, t, t); } catch { /* gone */ }
+      }, Math.max(200, Math.floor(this.staleMs / 3)));
+      hb.unref?.();
       let ok = false;
       try {
         ok = await send(this.prefix === 'logs' ? JSON.parse(payload.toString()) : payload);
       } catch {
         ok = false;
+      } finally {
+        clearInterval(hb);
       }
       if (!ok) {
-        try { fs.renameSync(claim, p); } catch { /* leave claimed; reclaimed after 60 s */ }
+        try { fs.renameSync(claim, p); } catch { /* leave claimed; reclaimed after staleMs */ }
         return sent;
       }
       try { fs.unlinkSync(claim); } catch { /* drained on next pass */ }
