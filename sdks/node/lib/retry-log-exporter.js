@@ -35,6 +35,10 @@ class RetryingLogExporter {
     if (this.spool) {
       this.startDrain = startDrainPump(this.spool, async () => {
         await this.spool.drain((records) => new Promise((resolve) => {
+          if (process.env.DIAG_LOGS) {
+            const seqs = records.map(r => r.attributes?.seq).filter(x => x !== undefined);
+            console.error(`[diaglogs] drain-send n=${records.length} seqs=${Math.min(...seqs)}..${Math.max(...seqs)}`);
+          }
           let slim;
           try {
             slim = records.map(slimRecord);
@@ -49,6 +53,10 @@ class RetryingLogExporter {
     }
   }
   export(records, resultCallback) {
+    if (process.env.DIAG_LOGS) {
+      const seqs = records.map(r => r.attributes?.seq).filter(x => x !== undefined);
+      console.error(`[diaglogs] export n=${records.length} seqs=${Math.min(...seqs)}..${Math.max(...seqs)} stopped=${this.stopped}`);
+    }
     // A batch flushed after shutdown began still goes to the spool rather than vanishing.
     if (this.stopped) {
       if (this.spool) { this.spool.write(records); this.startDrain(); }
@@ -62,6 +70,7 @@ class RetryingLogExporter {
         const retryable = status === 0 || status === 408 || status === 429 || status >= 500;
         const remaining = deadline - Date.now();
         if (!retryable || this.stopped || remaining <= 0) {
+          if (process.env.DIAG_LOGS) console.error(`[diaglogs] giveup retryable=${retryable} stopped=${this.stopped} remaining=${remaining} status=${status} n=${records.length}`);
           if (retryable && this.spool) {
             this.spool.write(records);
             this.startDrain();
