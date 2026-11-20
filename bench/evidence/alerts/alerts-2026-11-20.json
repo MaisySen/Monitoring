@@ -1,0 +1,119 @@
+{
+  "run": "ukrfd",
+  "passed": 15,
+  "total": 15,
+  "results": [
+    {
+      "phase": 1,
+      "name": "all monitors OK with values below threshold",
+      "expected": "OK,OK,OK,OK",
+      "actual": "OK,OK,OK,OK",
+      "pass": true
+    },
+    {
+      "phase": 1,
+      "name": "no notifications during baseline",
+      "expected": 0,
+      "actual": 0,
+      "pass": true
+    },
+    {
+      "phase": 2,
+      "name": "A fires and notifies exactly once",
+      "expected": 1,
+      "actual": 1,
+      "pass": true,
+      "seconds_to_notification": 34.003
+    },
+    {
+      "phase": 2,
+      "name": "A state",
+      "expected": "Alert",
+      "actual": "Alert",
+      "pass": true
+    },
+    {
+      "phase": 3,
+      "name": "A still Alert after server restart",
+      "expected": "Alert",
+      "actual": "Alert",
+      "pass": true
+    },
+    {
+      "phase": 3,
+      "name": "no duplicate firing after restart",
+      "expected": 0,
+      "actual": 0,
+      "pass": true
+    },
+    {
+      "phase": 4,
+      "name": "A recovers and notifies exactly once",
+      "expected": 1,
+      "actual": 1,
+      "pass": true,
+      "seconds_to_notification": 50.01
+    },
+    {
+      "phase": 4,
+      "name": "A state",
+      "expected": "OK",
+      "actual": "OK",
+      "pass": true
+    },
+    {
+      "phase": 5,
+      "name": "firing during phase 5 delivered exactly once",
+      "expected": 1,
+      "actual": 1,
+      "pass": true
+    },
+    {
+      "phase": 5,
+      "name": "recovery that happened across a 45 s outage delivered exactly once",
+      "expected": 1,
+      "actual": 1,
+      "pass": true,
+      "seconds_to_notification": 6.001
+    },
+    {
+      "phase": 6,
+      "name": "B (notify_no_data) notifies No Data exactly once",
+      "expected": 1,
+      "actual": 1,
+      "pass": true,
+      "seconds_to_notification": 140.022
+    },
+    {
+      "phase": 6,
+      "name": "B state",
+      "expected": "No Data",
+      "actual": "No Data",
+      "pass": true
+    },
+    {
+      "phase": 6,
+      "name": "C (notify_no_data off) stays OK and silent",
+      "expected": "OK, 0 notifications",
+      "actual": "OK, 0 notifications",
+      "pass": true
+    },
+    {
+      "phase": 7,
+      "name": "D firing: 2 failed attempts then delivered once",
+      "expected": "503,503,200",
+      "actual": "503,503,200",
+      "pass": true,
+      "seconds_to_delivery": 114.016,
+      "log": "sent: HTTP 200 after 3 attempts"
+    },
+    {
+      "phase": 8,
+      "name": "retry survives a restart: 1 failed attempt, then delivered once",
+      "expected": "503,200",
+      "actual": "503,200",
+      "pass": true,
+      "seconds_to_delivery": 10.001
+    }
+  ]
+}
