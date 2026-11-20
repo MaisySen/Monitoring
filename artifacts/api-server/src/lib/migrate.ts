@@ -258,6 +258,20 @@ CREATE TABLE IF NOT EXISTS uptime_results (
 );
 CREATE INDEX IF NOT EXISTS uptime_results_check_ts ON uptime_results (org_id, check_id, ts desc);
 `,
+  // 15: first/last observation of each (service, version) pair - the deploy evidence base.
+  // A version's first_seen is the first span carrying it; an exception may be described as
+  // observed after a deploy only through this table plus complete observation coverage
+  // (see deployEvidenceFor in query/incidents.ts), never from version concentration alone.
+  `
+CREATE TABLE IF NOT EXISTS service_versions (
+  org_id integer NOT NULL,
+  service text NOT NULL,
+  version text NOT NULL,
+  first_seen bigint NOT NULL,
+  last_seen bigint NOT NULL,
+  PRIMARY KEY (org_id, service, version)
+);
+`,
 ];
 
 export async function migrateDatabase() {

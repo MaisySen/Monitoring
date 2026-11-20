@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildIncidents, INCIDENT_SCAN_LIMIT } from "../src/query/incidents";
-import { fingerprintFor, normalizeMessage } from "../src/query/errorGroups";
+import { buildIncidents, deployEvidenceFor, INCIDENT_SCAN_LIMIT } from "../src/query/incidents";
+import { aggregateServiceVersions, fingerprintFor, normalizeMessage } from "../src/query/errorGroups";
 
 const NOW = 1_800_000_000_000; // ms
 
@@ -76,3 +76,89 @@ test("incidents sort by lastSeen descending", () => {
 });
 
 assert.ok(INCIDENT_SCAN_LIMIT >= 100, "scan limit is a real bound, not a token value");
+
+// ---------- Deploy evidence rule ----------
+// The rule may claim "first observed after deploy V" only when observation coverage is
+// complete AND a service_versions row strictly predates the group's first sighting.
+
+function deployMap(service: string, version: string, firstSeen: number) {
+  return new Map([[service, new Map([[version, firstSeen]])]]);
+}
+
+function deployIncident(over: Record<string, unknown> = {}) {
+  return {
+    service: "checkout",
+    firstSeen: NOW - 10 * 60_000,
+    matchedVersionsDistinct: 1,
+    matchedSingleVersion: "3.0.2",
+    matchedUntagged: 0,
+    coverage: { matchedTotal: 3, groupCount: 3, scanned: 5, scanTruncated: false, windowDays: 1 },
+    ...over,
+  } as any;
+}
+
+test("deploy evidence: all gates pass -> timing claim with the deploy's first_seen", () => {
+  const ev = deployEvidenceFor(deployIncident(), deployMap("checkout", "3.0.2", NOW - 20 * 60_000));
+  assert.deepEqual(ev, { version: "3.0.2", deployFirstSeen: NOW - 20 * 60_000 });
+});
+
+test("negative control: truncated scan forbids the claim", () => {
+  const inc = deployIncident({ coverage: { matchedTotal: 3, groupCount: 3, scanned: 2000, scanTruncated: true, windowDays: 1 } });
+  assert.equal(deployEvidenceFor(inc, deployMap("checkout", "3.0.2", NOW - 20 * 60_000)), null);
+});
+
+test("negative control: one untagged matched span forbids the claim", () => {
+  const inc = deployIncident({ matchedUntagged: 1, coverage: { matchedTotal: 4, groupCount: 4, scanned: 5, scanTruncated: false, windowDays: 1 } });
+  assert.equal(deployEvidenceFor(inc, deployMap("checkout", "3.0.2", NOW - 20 * 60_000)), null);
+});
+
+test("negative control: two observed versions forbid the claim", () => {
+  const inc = deployIncident({ matchedVersionsDistinct: 2, matchedSingleVersion: null });
+  assert.equal(deployEvidenceFor(inc, deployMap("checkout", "3.0.2", NOW - 20 * 60_000)), null);
+});
+
+test("negative control: no matched spans forbid the claim", () => {
+  const inc = deployIncident({ matchedVersionsDistinct: 0, matchedSingleVersion: null, coverage: { matchedTotal: 0, groupCount: 3, scanned: 0, scanTruncated: false, windowDays: 1 } });
+  assert.equal(deployEvidenceFor(inc, deployMap("checkout", "3.0.2", NOW - 20 * 60_000)), null);
+});
+
+test("negative control: missing deploy record forbids the claim", () => {
+  assert.equal(deployEvidenceFor(deployIncident(), new Map()), null);
+  assert.equal(deployEvidenceFor(deployIncident(), deployMap("other-service", "3.0.2", NOW - 20 * 60_000)), null);
+});
+
+test("negative control: deploy first_seen at or after the group's first sighting cannot be ordered, no claim", () => {
+  assert.equal(deployEvidenceFor(deployIncident(), deployMap("checkout", "3.0.2", NOW - 10 * 60_000)), null); // equal
+  assert.equal(deployEvidenceFor(deployIncident(), deployMap("checkout", "3.0.2", NOW - 5 * 60_000)), null); // after
+});
+
+test("buildIncidents exposes the uncapped observation state the rule consumes", () => {
+  const g = groupFor("checkout", "ValueError", "bad checkout payload");
+  const spans = [
+    errSpan("checkout", "POST /c", "ValueError", "bad checkout payload", "3.0.2"),
+    errSpan("checkout", "POST /c", "ValueError", "bad checkout payload", "3.0.2"),
+  ];
+  const [inc] = buildIncidents([g], spans, NOW, { scanTruncated: false });
+  assert.equal(inc.matchedVersionsDistinct, 1);
+  assert.equal(inc.matchedSingleVersion, "3.0.2");
+  assert.equal(inc.matchedUntagged, 0);
+  assert.equal(inc.deployEvidence, null); // set only by computeExceptionIncidents via the rule
+  const [inc2] = buildIncidents([g], [...spans, errSpan("checkout", "POST /c", "ValueError", "bad checkout payload")], NOW, { scanTruncated: false });
+  assert.equal(inc2.matchedUntagged, 1);
+});
+
+test("aggregateServiceVersions: first/last per (service, version), untagged spans skipped", () => {
+  const rows = aggregateServiceVersions([
+    { service: "checkout", env: "prod", error: 0, start: 1_000_000_000, meta: { version: "3.0.2" } }, // 1000 ms
+    { service: "checkout", env: "prod", error: 0, start: 3_000_000_000, meta: { version: "3.0.2" } }, // 3000 ms
+    { service: "checkout", env: "prod", error: 0, start: 2_000_000_000, meta: { version: "3.0.1" } },
+    { service: "billing", env: "prod", error: 0, start: 5_000_000_000, meta: { version: "3.0.2" } },
+    { service: "checkout", env: "prod", error: 0, start: 9_000_000_000, meta: {} }, // untagged: never creates a row
+  ] as any);
+  assert.equal(rows.length, 3);
+  const c302 = rows.find((r) => r.service === "checkout" && r.version === "3.0.2")!;
+  assert.equal(c302.firstMs, 1000);
+  assert.equal(c302.lastMs, 3000);
+  assert.ok(rows.some((r) => r.service === "billing" && r.version === "3.0.2"));
+  assert.ok(!rows.some((r) => r.firstMs === 9000)); // untagged span left no trace
+});

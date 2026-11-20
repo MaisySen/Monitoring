@@ -108,6 +108,52 @@ export async function upsertErrorGroupsTx(c: { query: (q: string, v?: any[]) => 
   );
 }
 
+// ---------- Deploy evidence: first/last observation of each (service, version) ----------
+// Same fresh-spans-only transaction discipline as error groups: a retry cannot move a
+// version's first_seen earlier than the truth, only repeat an identical observation.
+export interface ServiceVersionAgg {
+  service: string;
+  version: string;
+  firstMs: number;
+  lastMs: number;
+}
+
+export function aggregateServiceVersions(spans: ErrorSpanLike[]): ServiceVersionAgg[] {
+  const m = new Map<string, ServiceVersionAgg>();
+  for (const s of spans) {
+    const v = String(s.meta?.["version"] ?? "").trim().slice(0, 100);
+    if (!v) continue;
+    const service = s.service || "unnamed-service";
+    const ms = Math.floor(s.start / 1e6);
+    const key = `${service}\0${v}`;
+    const cur = m.get(key);
+    if (cur) {
+      if (ms < cur.firstMs) cur.firstMs = ms;
+      if (ms > cur.lastMs) cur.lastMs = ms;
+    } else m.set(key, { service, version: v, firstMs: ms, lastMs: ms });
+  }
+  return [...m.values()];
+}
+
+export async function upsertServiceVersionsTx(c: { query: (q: string, v?: any[]) => Promise<any> }, orgId: number, rows: ServiceVersionAgg[]) {
+  if (!rows.length) return;
+  const vals: any[] = [];
+  const ph: string[] = [];
+  for (const r of rows) {
+    const b = vals.length;
+    vals.push(orgId, r.service, r.version, r.firstMs, r.lastMs);
+    ph.push(`(${Array.from({ length: 5 }, (_, j) => `$${b + j + 1}`).join(",")})`);
+  }
+  await c.query(
+    `insert into service_versions (org_id, service, version, first_seen, last_seen)
+     values ${ph.join(",")}
+     on conflict (org_id, service, version) do update set
+       first_seen = least(service_versions.first_seen, excluded.first_seen),
+       last_seen = greatest(service_versions.last_seen, excluded.last_seen)`,
+    vals,
+  );
+}
+
 // ---------- Version/environment correlation assembly (hypothesis aid only) ----------
 // Comparability rules baked in here (product direction):
 // - The error numerator comes from a BOUNDED scan and can be truncated; coverage is carried

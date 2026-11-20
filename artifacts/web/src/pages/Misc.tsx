@@ -838,6 +838,7 @@ type NowData = {
   lastDataAt: number | null;
   totals: { spans: number; logs: number };
   services: { service: string; state: "ok" | "degraded" | "low" | "quiet"; note: string; ops5: number; errOps5: number; lastActiveAt: number }[];
+  serviceVersions?: { service: string; version: string; firstSeen: number; lastSeen: number }[];
   problems: { monitorId: number; name: string; state: string; service: string | null; auto: boolean; since: number | null; query: string; effective: Effective }[];
   exceptions?: ExceptionIncident[];
   exceptionsSupported?: boolean;
@@ -878,6 +879,10 @@ type ExceptionIncident = {
   isNew: boolean;
   topEndpoints: { name: string; count: number }[];
   versionsObserved: string[];
+  // Set only when the server's deploy-evidence rule passes completely (untruncated scan,
+  // every matched span tagged, exactly one version, deploy record strictly older than the
+  // group's first sighting). Wording stays "first observed after" - never "caused by".
+  deployEvidence?: { version: string; deployFirstSeen: number } | null;
   coverage: { matchedTotal: number; groupCount: number; scanned: number; scanTruncated: boolean; windowDays: number };
   effective: Effective;
 };
@@ -1021,6 +1026,9 @@ export function Home() {
           {x.effective.reopened && "New occurrences after this was marked resolved. "}
           {x.envs.length ? `Environments: ${x.envs.join(", ")}. ` : ""}
           {x.versionsObserved.length ? `Observed in versions: ${x.versionsObserved.join(", ")} (among matched spans). ` : ""}
+          {x.deployEvidence
+            ? `First observed after deploy ${x.deployEvidence.version} (deploy first seen ${fmtAgo(x.deployEvidence.deployFirstSeen)}; all ${x.coverage.matchedTotal} matched spans in the ${x.coverage.windowDays * 24}h scan carry this version). Timing observation, not proof of cause. `
+            : ""}
           {x.topEndpoints.length ? `Mostly in: ${x.topEndpoints.map((e) => `${e.name} (${e.count}×)`).join(", ")}. ` : ""}
           {guide && guideFor({ x })}
         </div>
@@ -1226,9 +1234,10 @@ export function Home() {
           {d && d.exceptionsSupported && (d.exceptions ?? []).length > 0 && (
             <div className="px-4 py-2 text-[11px] text-ink-3">
               Exception incidents come from error groups active in the last {(d.exceptions ?? [])[0].coverage.windowDays * 24}h. First-seen is
-              when Monitoring first observed the exception; versions are the versions observed among matched spans. Neither says when a
-              deploy happened or that a version caused the errors. Acknowledge, mute and resolve set your workflow status only - measured
-              state stays visible beside them.
+              when Monitoring first observed the exception; versions are the versions observed among matched spans. A "first observed after
+              deploy" line appears only when every matched span in an untruncated scan carries one version and that version was first observed
+              strictly before the exception - a timing observation, never proof of cause. Acknowledge, mute and resolve set your workflow
+              status only - measured state stays visible beside them.
             </div>
           )}
         </div>
@@ -1251,6 +1260,14 @@ export function Home() {
                 <span className="w-2 h-2 rounded-full shrink-0" style={{ background: healthChip[s.state]?.dot }} title={healthChip[s.state]?.label} />
                 <span className="font-medium text-primary shrink-0">{s.service}</span>
                 <span className="text-xs text-ink-2 truncate">{s.note}</span>
+                {(() => {
+                  const v = (d.serviceVersions ?? []).find((sv) => sv.service === s.service);
+                  return v ? (
+                    <span className="ml-auto text-[11px] text-ink-3 shrink-0" title={`Version ${v.version} first observed ${new Date(v.firstSeen).toLocaleString()}`}>
+                      v{v.version} first seen {fmtAgo(v.firstSeen)}
+                    </span>
+                  ) : null;
+                })()}
               </Link>
             ))
           )}

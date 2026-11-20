@@ -5,8 +5,11 @@ import { fingerprintFor, normalizeMessage } from "./errorGroups";
 //
 // Wording contract (do not weaken): first_seen is an observation fact ("first seen <time>");
 // versions are listed as observed versions. Never state or imply that an exception "started
-// after a deploy" - that requires deployment-time evidence, which the product does not have
-// unless a deploy marker feature lands. Version concentration is a lead, not a cause.
+// after a deploy" from version concentration alone. A deploy claim is allowed ONLY through
+// deployEvidenceFor below: a service_versions row (the deploy evidence base, populated from
+// the same transaction as intake) plus COMPLETE observation coverage - an untruncated scan
+// in which every matched span carries exactly one version. Even then the wording is "first
+// observed after deploy", a timing observation, never "caused by".
 
 export interface IncidentGroupRow {
   fingerprint: string;
@@ -42,6 +45,12 @@ export interface ExceptionIncident {
   isNew: boolean;
   topEndpoints: { name: string; count: number }[];
   versionsObserved: string[];
+  // Uncapped observation state for the deploy-evidence rule (display stays capped):
+  matchedVersionsDistinct: number;
+  matchedSingleVersion: string | null;
+  matchedUntagged: number;
+  // Set only by deployEvidenceFor when its full rule passes; null otherwise.
+  deployEvidence: { version: string; deployFirstSeen: number } | null;
   coverage: { matchedTotal: number; groupCount: number; scanned: number; scanTruncated: boolean; windowDays: number };
 }
 
@@ -68,6 +77,7 @@ export function buildIncidents(
     const endpoints = new Map<string, number>();
     const versions = new Map<string, number>();
     let matchedTotal = 0;
+    let matchedUntagged = 0;
     for (const s of spans) {
       const meta = s.meta ?? {};
       const fp = fingerprintFor(g.service, (meta["error.type"] ?? "").slice(0, 200), normalizeMessage(meta["error.message"] ?? ""));
@@ -77,6 +87,7 @@ export function buildIncidents(
       if (ep) endpoints.set(ep, (endpoints.get(ep) ?? 0) + 1);
       const v = (meta["version"] ?? "").trim();
       if (v) versions.set(v, (versions.get(v) ?? 0) + 1);
+      else matchedUntagged += 1;
     }
     const topEndpoints = [...endpoints.entries()]
       .sort((a, b) => b[1] - a[1])
@@ -100,6 +111,10 @@ export function buildIncidents(
       isNew: Number(g.first_seen) >= nowMs - 60 * 60_000,
       topEndpoints,
       versionsObserved,
+      matchedVersionsDistinct: versions.size,
+      matchedSingleVersion: versions.size === 1 ? [...versions.keys()][0] : null,
+      matchedUntagged,
+      deployEvidence: null,
       coverage: {
         matchedTotal,
         groupCount: Number(g.count),
@@ -110,6 +125,32 @@ export function buildIncidents(
     });
   }
   return out.sort((a, b) => b.lastSeen - a.lastSeen);
+}
+
+// The deploy-evidence rule. Every gate must pass before ANY deploy timing claim is made:
+//   1. the error-span scan was not truncated (coverage is complete);
+//   2. at least one matched span was observed;
+//   3. every matched span carries a version tag (none untagged - a single untagged span
+//      could be an older deploy, so coverage with gaps forbids the claim);
+//   4. all matched spans carry exactly one distinct version V;
+//   5. service_versions holds a row for (service, V) - the deploy evidence base, written
+//      in the same intake transaction as the spans themselves;
+//   6. the deploy's first_seen is STRICTLY before the group's first_seen. Equal timestamps
+//      cannot be ordered (same batch), so they make no claim.
+// The claim this licenses is observational: "first observed after deploy V", never cause.
+export function deployEvidenceFor(
+  inc: Pick<ExceptionIncident, "service" | "firstSeen" | "matchedVersionsDistinct" | "matchedSingleVersion" | "matchedUntagged" | "coverage">,
+  deploysByService: Map<string, Map<string, number>>,
+): { version: string; deployFirstSeen: number } | null {
+  if (inc.coverage.scanTruncated) return null;
+  if (inc.coverage.matchedTotal === 0) return null;
+  if (inc.matchedUntagged > 0) return null;
+  if (inc.matchedVersionsDistinct !== 1 || !inc.matchedSingleVersion) return null;
+  const v = inc.matchedSingleVersion;
+  const firstSeen = deploysByService.get(inc.service)?.get(v);
+  if (firstSeen == null) return null;
+  if (firstSeen >= inc.firstSeen) return null;
+  return { version: v, deployFirstSeen: firstSeen };
 }
 
 export async function computeExceptionIncidents(
@@ -135,5 +176,21 @@ export async function computeExceptionIncidents(
       [orgId, services, sinceMs],
     )
   ).rows as ErrorSpanRow[];
-  return buildIncidents(groups, cand, nowMs, { scanTruncated: cand.length >= INCIDENT_SCAN_LIMIT });
+  const out = buildIncidents(groups, cand, nowMs, { scanTruncated: cand.length >= INCIDENT_SCAN_LIMIT });
+  // Deploy evidence base: first observation per (service, version) from intake. Guarded like
+  // error_groups: on a backend without the table, no deploy claims - never a crash.
+  const hasSv = (await pool.query("select to_regclass('service_versions') is not null as e")).rows[0].e;
+  if (hasSv) {
+    const sv = (
+      await pool.query(`select service, version, first_seen from service_versions where org_id=$1 and service = any($2)`, [orgId, services])
+    ).rows as { service: string; version: string; first_seen: number | string }[];
+    const deploys = new Map<string, Map<string, number>>();
+    for (const r of sv) {
+      let m = deploys.get(r.service);
+      if (!m) deploys.set(r.service, (m = new Map()));
+      m.set(r.version, Number(r.first_seen));
+    }
+    for (const inc of out) inc.deployEvidence = deployEvidenceFor(inc, deploys);
+  }
+  return out;
 }
