@@ -147,3 +147,15 @@ Working copy of the Monitoring feature build. Local only: not published anywhere
   screenshotted). Test keys revoked afterwards.
 - Regression: unit 63/63, memberships 40/40 (fresh DB), oidc 38/38.
 - CI/private-repo build route: parent asked user for permission; do NOT push or tag until granted.
+
+## 2026-11-20 19:26 - Resilience: real server bug found + fixed (pg pool crash on DB restart)
+- server-only resilience variant (bench/resilience/server-only.js): app -> server OTLP intake -> Postgres,
+  no agent binary. Found during bring-up: a Postgres fast restart crashed the whole API server with an
+  uncaught 'error' event on the pg pool (idle client killed). Fix: pool.on('error') logs and recovers in
+  lib/db/src/index.ts; in-flight queries still fail individually as retriable 503s. Verified: server now
+  survives pg_ctl -m fast restart and keeps serving.
+- Migration gap found + fixed: DBs created before OTLP log-attribute support never got
+  logs.attributes/trace_id (no ALTER migration). Added migration 9; verified on the stale memtest DB
+  (columns added, 3,193 rows intact) and fresh-DB unit tests still 63/63.
+- Earlier scale-run stored-count verification (run scale-1795161821) was done against memtest's older
+  logs schema (tags query); unaffected: spans/logs counts matched exactly.

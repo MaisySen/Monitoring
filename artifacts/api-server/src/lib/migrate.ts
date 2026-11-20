@@ -148,6 +148,12 @@ ALTER TABLE sso_identities ADD COLUMN IF NOT EXISTS last_sync_at bigint;
   `
 ALTER TABLE sessions ALTER COLUMN expire TYPE timestamptz USING expire AT TIME ZONE 'UTC';
 `,
+  // 9: databases created before the OTLP log-attribute support predate logs.attributes/trace_id. The
+  // CREATE TABLE for fresh databases has both; existing databases need these idempotent adds.
+  `
+ALTER TABLE logs ADD COLUMN IF NOT EXISTS attributes jsonb NOT NULL DEFAULT '{}';
+ALTER TABLE logs ADD COLUMN IF NOT EXISTS trace_id text;
+`,
 ];
 
 export async function migrateDatabase() {
