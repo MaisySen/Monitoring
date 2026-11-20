@@ -699,3 +699,9 @@ Unit: 76/76. CI greens through 43f64b9.
   empty; fixed and re-verified. Test keys accumulate only in the disposable valrun org.)
 - Verified 390x844: header clean, Services status readable, footer one line + disclosure;
   desktop 1440 unchanged.
+
+## Onboarding snippet fix (2026-11-21, pending commit)
+- Live verbatim test exposed: published Python onboarding snippet ended with plain `python app.py`, producing ZERO spans (bootstrap only installs deps; monitoring-run is the activator). Published instructions were broken for the Python path.
+- Fix: run line changed to `monitoring-run python app.py`. Web rebuilt; bundle verified to contain the corrected line.
+- Positive control: verbatim corrected snippet in fresh venv (/tmp/vtest + /tmp/vtest-app) produced spans for service snippet-test in valrun. (First 0-count was a stale plain-python process still holding :4902, not the fix failing.)
+- Docs.tsx monitoring-run references (3) already correct.

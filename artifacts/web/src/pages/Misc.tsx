@@ -1358,7 +1358,7 @@ node -r @monitoring/trace/init app.js`,
 MONITORING_URL=${URL} \
 MONITORING_API_KEY=${KEY} \
 MONITORING_SERVICE=my-app MONITORING_ENV=prod \
-python app.py`,
+monitoring-run python app.py`,
     otlp: `export OTEL_EXPORTER_OTLP_ENDPOINT=${URL}/otlp
 export OTEL_EXPORTER_OTLP_HEADERS=DC-API-KEY=${KEY}
 export OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
