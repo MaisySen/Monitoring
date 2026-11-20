@@ -301,3 +301,10 @@ queue). 100 spans/s, 60s runs, fault at 20s. Evidence: bench/evidence/recovery/s
 - Stage counters (566 prometheus scrapes, 2s cadence): max queue depth 581/1000 trace requests, 244/1000 log requests; receiver_refused = 0 for both signals across the whole suite (memory_limiter never engaged at 600 spans/s); exporter send_failed/enqueue_failed series never appeared.
 - Caveats: baseline rows verified live at collection but absent from final DB (recagent recreated between wrapper attempts; other 5 scenarios present in final DB state). Server intake has no idempotency keys: end-to-end semantics are at-least-once; 0 duplicates observed in these runs does not prove duplicates impossible (a response lost after commit would redeliver).
 - Evidence: bench/evidence/recovery/agent-2026-11-21.json, recovery-agent2.jsonl, tele-agent2.out; app-direct comparison in app-direct-2026-11-20.json + original-logs-2026-11-20/.
+
+## 2026-11-21 00:59 acceptance layer: shipped default config (run cbazi, 6/6, DB-verified)
+- Agent run via the generated default config (run -c agent-recovery.yaml, debug off, install.sh path) + SDK packed from the committed repo. Same 6 scenarios as wo501.
+- All 6 zero-loss, zero duplicates, all services present with exact counts in the FINAL DB state (unlike wo501's baseline caveat): baseline/backend_outage/agent_restart/db_restart/agent_kill_pending 18000 spans + 9000 logs; long_outage 180000 + 90000; agent_kill_pending stored 5847/18000 at SIGKILL, exact delivery after restart.
+- Default onboarding/recovery therefore matches the instrumented diagnostic runs in all measured scenarios. Scope note preserved: measured scenarios only, at-least-once semantics, zero observed duplicates is not a proof.
+- Direct-topology SDK-fix validation (run okoz5): backend_outage log loss 3888->100, long_outage log loss 70069->6489; span-path cause attribution limited to timing+app-log evidence per parent 00:41.
+- Evidence: bench/evidence/recovery/acceptance-2026-11-21.json, recovery-acceptance.jsonl, direct-fixed-2026-11-21.json.

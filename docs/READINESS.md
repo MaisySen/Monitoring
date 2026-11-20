@@ -37,7 +37,7 @@ anything without one is listed under Not yet verified. Dates are 2026-11-20 (Syd
   - server down 45s at 100 spans/s (past the 30s client retry budget): 52/11,000 spans lost (0.47%),
     zero duplicates, 1,880/5,500 logs lost (stock OTEL log exporter), fresh data 13ms after recovery.
     This is measured app-side loss without the agent; the agent layer's effect is now measured
-    (agent-topology suite below: the same class of outage is fully absorbed by the agent disk queue).
+    (agent-topology suite below: the measured outages were fully absorbed by the agent disk queue).
 - Alerting journey (dashboard -> alert -> webhook -> recovery): 14/14.
 - Unit suite: 63/63.
 
@@ -63,8 +63,11 @@ anything without one is listed under Not yet verified. Dates are 2026-11-20 (Syd
   566 scrapes: max queue depth 581/1000 requests, zero receiver refusals, zero exporter
   send/enqueue failures. Remaining caveats: zero duplicates observed does not prove the queue
   never double-delivers (server intake has no idempotency keys; semantics are at-least-once);
-  the shipped default agent config acceptance run and the direct-topology rerun with the fixed
-  SDK are still pending.
+  the direct-topology rerun with the fixed SDK is done
+  (direct-fixed-2026-11-21.json); the shipped default agent config acceptance run is done
+  (acceptance-2026-11-21.json, run cbazi: same 6 scenarios via the install.sh onboarding config,
+  all zero-loss, exact counts in final DB state). Scope: zero loss in these measured scenarios is
+  not a universal zero-loss guarantee.
 - **Recovery, app -> server direct, measured 2026-11-20** (evidence
   bench/evidence/recovery/app-direct-2026-11-20.json, all counts DB-verified). A harness wiring bug
   (MONITORING_URL leaking to the generator, which the SDK config reads as "direct mode") made the
@@ -76,11 +79,16 @@ anything without one is listed under Not yet verified. Dates are 2026-11-20 (Syd
     error; the patched span exporter's 30s retry covers all but the kill window. Fixed in
     sdks/node/lib/retry-log-exporter.js + larger log queue (commit e4ef049); validated direct-topology
     2026-11-21 (direct-fixed-2026-11-21.json): same fault loses 100 logs (was 3,888) and 616 spans
-    (was 617), residual = batches older than the 30s export retry budget during a 60s outage;
+    (was 617). Attribution: app-side export errors appear in the generator log only during the
+    outage window and the lost count matches the outage-minus-30s-retry-budget traffic, consistent
+    with retry-budget expiry; the 65,536-entry log queue was not the binding constraint at 9,000
+    logs. Span-path cause not independently confirmed by a stage counter.
   - long_outage 240s at 600 spans/s with pre-fix SDK: bounded loss (56,078/180,000 spans,
     19,931/90,000 logs stored, 0 duplicates) dominated by app-side buffering limits. With the fixed
-    SDK: 59,887/180,000 spans (span in-memory queue capacity bound) and 83,511/90,000 logs stored
-    (log loss -90.7%), 0 duplicates; residual loss is the tradeoff of agentless direct mode.
+    SDK: 59,887/180,000 spans and 83,511/90,000 logs stored (log loss -90.7%), 0 duplicates.
+    Span loss is consistent with in-memory queue capacity plus retry expiry (lost volume roughly
+    equals outage-window traffic minus the observed buffering), but no stage-level span counter
+    separates the two causes; direct-mode residual loss remains a readiness limitation.
 - **SSO revocation timing**: bounded by the 12h absolute session TTL plus issuance-time ordering; this is
   an explicit exposure limit, not prompt revocation. A fresh callback from an old provider login renewing
   stale claims is covered by iat-ordering + fail-closed ties, but identity-provider-specific behaviors

@@ -60,7 +60,7 @@
  ],
  "findings": [
   "backend_outage 60s: logs lost 3888 -> 100 (-97.4%); spans lost 617 -> 616 (unchanged). Residual 100 logs + 616 spans = batches older than MONITORING_EXPORT_RETRY_SECONDS=30s when the 60s outage exceeded the retry budget.",
-  "long_outage 240s @600spans/s: logs stored 19,931 -> 83,511/90,000 (loss -90.7%); spans stored 56,078 -> 59,887/180,000 (in-memory span queue capacity bound, ~120k spans is 240s x ~500 spans/s over the queue).",
-  "0 duplicates in both scenarios. Direct-mode residual loss is bounded by retry budget and in-memory queue size; the agent topology (disk queue) is the zero-loss path, proven in agent-2026-11-21.json."
+  "long_outage 240s @600spans/s: logs stored 19,931 -> 83,511/90,000 (loss -90.7%); spans stored 56,078 -> 59,887/180,000. Span loss is consistent with in-memory queue capacity plus retry expiry (lost volume roughly equals outage-window traffic minus observed buffering) but no stage-level span counter separates the causes.",
+  "0 duplicates in both scenarios. Direct-mode residual loss remains a readiness limitation. The agent topology showed zero loss in all six measured scenarios (agent-2026-11-21.json); that is a measured result for those scenarios, not a universal zero-loss guarantee."
  ]
 }

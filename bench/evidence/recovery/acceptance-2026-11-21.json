@@ -1,0 +1,188 @@
+{
+ "date": "2026-11-21",
+ "run": "cbazi",
+ "layer": "acceptance",
+ "topology": "agent via SHIPPED default config (run -c /tmp/agent-recovery.yaml, debug off, the install.sh onboarding path); SDK packed from committed repo",
+ "purpose": "validates that default onboarding/recovery matches the instrumented diagnostic runs; answers the 2026-11-20 23:27 requirement",
+ "scenarios": [
+  {
+   "scenario": "baseline",
+   "lang": "node",
+   "topology": "agent",
+   "service": "recovery-node-baseline-cbazi",
+   "resource_env": "recovery",
+   "resource_host": "recovery-bench-host",
+   "rate_spans_per_s": 200,
+   "seconds": 90,
+   "fault_started_s": 30.005,
+   "fault_duration_s": 0,
+   "sent": {
+    "spans": 18000,
+    "logs": 9000
+   },
+   "spans_rows": 18000,
+   "spans_unique": 18000,
+   "logs_rows": 9000,
+   "logs_unique": 9000,
+   "spans_missing": 0,
+   "spans_duplicates": 0,
+   "logs_missing": 0,
+   "logs_duplicates": 0,
+   "seconds_to_fresh_data_after_recovery": 0.518,
+   "seconds_to_fully_drained_after_end": 5.088
+  },
+  {
+   "scenario": "backend_outage",
+   "lang": "node",
+   "topology": "agent",
+   "service": "recovery-node-backend-outage-cbazi",
+   "resource_env": "recovery",
+   "resource_host": "recovery-bench-host",
+   "rate_spans_per_s": 200,
+   "seconds": 90,
+   "fault_started_s": 30.002,
+   "fault_duration_s": 60,
+   "sent": {
+    "spans": 18000,
+    "logs": 9000
+   },
+   "spans_rows": 18000,
+   "spans_unique": 18000,
+   "logs_rows": 9000,
+   "logs_unique": 9000,
+   "spans_missing": 0,
+   "spans_duplicates": 0,
+   "logs_missing": 0,
+   "logs_duplicates": 0,
+   "seconds_to_fresh_data_after_recovery": 11.774,
+   "seconds_to_fully_drained_after_end": 15.157
+  },
+  {
+   "scenario": "agent_restart",
+   "lang": "node",
+   "topology": "agent",
+   "service": "recovery-node-agent-restart-cbazi",
+   "resource_env": "recovery",
+   "resource_host": "recovery-bench-host",
+   "rate_spans_per_s": 200,
+   "seconds": 90,
+   "fault_started_s": 30.002,
+   "fault_duration_s": 0.673,
+   "sent": {
+    "spans": 18000,
+    "logs": 9000
+   },
+   "spans_rows": 18000,
+   "spans_unique": 18000,
+   "logs_rows": 9000,
+   "logs_unique": 9000,
+   "spans_missing": 0,
+   "spans_duplicates": 0,
+   "logs_missing": 0,
+   "logs_duplicates": 0,
+   "seconds_to_fresh_data_after_recovery": 1.027,
+   "seconds_to_fully_drained_after_end": 5.096
+  },
+  {
+   "scenario": "db_restart",
+   "lang": "node",
+   "topology": "agent",
+   "service": "recovery-node-db-restart-cbazi",
+   "resource_env": "recovery",
+   "resource_host": "recovery-bench-host",
+   "rate_spans_per_s": 200,
+   "seconds": 90,
+   "fault_started_s": 30.003,
+   "fault_duration_s": 0.213,
+   "sent": {
+    "spans": 18000,
+    "logs": 9000
+   },
+   "spans_rows": 18000,
+   "spans_unique": 18000,
+   "logs_rows": 9000,
+   "logs_unique": 9000,
+   "spans_missing": 0,
+   "spans_duplicates": 0,
+   "logs_missing": 0,
+   "logs_duplicates": 0,
+   "seconds_to_fresh_data_after_recovery": 0.532,
+   "seconds_to_fully_drained_after_end": 5.111
+  },
+  {
+   "scenario": "long_outage",
+   "lang": "node",
+   "topology": "agent",
+   "service": "recovery-node-long-outage-cbazi",
+   "resource_env": "recovery",
+   "resource_host": "recovery-bench-host",
+   "rate_spans_per_s": 600,
+   "seconds": 300,
+   "fault_started_s": 20.002,
+   "fault_duration_s": 240,
+   "sent": {
+    "spans": 180000,
+    "logs": 90000
+   },
+   "spans_rows": 180000,
+   "spans_unique": 180000,
+   "logs_rows": 90000,
+   "logs_unique": 90000,
+   "spans_missing": 0,
+   "spans_duplicates": 0,
+   "logs_missing": 0,
+   "logs_duplicates": 0,
+   "seconds_to_fresh_data_after_recovery": 21.786,
+   "seconds_to_fully_drained_after_end": 5.84
+  },
+  {
+   "scenario": "agent_kill_pending",
+   "lang": "node",
+   "topology": "agent",
+   "service": "recovery-node-agent-kill-pending-cbazi",
+   "resource_env": "recovery",
+   "resource_host": "recovery-bench-host",
+   "rate_spans_per_s": 200,
+   "seconds": 90,
+   "fault_started_s": 30.001,
+   "fault_duration_s": 1.198,
+   "sent": {
+    "spans": 18000,
+    "logs": 9000
+   },
+   "spans_rows": 18000,
+   "spans_unique": 18000,
+   "logs_rows": 9000,
+   "logs_unique": 9000,
+   "spans_missing": 0,
+   "spans_duplicates": 0,
+   "logs_missing": 0,
+   "logs_duplicates": 0,
+   "seconds_to_fresh_data_after_recovery": 2.085,
+   "seconds_to_fully_drained_after_end": 5.099,
+   "rows_at_agent_kill": {
+    "spans": 5847,
+    "logs": 2922
+   },
+   "queue_files_at_agent_kill": [
+    {
+     "file": "exporter_otlphttp_monitoring_logs",
+     "bytes": 8388608,
+     "mtime_ms": 1795183011741
+    },
+    {
+     "file": "exporter_otlphttp_monitoring_metrics",
+     "bytes": 32768,
+     "mtime_ms": 1795182423341
+    },
+    {
+     "file": "exporter_otlphttp_monitoring_traces",
+     "bytes": 16777216,
+     "mtime_ms": 1795183011773
+    }
+   ]
+  }
+ ],
+ "db_final_state": "all 6 services (tag cbazi) present with exact counts: 18000 spans/9000 logs each, long_outage 180000/90000",
+ "scope_note": "zero loss in these six measured scenarios is not a universal zero-loss guarantee; end-to-end semantics are at-least-once (no idempotency keys at intake) and zero duplicates observed does not prove duplicates impossible"
+}
