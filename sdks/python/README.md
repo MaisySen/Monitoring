@@ -21,6 +21,8 @@ MONITORING_SERVICE=python-example .venv/bin/monitoring-run python examples/app.p
 
 `monitoring-run` selects the Monitoring distro and configurator entry points and invokes `opentelemetry-instrument`. The `instrumentation` extra (or `monitoring-bootstrap` after installing the package) installs Flask, Django, FastAPI, requests, urllib3, sqlite3, psycopg2, psycopg, Redis and logging instrumentors. Install the frameworks and database drivers your application actually uses separately.
 
+Like upstream `opentelemetry-instrument`, `monitoring-run python app.py` re-executes the `python` found on `PATH`. Run it with your application's virtualenv activated (or invoke the venv's own `python` by path); if `PATH` resolves `python` outside the venv, the app starts uninstrumented and no spans are sent.
+
 Programmatic initialization must happen **before** importing your frameworks/drivers:
 
 ```python

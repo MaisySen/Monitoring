@@ -963,7 +963,15 @@ const STACKS = [
 
 export function Onboarding() {
   const org = useQuery({ queryKey: ["org"], queryFn: () => api<any>("/ui/org") });
-  const downloads = useQuery({ queryKey: ["downloads"], queryFn: () => api<{ files: { name: string }[] }>("/downloads") });
+  // The downloads router is mounted at the server root (unauthenticated, used by install.sh), not under /api.
+  const downloads = useQuery({
+    queryKey: ["downloads"],
+    queryFn: async () => {
+      const res = await fetch("/downloads", { credentials: "include" });
+      if (!res.ok) throw new Error("downloads list unavailable");
+      return (await res.json()) as { files: { name: string }[] };
+    },
+  });
   const haveTgz = !!downloads.data?.files.some((f) => f.name === "monitoring-trace-0.1.0.tgz");
   const haveWhl = !!downloads.data?.files.some((f) => f.name === "monitoring_trace-0.1.0-py3-none-any.whl");
   const now = useQuery({ queryKey: ["onboard-now"], queryFn: () => api<NowData>("/ui/now"), refetchInterval: 3_000 });
@@ -972,6 +980,13 @@ export function Onboarding() {
   const KEY = "PASTE-YOUR-API-KEY"; // placeholder: the real key stays in Organization Settings, never in this page
   const receiving = !!now.data?.receiving;
   const services = now.data?.services ?? [];
+  // When the SDK artifact for a stack is not in this server's downloads directory, the published install command
+  // cannot work. Show the fix (pack the SDKs) as the main action instead of a copyable command that would fail.
+  const missing: Record<string, string | null> = {
+    node: downloads.data && !haveTgz ? "npm package" : null,
+    python: downloads.data && !haveWhl ? "Python wheel" : null,
+    otlp: null,
+  };
   const snippet: Record<string, string> = {
     node: `npm install ${URL}/downloads/monitoring-trace-0.1.0.tgz
 
@@ -1038,18 +1053,16 @@ export OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
               </button>
             ))}
           </div>
-          <pre className="mono text-[12px] bg-panel border border-line rounded p-3 overflow-x-auto whitespace-pre">{snippet[stack]}</pre>
-          {downloads.data && stack === "node" && !haveTgz && (
-            <div className="text-[12px] text-bad mt-2">
-              The npm package is not in this server's downloads directory - the install command above will fail until the SDK is packed
-              (pnpm run pack:sdks).
-            </div>
-          )}
-          {downloads.data && stack === "python" && !haveWhl && (
-            <div className="text-[12px] text-bad mt-2">
-              The Python wheel is not in this server's downloads directory - the install command above will fail until the SDK is packed
-              (pnpm run pack:sdks with pip install build available).
-            </div>
+          {missing[stack] ? (
+            <>
+              <div className="text-[12px] text-bad mb-2">
+                The {missing[stack]} is not in this server's downloads directory, so the usual install command cannot work yet. Pack the
+                SDKs on the server, then return to this page:
+              </div>
+              <pre className="mono text-[12px] bg-panel border border-line rounded p-3 overflow-x-auto whitespace-pre">pnpm run pack:sdks</pre>
+            </>
+          ) : (
+            <pre className="mono text-[12px] bg-panel border border-line rounded p-3 overflow-x-auto whitespace-pre">{snippet[stack]}</pre>
           )}
           <div className="text-[12px] text-ink-3 mt-2">
             Full guides, including running through the Monitoring Agent: <Link className="text-primary" href="/docs/getting-started">Docs → Getting started</Link>
