@@ -21,6 +21,8 @@ import {
   ChevronDown,
   Check,
   Bug,
+  Gauge,
+  Boxes,
   Globe,
 } from "lucide-react";
 import { MonitoringMark } from "./Logo";
@@ -28,7 +30,31 @@ import { useAuthUser } from "@/lib/auth";
 import { api } from "@/lib/api";
 
 type NavItem = { label: string; icon: any; href: string; match: string[]; children?: { label: string; href: string }[] };
+// Primary nav is answers-first (Now / Services / Errors / Uptime); power-user surfaces
+// (dashboard builder, hand-written monitor queries, explorers, host map) sit under Advanced.
+// A Deploys entry joins the primary group when deploy markers land (P1) - no dead entries.
 const NAV_GROUPS: NavItem[][] = [
+  [
+    {
+      label: "Now",
+      icon: Gauge,
+      href: "/",
+      match: [],
+      children: [{ label: "Problems & service health", href: "/" }],
+    },
+    {
+      label: "Services",
+      icon: Boxes,
+      href: "/apm/services",
+      match: ["/apm"],
+      children: [
+        { label: "Service Catalog", href: "/apm/services" },
+        { label: "Traces", href: "/apm/traces" },
+      ],
+    },
+    { label: "Errors", icon: Bug, href: "/errors", match: ["/errors"] },
+    { label: "Uptime", icon: Globe, href: "/uptime", match: ["/uptime"] },
+  ],
   [
     {
       label: "Dashboards",
@@ -52,37 +78,6 @@ const NAV_GROUPS: NavItem[][] = [
       ],
     },
     {
-      label: "Uptime",
-      icon: Globe,
-      href: "/uptime",
-      match: ["/uptime"],
-      children: [{ label: "Checks", href: "/uptime" }],
-    },
-  ],
-  [
-    {
-      label: "Infrastructure",
-      icon: Server,
-      href: "/infrastructure",
-      match: ["/infrastructure"],
-      children: [
-        { label: "Hosts", href: "/infrastructure" },
-        { label: "Host Map", href: "/infrastructure/map" },
-      ],
-    },
-    {
-      label: "APM",
-      icon: Activity,
-      href: "/apm/services",
-      match: ["/apm"],
-      children: [
-        { label: "Service Catalog", href: "/apm/services" },
-        { label: "Traces", href: "/apm/traces" },
-      ],
-    },
-  ],
-  [
-    {
       label: "Metrics",
       icon: LineChart,
       href: "/metric/explorer",
@@ -104,10 +99,20 @@ const NAV_GROUPS: NavItem[][] = [
       ],
     },
     { label: "Events", icon: CalendarClock, href: "/event/explorer", match: ["/event"] },
-    { label: "Errors", icon: Bug, href: "/errors", match: ["/errors"] },
+    {
+      label: "Infrastructure",
+      icon: Server,
+      href: "/infrastructure",
+      match: ["/infrastructure"],
+      children: [
+        { label: "Hosts", href: "/infrastructure" },
+        { label: "Host Map", href: "/infrastructure/map" },
+      ],
+    },
   ],
 ];
 const NAV = NAV_GROUPS.flat();
+const NAV_GROUP_TITLES = [null, "Advanced"];
 
 function NavLink({ n, active, onHover, hover, close }: { n: NavItem; active: boolean; onHover: (s: string) => void; hover: string | null; close: () => void }) {
   return (
@@ -251,7 +256,7 @@ export function Layout({ children }: { children: ReactNode }) {
   const [hover, setHover] = useState<string | null>(null);
   const [palette, setPalette] = useState(false);
   const { user, logout } = useAuthUser();
-  const active = (n: NavItem) => n.match.some((m) => loc.startsWith(m));
+  const active = (n: NavItem) => (n.href === "/" ? loc === "/" : n.match.some((m) => loc.startsWith(m)));
   useEffect(() => {
     const f = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
@@ -274,6 +279,7 @@ export function Layout({ children }: { children: ReactNode }) {
         <div className="flex-1 flex flex-col gap-3 pt-1">
           {NAV_GROUPS.map((g, gi) => (
             <div key={gi} className="flex flex-col gap-px">
+              {NAV_GROUP_TITLES[gi] && <div className="mx-2 px-2.5 pt-3 pb-1 text-[10px] font-semibold tracking-wider text-white/40 uppercase">{NAV_GROUP_TITLES[gi]}</div>}
               {g.map((n) => (
                 <NavLink key={n.label} n={n} active={active(n)} hover={hover} onHover={setHover} close={() => setHover(null)} />
               ))}
