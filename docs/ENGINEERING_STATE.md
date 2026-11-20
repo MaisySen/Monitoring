@@ -505,3 +505,11 @@ Three product-correctness gaps from parent review, fixed and live-verified:
    verify: same error shape sent from prod and staging merged into one group count=9 with
    envs=["prod","staging"] displayed; UI footnote states env does not split groups.
 Unit: 74/74 (6 new: env merge, low-traffic-with-errors, quiet wording, degraded thresholds).
+
+### Org isolation, error groups (live negative control, 07:04 AEDT)
+Second org (same user, switched session): GET /api/ui/errors returned 0 groups; GET
+/api/ui/errors/<org-A-fingerprint>/spans returned 404; seeding the SAME error shape into org B
+produced an independent row under the same fingerprint hash, count=1, while org A's group was
+untouched (its count moved 9 -> 10 only because the first harness attempt, before the
+org-select fix, seeded one span into org A by mistake - accounted for, not leakage).
+Harness lesson recorded: /ui/orgs does not switch the session; /ui/org/select is required.
