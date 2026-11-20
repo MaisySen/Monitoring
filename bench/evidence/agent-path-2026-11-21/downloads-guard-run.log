@@ -1,0 +1,3 @@
+PASS [monitoring-agent-linux-amd64]: 135864482 bytes, magic ok
+PASS [monitoring-trace-0.1.0.tgz]: 21734 bytes, magic ok
+PASS [monitoring_trace-0.1.0-py3-none-any.whl]: 23296 bytes, magic ok

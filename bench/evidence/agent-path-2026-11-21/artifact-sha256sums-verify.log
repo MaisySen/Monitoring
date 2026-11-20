@@ -1,0 +1,5 @@
+monitoring-agent-THIRD_PARTY_NOTICES.txt: OK
+monitoring-agent-darwin-amd64: OK
+monitoring-agent-darwin-arm64: OK
+monitoring-agent-linux-amd64: OK
+monitoring-agent-linux-arm64: OK

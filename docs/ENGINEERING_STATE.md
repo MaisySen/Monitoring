@@ -712,3 +712,9 @@ Unit: 76/76. CI greens through 43f64b9.
 - Negative controls: python check against the pre-fix source correctly FAILs (evidence in bench/evidence/onboarding-snippet-2026-11-21/). Node/OTLP had no incident; their checks guard regressions only.
 - Failed-path evidence preserved: bench/evidence/onboarding-snippet-2026-11-21/ (before/after snippets, diff, verbatim negative run logs, span count 0).
 - Process note: an over-broad port-cleanup kill took down Postgres and the e2e server mid-session; both restored (fast shutdown after smart shutdown hung on pooled connections; e2e :4730 relaunched with MONITORING_UPTIME_ALLOW_PRIVATE=true). No data loss; valrun/e2e dbs intact.
+
+## Agent downloads placeholder incident + agent path verified (2026-11-21)
+- Found: served monitoring-agent-linux-amd64 was a 100KB random-data placeholder; published install.sh would have installed it "successfully" (self-consistent hashes) and the agent would fail to exec. Same incident class as the Python snippet: a published path green by construction, broken in fact.
+- Fix: real CI artifact 14618621071 (run 44710994706) SHA256SUMS-verified and installed into the downloads dir (gitignored by design; pack/deploy must include binaries).
+- Live verbatim verification of Docs "with agent" path: agent up (4317/4318), SDK with no MONITORING_URL/KEY -> localhost:4318 -> agent -> server; span stored service=checkout, version 1.0.0 env=prod in service_versions.
+- New regression: bench/regression/downloads-artifacts.sh (magic bytes + minimum size per artifact); all 3 PASS against valrun. Placeholder would fail size+magic. Evidence: bench/evidence/agent-path-2026-11-21/.
