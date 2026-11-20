@@ -80,6 +80,108 @@ function KeyCell({ k }: { k: string }) {
   );
 }
 
+/** Today's usage against the organization's ingestion limits; admins edit the limits. */
+function UsagePanel({ isAdmin, setErr }: { isAdmin: boolean; setErr: (e: string | null) => void }) {
+  const qc = useQueryClient();
+  const q = useQuery({ queryKey: ["quotas"], queryFn: () => api<any>("/ui/org/quotas"), refetchInterval: 30_000 });
+  const [form, setForm] = useState<Record<string, string>>({});
+  const save = useMutation({
+    mutationFn: () => {
+      const body: Record<string, number | null> = {};
+      for (const [k, v] of Object.entries(form)) body[k] = v.trim() === "" ? null : Number(v);
+      return api("/ui/org/quotas", { method: "PUT", body });
+    },
+    onError: (e: any) => setErr(e.message),
+    onSuccess: () => {
+      setErr(null);
+      setForm({});
+      qc.invalidateQueries({ queryKey: ["quotas"] });
+    },
+  });
+  const quotas = q.data?.quotas ?? {};
+  const usage = q.data?.usage ?? {};
+  const fields: [string, string, number | null, number | undefined][] = [
+    ["maxPointsPerDay", "Metric points per day", quotas.maxPointsPerDay, usage.points],
+    ["maxLogsPerDay", "Logs per day", quotas.maxLogsPerDay, usage.logs],
+    ["maxSpansPerDay", "Spans per day", quotas.maxSpansPerDay, usage.spans],
+    ["maxSeries", "Active metric series", quotas.maxSeries, usage.series],
+    ["maxIngestBytesPerMinute", "Ingest bytes per minute", quotas.maxIngestBytesPerMinute, usage.bytesThisMinute],
+  ];
+  return (
+    <div className="space-y-4 max-w-2xl">
+      <p className="text-xs text-ink-2">
+        Usage today ({usage.day ?? "…"}) against this organization's limits. Empty means no limit. Data over a limit is
+        refused and counted under dropped intake, so nothing is lost silently.
+      </p>
+      <table className="tbl card">
+        <thead>
+          <tr>
+            <th>Limit</th>
+            <th>Used today</th>
+            <th>Limit</th>
+          </tr>
+        </thead>
+        <tbody>
+          {fields.map(([key, label, limit, used]) => (
+            <tr key={key}>
+              <td>{label}</td>
+              <td className={limit != null && (used ?? 0) >= limit ? "text-alert font-semibold" : ""}>{fmtNum(used ?? 0)}</td>
+              <td>
+                {isAdmin ? (
+                  <input
+                    className="input h-7 w-32 text-xs"
+                    placeholder={limit == null ? "no limit" : String(limit)}
+                    value={form[key] ?? ""}
+                    onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))}
+                    data-testid={`quota-${key}`}
+                  />
+                ) : limit == null ? (
+                  <span className="text-ink-3">no limit</span>
+                ) : (
+                  fmtNum(limit)
+                )}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {isAdmin && (
+        <div className="flex items-center gap-3">
+          <button className="btn-primary" disabled={save.isPending || !Object.keys(form).length} onClick={() => save.mutate()} data-testid="save-quotas">
+            Save limits
+          </button>
+          {save.isSuccess && <span className="text-xs text-ink-2">Saved.</span>}
+        </div>
+      )}
+      {q.data?.intake && Object.keys(q.data.intake).length > 0 && (
+        <div>
+          <div className="section-title mb-2">Intake since server start</div>
+          <table className="tbl card">
+            <thead>
+              <tr>
+                <th>Path</th>
+                <th>Stored</th>
+                <th>Dropped</th>
+                <th>Last drop reason</th>
+              </tr>
+            </thead>
+            <tbody>
+              {Object.entries(q.data.intake).map(([path, s]: [string, any]) => (
+                <tr key={path}>
+                  <td className="mono text-xs">{path}</td>
+                  <td>{fmtNum(s.stored)}</td>
+                  <td className={s.dropped ? "text-alert" : ""}>{fmtNum(s.dropped)}</td>
+                  <td className="text-ink-2 text-xs">{s.last_drop?.reason ?? "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** Lists the signed-in user's organizations and offers create / join-with-invite. Switching lives in the sidebar. */
 function OrganizationsPanel({
   createOrg,
@@ -256,6 +358,7 @@ export function OrgSettings() {
     ["app-keys", "Application Keys"],
     ["users", "Users"],
     ["organizations", "Organizations"],
+    ["usage", "Usage & Limits"],
     ["integrations", "Webhooks & Slack"],
     ["sample", "Sample Data"],
   ];
@@ -488,6 +591,7 @@ export function OrgSettings() {
               err={err}
             />
           )}
+          {tab === "usage" && <UsagePanel isAdmin={isAdmin} setErr={setErr} />}
           {tab === "sample" && (
             <div className="card p-5 max-w-2xl space-y-3">
               <div className="section-title">Sample data</div>
