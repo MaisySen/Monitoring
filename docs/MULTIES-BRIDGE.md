@@ -54,15 +54,24 @@ Ownership transfer remains a Multies-side concept; Monitoring does not need to m
 
 ## Bridge options, in order of what works today
 
-### B1. Workspace binding by API key (no Multies changes; org-level only)
+### B1. Connection validation record (no Multies changes; org-level only)
 
 A Multies workspace admin pastes an `mm_live_…` key (scope `read` suffices) into the
-Monitoring org's settings. Monitoring verifies it by calling a read endpoint of the
-Multies v1 API and records the binding (Multies workspace id ↔ Monitoring org id) plus
-the key hash. This proves the same people operate both sides and enables later per-org
-integrations (e.g. posting alert notifications into Multies chat). It is *not* person
-sign-in and must never become one: an `mm_live_` key acts as the workspace admin, so
-accepting it as a user credential would hand workspace-admin power to any login.
+Monitoring org's settings. Monitoring verifies it once, at that moment, by calling a
+read endpoint of the Multies v1 API, then discards the raw key and keeps only its hash.
+The record says exactly this: at validation time, an admin of this Monitoring org held a
+working Multies workspace API key. Nothing more:
+
+- It is **not a credential store**: the raw key is never persisted, so the record cannot
+  authenticate any future outbound call to Multies. A functional reporting bridge (e.g.
+  posting alert notifications into Multies chat) would need a separately approved,
+  durably stored credential (approved vault handling), which this does not create.
+- It is **not verified workspace identity**: the Multies v1 API proves key validity but
+  exposes no workspace-identity endpoint, so the stored workspace label is self-declared
+  by the admin and presented that way.
+- It is *not* person sign-in and must never become one: an `mm_live_` key acts as the
+  workspace admin, so accepting it as a user credential would hand workspace-admin power
+  to any login.
 
 ### B2. Sign in with Multies via its OAuth 2.1 server (needs a small Multies change)
 
@@ -126,12 +135,11 @@ Only after B2. Not designed further here; it depends on Multies front-end work.
 ## Status
 
 - B1: Monitoring half implemented and tested against a stub Multies v1 API
-  (bench/security/multies-bridge.js, 11/11): bind verifies the key against GET /api/v1/domains,
-  stores only its sha256 hash, redacts it in reads, is admin-only to write, replaces on re-bind,
-  unbinds, and refuses private/local Multies URLs unless MONITORING_ALLOW_PRIVATE_WEBHOOKS is set.
-  The Multies API proves key validity but exposes no workspace identity endpoint, so the stored
-  workspace label is self-declared by the admin and presented that way. Live verification against a
-  real Multies deployment remains an external dependency.
+  (bench/security/multies-bridge.js, 11/11): the connection check verifies the key once
+  against GET /api/v1/domains, stores only its sha256 hash, redacts it in reads, is
+  admin-only to write, replaces on re-validation, deletes cleanly, and refuses
+  private/local Multies URLs unless MONITORING_ALLOW_PRIVATE_WEBHOOKS is set. Live
+  verification against a real Multies deployment remains an external dependency.
 - B2 Monitoring half: implemented and tested locally (OIDC sign-in); Multies half blocked
   on Multies write authority.
 - B3: not started.

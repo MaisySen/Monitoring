@@ -453,11 +453,11 @@ router.post(
     res.json({ id: k.id, name: k.name, kind: k.kind, key: k.key });
   }),
 );
-// B1 Multies bridge (docs/MULTIES-BRIDGE.md): bind this organization to a Multies workspace by verifying a
-// workspace API key against the Multies v1 API. Org-level only; never a sign-in path. The raw key is verified
-// once and discarded - only its hash is stored.
+// B1 Multies connection validation (docs/MULTIES-BRIDGE.md): record that an admin of this organization held a
+// working Multies workspace key, verified once against the Multies v1 API. Org-level only; never a sign-in path.
+// The raw key is verified once and discarded - only its hash is stored.
 router.post(
-  "/ui/org/multies-binding",
+  "/ui/org/multies-connection",
   requireAdmin,
   h(async (req, res) => {
     const baseUrl = String(req.body?.base_url || "").replace(/\/+$/, "");
@@ -468,7 +468,7 @@ router.post(
     if (!/^mm_live_[A-Za-z0-9_=-]{8,}$/.test(key)) throw new HttpError(400, "api_key must be a Multies workspace key (mm_live_…)");
     await verifyMultiesKey(baseUrl, key);
     await pool.query(
-      `INSERT INTO multies_bindings (org_id, workspace_label, base_url, key_hash, key_hint, bound_by)
+      `INSERT INTO multies_connections (org_id, workspace_label, base_url, key_hash, key_hint, bound_by)
        VALUES ($1, $2, $3, $4, $5, $6)
        ON CONFLICT (org_id) DO UPDATE SET workspace_label = $2, base_url = $3, key_hash = $4, key_hint = $5, bound_by = $6, created_at = now()`,
       [req.orgId!, label, baseUrl, hashBindingKey(key), key.slice(-4), req.authUser?.id ?? null],
@@ -477,10 +477,10 @@ router.post(
   }),
 );
 router.get(
-  "/ui/org/multies-binding",
+  "/ui/org/multies-connection",
   requireOrg,
   h(async (req, res) => {
-    const { rows } = await pool.query("SELECT workspace_label, base_url, key_hint, created_at FROM multies_bindings WHERE org_id = $1", [req.orgId!]);
+    const { rows } = await pool.query("SELECT workspace_label, base_url, key_hint, created_at FROM multies_connections WHERE org_id = $1", [req.orgId!]);
     const b = rows[0];
     res.json({
       bound: !!b,
@@ -491,10 +491,10 @@ router.get(
   }),
 );
 router.delete(
-  "/ui/org/multies-binding",
+  "/ui/org/multies-connection",
   requireAdmin,
   h(async (req, res) => {
-    await pool.query("DELETE FROM multies_bindings WHERE org_id = $1", [req.orgId!]);
+    await pool.query("DELETE FROM multies_connections WHERE org_id = $1", [req.orgId!]);
     res.json({ ok: true });
   }),
 );

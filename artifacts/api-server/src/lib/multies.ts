@@ -1,14 +1,12 @@
 import crypto from "node:crypto";
 import { getChecked } from "./safeHttp";
 
-// B1 Multies bridge (docs/MULTIES-BRIDGE.md): a workspace admin pastes an mm_live_ key and we verify it
-// against the Multies v1 API. The Multies API proves the key is valid and org-scoped, but it exposes no
-// "whoami" endpoint, so it cannot tell us WHICH workspace the key belongs to - the workspace label stored
-// with the binding is self-declared by the admin and must be presented that way.
-//
-// A binding is never a sign-in path: an mm_live_ key acts as the workspace admin, so accepting it as a
-// user credential would hand workspace-admin power to any login. It is verified once, hashed, and the
-// raw value is never stored.
+// B1 Multies connection validation (docs/MULTIES-BRIDGE.md): a workspace admin pastes an mm_live_ key and
+// we verify it once against the Multies v1 API, keep only its hash, and discard the raw value. The stored
+// record is a connection-validation record - proof that an admin held a working key at validation time.
+// It is NOT a credential store (nothing here can authenticate a future Multies call), NOT verified
+// workspace identity (the v1 API has no whoami; the label is self-declared), and never a sign-in path
+// (an mm_live_ key acts as the workspace admin).
 
 export function hashBindingKey(key: string): string {
   return crypto.createHash("sha256").update(key).digest("hex");

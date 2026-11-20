@@ -154,11 +154,11 @@ ALTER TABLE sessions ALTER COLUMN expire TYPE timestamptz USING expire AT TIME Z
 ALTER TABLE logs ADD COLUMN IF NOT EXISTS attributes jsonb NOT NULL DEFAULT '{}';
 ALTER TABLE logs ADD COLUMN IF NOT EXISTS trace_id text;
 `,
-  // 10: B1 Multies bridge - one binding per organization. Only the key hash is stored; the raw
-  // workspace key is verified once at bind time and never persisted. workspace_label is
+  // 10: B1 Multies connection validation - one record per organization. Only the key hash is stored; the
+  // raw workspace key is verified once at validation time and never persisted. workspace_label is
   // self-declared by the admin: the Multies v1 API proves key validity, not workspace identity.
   `
-CREATE TABLE IF NOT EXISTS multies_bindings (
+CREATE TABLE IF NOT EXISTS multies_connections (
   org_id integer PRIMARY KEY REFERENCES orgs(id) ON DELETE CASCADE,
   workspace_label text NOT NULL,
   base_url text NOT NULL,
