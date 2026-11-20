@@ -347,3 +347,20 @@ queue). 100 spans/s, 60s runs, fault at 20s. Evidence: bench/evidence/recovery/s
   (80/40, 50/25, errors 10/5). Fixed build on a fresh DB: 10/10 PASS.
 - Demo reseeded on the fixed build (DEMO_SUMMARY Alert + delivery as before); span_stats hits == 362 ==
   raw roots per service; all 7 screenshots recaptured and the catalog now reads 362 requests/service.
+
+## 2026-11-21 03:25 axes fix, peak labels, soak + ClickHouse verified, agent build blocked on RAM
+- Charts rendered without axes (React 19 + recharts 2.15.4 dropped children passed as one JSX
+  fragment); fixed by passing axis elements as a plain array. DOM-verified; screenshots recaptured.
+- Peak labels on small charts collided (one max per series-third); labels now de-collided with a
+  minimum separation, and timeseries widget headers show the query as a subtitle so the aggregation
+  behind plotted values is visible on the dashboard.
+- Soak (bench/evidence/scale/soak-600sps-2026-11-21.md): 620 spans/s x 5 min, zero loss —
+  186,223/186,223 spans, 30,586/30,586 logs, 68,000/68,000 sent metric points, 0/2,450 errors.
+- ClickHouse path end-to-end (bench/evidence/clickhouse/ch-e2e-2026-11-21.md): fresh CH 26.12.1.59,
+  schema auto-created, spans 5,720/5,720, logs 924/924, points 620/620, 0 errors; services list,
+  span search, trace view, log search and metrics query all served from CH; span_stats hits match
+  is_top_level roots exactly (parent_id='0' is the wrong probe — entry spans, not parentless spans).
+- Agent from-scratch build (bench/evidence/agent-build/sandbox-build-2026-11-21.md): blocked by
+  sandbox RAM — kernel OOM kills the compile of the datadog-api-client-go datadogV2 dependency even
+  with -p 1, all other services stopped, and -gcflags='all=-l'. Environment limit, not a defect;
+  build.sh unchanged (needs a 4 GB+ machine).
