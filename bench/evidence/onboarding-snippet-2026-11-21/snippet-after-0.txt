@@ -1,0 +1,6 @@
+pip install "monitoring-trace[instrumentation] @ ${URL}/downloads/monitoring_trace-0.1.0-py3-none-any.whl"
+
+MONITORING_URL=${URL} \
+MONITORING_API_KEY=${KEY} \
+MONITORING_SERVICE=my-app MONITORING_ENV=prod \
+monitoring-run python app.py
