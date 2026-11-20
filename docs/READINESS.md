@@ -46,6 +46,12 @@ anything without one is listed under Not yet verified. Dates are 2026-11-20 (Syd
 - Alerting journey (dashboard -> alert -> webhook -> recovery): 14/14.
 - Unit suite: 63/63.
 
+**Demo journey (M4)**
+- Scripted seed + headless-Chrome screenshots of a realistic org (bench/demo/, evidence
+  bench/evidence/demo/): service catalog with error rates, log explorer, dashboard with live
+  timeseries, monitor driven into Alert with a delivered webhook, Usage & Limits tab, org switcher
+  across two orgs. Every screenshot visually verified after capture.
+
 **Security of key material**
 - API keys are shown once at creation and never returned by routine API/UI responses; install commands
   use a shell-safe placeholder or a freshly created key embedded once in-page. Revocation takes effect at

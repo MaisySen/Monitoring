@@ -320,3 +320,16 @@ queue). 100 spans/s, 60s runs, fault at 20s. Evidence: bench/evidence/recovery/s
 - Evidence: bench/evidence/security/memberships-2026-11-21.json, isolation-2026-11-21.json.
 - M5 is now fully closed. Remaining build items: M4 demo journey + UI screenshots; M6 readiness document
   assembly; B2 Multies OIDC (blocked on Multies-write authority); hosting/deployment (blocked, not authorized).
+
+## 2026-11-21 01:52 M4 demo journey complete (visually verified)
+- bench/demo/seed-demo.js: fresh server -> setup/login/API key -> 3 services seeded (1,743 spans,
+  816 logs, 543+ metric points over 30 min, ~5% errors) -> dashboard (3 widgets) -> webhook channel +
+  metric monitor driven into Alert with a real HTTP 200 delivery -> second org "Acme Staging" seeded.
+  DEMO_SUMMARY: dashboardId g87-6uu-sog, monitorId 1, monitorState Alert, alertWebhookDelivered true.
+- bench/demo/screenshot-demo.mjs (puppeteer-core + system Chrome, real login form): 7 screenshots in
+  bench/evidence/demo/, each visually inspected after capture: apm-services (3 services, error-rate
+  attention card, monitor-alerting banner), logs (816 entries, severity facets), dashboard (3 live
+  timeseries), monitors list (1 ALERT), monitor-firing (status history OK->Alert + delivery HTTP 200),
+  org-settings-usage (Usage & Limits tab, counts matching the seeded totals), org-switcher-open
+  (both orgs, roles).
+- Needs MONITORING_ALLOW_PRIVATE_WEBHOOKS=true for the loopback alert sink (documented in bench/demo/README.md).
