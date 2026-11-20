@@ -46,6 +46,25 @@ anything without one is listed under Not yet verified. Dates are 2026-11-20 (Syd
 - Alerting journey (dashboard -> alert -> webhook -> recovery): 14/14.
 - Unit suite: 63/63.
 
+**Recovery, end to end (agent + server + Postgres)**
+- **Recovery, app -> agent -> server, measured 2026-11-21** (run wo501, 6/6 scenarios,
+  all counts DB-verified per service; evidence bench/evidence/recovery/agent-2026-11-21.json).
+  Harness strips MONITORING_URL from the generator and asserts stored rows carry the agent
+  resource identity (0 topology violations). Agent: otelcol-contrib disk queue; instrumentation
+  delta vs generated default config is observe-only (verified by diff). SDK: RetryingLogExporter
+  + 65536-entry log queue (commit e4ef049). Results, spans/logs stored vs sent, 0 duplicates in
+  every scenario: baseline 18000/18000 + 9000/9000; backend_outage 60s 18000/18000 + 9000/9000
+  (fresh 11.8s after recovery, drained 25.2s); agent_restart SIGTERM 18000/18000 + 9000/9000;
+  db_restart 18000/18000 + 9000/9000; long_outage 240s at 600 spans/s 180000/180000 + 90000/90000
+  (fresh 26.0s, drained 0.4s); agent_kill_pending (SIGKILL with 16MiB/8MiB queue files pending,
+  5867/18000 spans stored at kill) 18000/18000 + 9000/9000 after restart. Stage counters over
+  566 scrapes: max queue depth 581/1000 requests, zero receiver refusals, zero exporter
+  send/enqueue failures. Acceptance rerun under the SHIPPED default agent config (install.sh onboarding path, debug off,
+  run cbazi): same 6 scenarios, all zero-loss, all counts present in final DB state
+  (acceptance-2026-11-21.json). Scope: zero loss in these measured scenarios is not a universal
+  zero-loss guarantee; zero duplicates observed does not prove the queue never double-delivers
+  (server intake has no idempotency keys; semantics are at-least-once).
+
 **Demo journey (M4)**
 - Scripted seed + headless-Chrome screenshots of a realistic org (bench/demo/, evidence
   bench/evidence/demo/): service catalog with error rates, log explorer, dashboard with live
@@ -60,26 +79,9 @@ anything without one is listed under Not yet verified. Dates are 2026-11-20 (Syd
 
 ## Not yet verified (explicit gaps)
 
-- **Recovery, app -> agent -> server, measured 2026-11-21** (run wo501, 6/6 scenarios,
-  all counts DB-verified per service; evidence bench/evidence/recovery/agent-2026-11-21.json).
-  Harness strips MONITORING_URL from the generator and asserts stored rows carry the agent
-  resource identity (0 topology violations). Agent: otelcol-contrib disk queue; instrumentation
-  delta vs generated default config is observe-only (verified by diff). SDK: RetryingLogExporter
-  + 65536-entry log queue (commit e4ef049). Results, spans/logs stored vs sent, 0 duplicates in
-  every scenario: baseline 18000/18000 + 9000/9000; backend_outage 60s 18000/18000 + 9000/9000
-  (fresh 11.8s after recovery, drained 25.2s); agent_restart SIGTERM 18000/18000 + 9000/9000;
-  db_restart 18000/18000 + 9000/9000; long_outage 240s at 600 spans/s 180000/180000 + 90000/90000
-  (fresh 26.0s, drained 0.4s); agent_kill_pending (SIGKILL with 16MiB/8MiB queue files pending,
-  5867/18000 spans stored at kill) 18000/18000 + 9000/9000 after restart. Stage counters over
-  566 scrapes: max queue depth 581/1000 requests, zero receiver refusals, zero exporter
-  send/enqueue failures. Remaining caveats: zero duplicates observed does not prove the queue
-  never double-delivers (server intake has no idempotency keys; semantics are at-least-once);
-  the direct-topology rerun with the fixed SDK is done
-  (direct-fixed-2026-11-21.json); the shipped default agent config acceptance run is done
-  (acceptance-2026-11-21.json, run cbazi: same 6 scenarios via the install.sh onboarding config,
-  all zero-loss, exact counts in final DB state). Scope: zero loss in these measured scenarios is
-  not a universal zero-loss guarantee.
-- **Recovery, app -> server direct, measured 2026-11-20** (evidence
+
+
+- **Direct-mode (agentless) outage loss - OPEN LIMITATION, engineering-side** (evidence
   bench/evidence/recovery/app-direct-2026-11-20.json, all counts DB-verified). A harness wiring bug
   (MONITORING_URL leaking to the generator, which the SDK config reads as "direct mode") made the
   first full-stack run bypass the agent; the rerun above adds the agent-mediated measurements.
@@ -99,11 +101,18 @@ anything without one is listed under Not yet verified. Dates are 2026-11-20 (Syd
     SDK: 59,887/180,000 spans and 83,511/90,000 logs stored (log loss -90.7%), 0 duplicates.
     Span loss is consistent with in-memory queue capacity plus retry expiry (lost volume roughly
     equals outage-window traffic minus the observed buffering), but no stage-level span counter
-    separates the two causes; direct-mode residual loss remains a readiness limitation.
-- **SSO revocation timing**: bounded by the 12h absolute session TTL plus issuance-time ordering; this is
+    separates the two causes; direct-mode residual loss remains a readiness limitation.- **SSO revocation timing**: bounded by the 12h absolute session TTL plus issuance-time ordering; this is
   an explicit exposure limit, not prompt revocation. A fresh callback from an old provider login renewing
   stale claims is covered by iat-ordering + fail-closed ties, but identity-provider-specific behaviors
   (back-channel logout, per-provider claim freshness) are untested - no live IdP was available.
+- **ClickHouse storage path**: compiled and unit-covered but never exercised end-to-end in these
+  benches; every measured result above is the Postgres path. Locally testable, not yet done.
+- **Go agent build**: the CI-built agent binary was used in the recovery suites, but a from-scratch
+  build (agent/build.sh) has not been re-verified in this environment. Locally testable, not yet done.
+- **Concurrency and soak**: the heaviest sustained load measured is 600 spans/s for 5 minutes
+  (long_outage) plus the bounded scale run; no hours-long soak, no high-cardinality stress, no
+  multi-process intake concurrency test beyond the two-process quota checks. Locally testable,
+  not yet done.
 - **Production hardening**: no HTTPS terminator, rate limiting at the edge, HA Postgres, or multi-node
   deployment has been set up or tested; no paid hosting or live deployment is authorized.
 - **Multies bridge**: design documented in docs/MULTIES-BRIDGE.md (B1 workspace API-key binding ready on

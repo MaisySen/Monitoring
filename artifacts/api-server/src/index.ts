@@ -6,7 +6,7 @@ import { storage, useClickHouse } from "./lib/storage";
 import { ensureChSchema } from "./lib/ch";
 import { pool } from "@workspace/db";
 import { generatedSetupToken } from "./routes/auth";
-import { flushSpanStats } from "./query/apmStats";
+import { ensureSpanStats, flushSpanStats } from "./query/apmStats";
 
 const rawPort = process.env["PORT"] ?? "3000";
 const port = Number(rawPort);
@@ -14,6 +14,12 @@ if (Number.isNaN(port) || port <= 0) throw new Error(`Invalid PORT value: "${raw
 
 await migrateDatabase();
 if (useClickHouse) await ensureChSchema();
+// The rollup table must exist (and any backfill must be computed from pre-boot spans only) BEFORE
+// intake can record: a lazy first ensure would backfill spans that intake has already recorded
+// into the pending in-memory aggregates, double-counting them (measured 2026-11-21: service
+// catalog showed exactly 2x root spans on a fresh install). ensureSpanStats is a no-op under
+// ClickHouse and after the first call.
+await ensureSpanStats();
 logger.info({ storage }, "telemetry storage");
 if (generatedSetupToken && !(await pool.query("select 1 from users limit 1")).rowCount) {
   logger.warn(`First-run setup token (enter it on the setup page): ${generatedSetupToken}`);

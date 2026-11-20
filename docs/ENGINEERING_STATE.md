@@ -333,3 +333,17 @@ queue). 100 spans/s, 60s runs, fault at 20s. Evidence: bench/evidence/recovery/s
   org-settings-usage (Usage & Limits tab, counts matching the seeded totals), org-switcher-open
   (both orgs, roles).
 - Needs MONITORING_ALLOW_PRIVATE_WEBHOOKS=true for the loopback alert sink (documented in bench/demo/README.md).
+
+## 2026-11-21 02:48 span_stats bootstrap double-count: found, fixed, verified
+- Defect (found via demo screenshot review): ensureSpanStats was lazy (first flush or first UI query).
+  On a fresh install its backfill used max(span id) AT THAT MOMENT, which included spans intake had
+  already recorded into the in-memory pending aggregates; those spans were counted twice (backfill +
+  pending flush). Measured: service catalog showed exactly 2x root spans per service (724 vs 362).
+- Fix: artifacts/api-server/src/index.ts awaits ensureSpanStats() at startup BEFORE the listener opens,
+  so backfill's maxId can never include intake-recorded spans (no-op under ClickHouse and on existing
+  installs; upgrade path unchanged - pre-boot spans backfilled exactly once).
+- Regression bench: bench/correctness/span-stats-once.js asserts rollup hits == raw roots == sent, and
+  error sums, across two flush cycles. Negative control on the OLD build: 6 FAILs with exactly 2x
+  (80/40, 50/25, errors 10/5). Fixed build on a fresh DB: 10/10 PASS.
+- Demo reseeded on the fixed build (DEMO_SUMMARY Alert + delivery as before); span_stats hits == 362 ==
+  raw roots per service; all 7 screenshots recaptured and the catalog now reads 362 requests/service.
