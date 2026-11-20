@@ -7,7 +7,7 @@ import { logger } from "./logger";
  * Enforcement is safe with multiple server processes sharing one PostgreSQL: every reservation is a
  * single atomic statement holding a row lock, so concurrent batches across processes cannot combine
  * past a limit. Daily counters and the per-minute byte window live in PostgreSQL (org_usage_daily,
- * org_usage_minute); the in-memory cache of the *limits* refreshes within 10 seconds per process.
+ * org_usage_minute); the in-memory cache of the *limits* refreshes within ~2 seconds per process, so a limit change reaches every process of a multi-process deployment within that bound.
  *
  * Crash/retry semantics: reservation happens before storage, so a crash between the two over-counts
  * usage (conservative; intake is refused earlier, never over-admitted). A client retry of an accepted
@@ -37,7 +37,7 @@ const COLS: Record<keyof OrgQuotas, string> = {
   maxIngestBytesPerMinute: "max_ingest_bytes_per_minute",
 };
 
-const CACHE_TTL = 10_000;
+const CACHE_TTL = 2_000;
 const quotaCache = new Map<number, { q: OrgQuotas; at: number }>();
 
 function rowToQuotas(row: any): OrgQuotas {
@@ -107,16 +107,17 @@ export async function admitDaily(orgId: number, kind: UsageKind, n: number, limi
     return true;
   }
   const r = await pool.query(
-    `insert into org_usage_daily (org_id, day, ${col}) values ($1, current_date, least($2, $3))
-     on conflict (org_id, day) do update set ${col} = org_usage_daily.${col} + $2
-     where org_usage_daily.${col} + $2 <= $3
+    `insert into org_usage_daily (org_id, day, ${col}) values ($1, current_date, least($2::bigint, $3))
+     on conflict (org_id, day) do update set ${col} = org_usage_daily.${col} + $2::bigint
+     where org_usage_daily.${col} + $2::bigint <= $3
      returning ${col}`,
     [orgId, n, limit],
   );
-  // The insert path lands at most `limit`; the update path refuses when it would cross it. An insert of
-  // exactly least(n, limit) followed by no room means the batch overran: refuse unless it fit whole.
+  // The update path only lands when the batch fits whole. The insert path charges least(n, limit):
+  // a batch bigger than the whole limit is refused (and consumes the window, so oversized batches
+  // cannot be retried through within the same window); anything else that landed fit whole.
   if (r.rowCount === 0) return false;
-  return Number(r.rows[0][col]) <= limit;
+  return n <= limit;
 }
 
 export async function usageToday(orgId: number): Promise<{ day: string; points: number; logs: number; spans: number }> {
@@ -132,18 +133,22 @@ export async function usageToday(orgId: number): Promise<{ day: string; points: 
 
 // ---- per-minute request byte window (PostgreSQL, atomic across processes) ----
 
+const n_fits = (n: number, limit: number) => n <= limit;
+
 export async function checkByteRate(orgId: number, bytes: number, limit: number | null): Promise<boolean> {
   if (limit == null || bytes <= 0) return true;
   const minute = Math.floor(Date.now() / 60_000);
   const r = await pool.query(
-    `insert into org_usage_minute (org_id, minute, bytes) values ($1, $2, least($3, $4))
-     on conflict (org_id, minute) do update set bytes = org_usage_minute.bytes + $3
-     where org_usage_minute.bytes + $3 <= $4
+    `insert into org_usage_minute (org_id, minute, bytes) values ($1, $2, least($3::bigint, $4::bigint))
+     on conflict (org_id, minute) do update set bytes = org_usage_minute.bytes + $3::bigint
+     where org_usage_minute.bytes + $3::bigint <= $4
      returning bytes`,
     [orgId, minute, bytes, limit],
   );
+  // Same contract as admitDaily: a batch bigger than the whole window is refused (and charged up to
+  // the limit); the update path only lands when the batch fits whole.
   if (r.rowCount === 0) return false;
-  return Number(r.rows[0].bytes) <= limit;
+  return n_fits(bytes, limit);
 }
 
 export async function bytesThisMinute(orgId: number): Promise<number> {

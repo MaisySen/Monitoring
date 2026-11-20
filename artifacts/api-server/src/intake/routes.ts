@@ -6,7 +6,7 @@ import { recordDrop, recordStored, splitPoints } from "../lib/intakeStats";
 import { getQuotas, checkByteRate } from "../lib/quotas";
 import { writeMetrics, touchHost, writeLogs, writeSpans, type PointIn, type LogIn } from "./store";
 import { orgForApiKey } from "../lib/org";
-import { decodeOtlp, encodeEmptyResponse, otlpToSpans, otlpToLogs, otlpToMetrics, type OtlpSignal } from "./otlp";
+import { decodeOtlp, encodeEmptyResponse, encodePartialSuccess, otlpToSpans, otlpToLogs, otlpToMetrics, type OtlpSignal } from "./otlp";
 import { logger } from "../lib/logger";
 import { isStorageError } from "../lib/http";
 import { pool } from "@workspace/db";
@@ -466,6 +466,7 @@ function otlpRoute(signal: OtlpSignal) {
     const orgId = (req as any).orgId as number;
     const path = `otlp_${signal}`;
     let n = 0;
+    let refused = 0;
     try {
       if (signal === "traces") {
         const spans = otlpToSpans(body);
@@ -482,17 +483,26 @@ function otlpRoute(signal: OtlpSignal) {
         const { valid, invalid } = splitPoints(points);
         if (invalid) recordDrop(orgId, path, invalid, "points without a numeric value");
         n = valid;
-        await writeMetrics(orgId, points);
+        refused = await writeMetrics(orgId, points);
         commit();
       }
     } catch (e) {
+      // Daily quota refusal: the OTLP throttling signal (HTTP 429, ResourceExhausted) with the reason.
+      if ((e as any)?.status === 429 && (e as any)?.quotaReason) {
+        recordDrop(orgId, (e as any).path ?? path, (e as any).count ?? Math.max(1, n), (e as any).quotaReason);
+        res.status(429).json({ code: 8, message: (e as Error).message });
+        return;
+      }
       logger.error({ err: e, signal }, "OTLP write failed");
       recordDrop(orgId, path, Math.max(1, n), "storage error");
       res.status(503).json({ code: 14, message: "temporarily unavailable" });
       return;
     }
     recordStored(orgId, path, n);
-    const r = encodeEmptyResponse(ct);
+    // Partial refusal (series cap): stored data stays, and the response says exactly how much was refused.
+    const r = refused
+      ? encodePartialSuccess(ct, "rejectedDataPoints", refused, "Organization metric series limit reached; points for new series were not stored")
+      : encodeEmptyResponse(ct);
     res.status(200).type(r.type).send(r.body);
   };
 }

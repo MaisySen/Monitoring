@@ -109,6 +109,32 @@ export function encodeEmptyResponse(contentType: string): { type: string; body: 
   return /json/i.test(contentType) ? { type: "application/json", body: "{}" } : { type: "application/x-protobuf", body: Buffer.alloc(0) };
 }
 
+// Minimal protobuf writer for the Export*ServiceResponse partial_success message (field 1); the
+// PartialSuccess message itself is rejected_* = 1 (varint), error_message = 2 (string) in every signal.
+function pbVarint(n: number): number[] {
+  const out: number[] = [];
+  while (n > 127) {
+    out.push((n & 0x7f) | 0x80);
+    n = Math.floor(n / 128);
+  }
+  out.push(n);
+  return out;
+}
+
+/**
+ * OTLP partial success: the request is stored, but some items were refused (e.g. a series cap) and the
+ * client is told exactly how many and why. jsonKey is the signal's field name (rejectedDataPoints,
+ * rejectedLogRecords, rejectedSpans); protobuf field numbers are identical across signals.
+ */
+export function encodePartialSuccess(contentType: string, jsonKey: string, rejected: number, message: string): { type: string; body: Buffer | string } {
+  if (/json/i.test(contentType)) {
+    return { type: "application/json", body: JSON.stringify({ partialSuccess: { [jsonKey]: rejected, errorMessage: message } }) };
+  }
+  const msg = Buffer.from(message, "utf8");
+  const inner = Buffer.from([0x08, ...pbVarint(rejected), 0x12, ...pbVarint(msg.length), ...msg]);
+  return { type: "application/x-protobuf", body: Buffer.from([0x0a, ...pbVarint(inner.length), ...inner]) };
+}
+
 // ---------- attribute helpers ----------
 type Attrs = Record<string, any>;
 function anyValue(v: any): any {

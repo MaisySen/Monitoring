@@ -207,12 +207,16 @@ async function writeMetricsCh(orgId: number, series: PointIn[]) {
   for (const h of hosts) await touchHost(orgId, h, apps.has(h) ? { apps: apps.get(h) } : {}, apps.has(h));
 }
 
-export async function writeMetrics(orgId: number, series: PointIn[]) {
+/** Stores the batch; returns the number of points refused by the series cap (0 when nothing was refused). */
+export async function writeMetrics(orgId: number, series: PointIn[]): Promise<number> {
   const quotas = await getQuotas(orgId);
   const pointCount = series.reduce((n, s) => n + (s.points?.length ?? 0), 0);
   if (!(await admitDaily(orgId, "points", pointCount, quotas.maxPointsPerDay)))
     throw new QuotaExceeded("metrics", pointCount, "quota:points_per_day");
-  if (useClickHouse) return writeMetricsCh(orgId, series);
+  if (useClickHouse) {
+    await writeMetricsCh(orgId, series);
+    return 0;
+  }
   const now = Math.floor(Date.now() / 1000);
   const vals: any[] = [];
   const rows: string[] = [];
@@ -220,8 +224,8 @@ export async function writeMetrics(orgId: number, series: PointIn[]) {
   const hosts = new Set<string>();
   const valid = series.filter((s) => s.metric && s.points?.length);
   const ids = await seriesIds(orgId, valid, now, quotas.maxSeries);
+  let refused = 0;
   if (quotas.maxSeries != null) {
-    let refused = 0;
     for (let i = 0; i < valid.length; i++) if (ids[i] === undefined) refused += valid[i].points.length;
     if (refused) recordDrop(orgId, "metrics", refused, "quota:max_series");
   }
@@ -258,6 +262,7 @@ export async function writeMetrics(orgId: number, series: PointIn[]) {
   }
   const apps = newApps(orgId, valid);
   for (const h of hosts) await touchHost(orgId, h, apps.has(h) ? { apps: apps.get(h) } : {}, apps.has(h));
+  return refused;
 }
 
 // host → service links (for the host list), refreshed at most once a minute per pair
