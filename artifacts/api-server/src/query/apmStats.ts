@@ -167,9 +167,11 @@ async function compactFinishedMinutes() {
 }
 
 export async function flushSpanStats() {
+  // Ensure the table before compacting: on a fresh install the first flush would otherwise
+  // log a spurious compaction error against a not-yet-created span_stats relation.
+  await ensureSpanStats();
   compactFinishedMinutes().catch((e) => logger.warn({ err: e }, "span stats compaction failed"));
   if (!pending.size) return;
-  await ensureSpanStats();
   const batches = [...pending.entries()];
   pending.clear();
   for (let n = 0; n < batches.length; n++) {
