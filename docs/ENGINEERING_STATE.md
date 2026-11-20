@@ -409,3 +409,13 @@ queue). 100 spans/s, 60s runs, fault at 20s. Evidence: bench/evidence/recovery/s
   series are trace.server.request.* — expected, not a misroute.
 - Pending verification next run: precommit SIGKILL -> 0 spans AND 0 trace points, retry -> equal;
   lost-response proxy rerun. Harness: /tmp/trace-tx-verify.js, /tmp/resp-drop-proxy.js.
+
+### trace.* transactionality: precommit fault injection (2026-11-21 05:04, build a5f4eed)
+- 30,000-span batch (7.9 MB), server SIGKILLed ~120 ms into the request, curl exit 52.
+  Post-kill: 0 spans, 0 trace points, 0 series rows for that service (full rollback; the kill
+  landed before/independent of series resolution, which happens pre-tx on its own connection).
+  Retry of the identical payload: 30,000 spans, trace.hits sum 30,000, exact 1:1. PASS.
+- Process note: first kill attempt raced a fast 3,000-span insert (POST completed 200 before the
+  kill) - that batch committed fully and consistently; invalid as a fault test, counted as neither
+  pass nor fail. Retried with a 10x batch.
+- Lost-response proxy rerun for this change still pending (harness /tmp/resp-drop-proxy.js).
