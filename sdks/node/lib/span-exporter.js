@@ -225,6 +225,7 @@ function encode(w, spans) {
 }
 
 const RETRYABLE_STATUS = new Set([408, 429, 502, 503, 504]);
+const { Spool, startDrainPump } = require('./spool');
 
 class MonitoringSpanExporter {
   constructor({ url, headers = {}, timeoutMillis = 10000 }) {
@@ -237,11 +238,26 @@ class MonitoringSpanExporter {
     this.pending = new Set();
     this.stopped = false;
     this.retryMs = Number(process.env.MONITORING_EXPORT_RETRY_SECONDS ?? 30) * 1000;
+    // Optional disk spool for outages longer than the retry window (see lib/spool.js).
+    this.spool = process.env.MONITORING_EXPORT_SPOOL_DIR
+      ? new Spool(process.env.MONITORING_EXPORT_SPOOL_DIR, { prefix: 'spans' })
+      : null;
+    if (this.spool) {
+      this.startDrain = startDrainPump(this.spool, async () => {
+        const drained = await this.spool.drain(async (body) => (await this.post(body)).ok);
+        return this.spool.files().length === 0;
+      });
+      this.startDrain(); // a previous process may have left batches behind
+    }
   }
   export(spans, resultCallback) {
-    if (this.stopped) return resultCallback({ code: FAILED, error: new Error('exporter shut down') });
     let body;
     try { body = Buffer.from(encode(this.writer, spans)); } catch (error) { return resultCallback({ code: FAILED, error }); }
+    // A batch flushed after shutdown began still goes to the spool rather than vanishing.
+    if (this.stopped) {
+      if (this.spool) this.spool.write(body);
+      return resultCallback({ code: FAILED, error: new Error('exporter shut down') });
+    }
     // shrink an oversized scratch buffer after a burst
     if (this.writer.buf.length > (16 << 20)) this.writer = new Writer();
     const done = this.send(body);
@@ -282,7 +298,13 @@ class MonitoringSpanExporter {
       const r = await this.post(body);
       if (r.ok) return { code: SUCCESS };
       const delay = Math.max(r.retryAfterMs || 0, Math.min(5000, 250 * 2 ** attempt)) * (0.8 + Math.random() * 0.4);
-      if (!r.retryable || this.stopped || Date.now() + delay > deadline) return { code: FAILED, error: r.error };
+      if (!r.retryable || this.stopped || Date.now() + delay > deadline) {
+        if (r.retryable && this.spool) {
+          this.spool.write(body);
+          this.startDrain();
+        }
+        return { code: FAILED, error: r.error };
+      }
       await new Promise((res) => setTimeout(res, delay).unref?.());
     }
   }

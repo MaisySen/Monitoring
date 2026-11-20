@@ -14,6 +14,7 @@
 // down so a process exit is never held up.
 const SUCCESS = 0;
 const FAILED = 1;
+const { Spool, startDrainPump } = require('./spool');
 
 function statusOf(error) {
   if (!error) return 0;
@@ -27,9 +28,26 @@ class RetryingLogExporter {
     this.inner = inner;
     this.retryMs = Number(opts.retrySeconds ?? process.env.MONITORING_EXPORT_RETRY_SECONDS ?? 30) * 1000;
     this.stopped = false;
+    // Optional disk spool for outages longer than the retry window (see lib/spool.js).
+    this.spool = process.env.MONITORING_EXPORT_SPOOL_DIR
+      ? new Spool(process.env.MONITORING_EXPORT_SPOOL_DIR, { prefix: 'logs' })
+      : null;
+    if (this.spool) {
+      this.startDrain = startDrainPump(this.spool, async () => {
+        await this.spool.drain((records) => new Promise((resolve) => {
+          this.inner.export(records, (res) => resolve(res.code === SUCCESS));
+        }));
+        return this.spool.files().length === 0;
+      });
+      this.startDrain(); // a previous process may have left batches behind
+    }
   }
   export(records, resultCallback) {
-    if (this.stopped) return resultCallback({ code: FAILED, error: new Error('exporter shut down') });
+    // A batch flushed after shutdown began still goes to the spool rather than vanishing.
+    if (this.stopped) {
+      if (this.spool) { this.spool.write(records); this.startDrain(); }
+      return resultCallback({ code: FAILED, error: new Error('exporter shut down') });
+    }
     const deadline = Date.now() + this.retryMs;
     const attempt = (n) => {
       this.inner.export(records, (res) => {
@@ -37,7 +55,13 @@ class RetryingLogExporter {
         const status = statusOf(res.error);
         const retryable = status === 0 || status === 408 || status === 429 || status >= 500;
         const remaining = deadline - Date.now();
-        if (!retryable || this.stopped || remaining <= 0) return resultCallback(res);
+        if (!retryable || this.stopped || remaining <= 0) {
+          if (retryable && this.spool) {
+            this.spool.write(records);
+            this.startDrain();
+          }
+          return resultCallback(res);
+        }
         const delay = Math.min(Math.min(5000, 250 * 2 ** n) * (0.8 + Math.random() * 0.4), remaining);
         setTimeout(() => attempt(n + 1), delay);
       });
