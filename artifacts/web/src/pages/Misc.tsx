@@ -1414,7 +1414,22 @@ export OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
               <pre className="mono text-[12px] bg-panel border border-line rounded p-3 overflow-x-auto whitespace-pre">pnpm run pack:sdks</pre>
             </>
           ) : (
-            <pre className="mono text-[12px] bg-panel border border-line rounded p-3 overflow-x-auto whitespace-pre">{snippet[stack]}</pre>
+            <div className="relative">
+              <pre className="mono text-[12px] bg-panel border border-line rounded p-3 pr-14 overflow-x-auto whitespace-pre">{snippet[stack]}</pre>
+              <button
+                className="absolute top-2 right-2 text-ink-3 hover:text-ink-1 bg-panel border border-line rounded p-1.5"
+                title="Copy the full command"
+                aria-label="Copy the full command"
+                onClick={(e) => {
+                  navigator.clipboard.writeText(snippet[stack]);
+                  const b = e.currentTarget;
+                  b.classList.add("text-ok");
+                  setTimeout(() => b.classList.remove("text-ok"), 1200);
+                }}
+              >
+                <Copy size={14} />
+              </button>
+            </div>
           )}
           <div className="text-[12px] text-ink-3 mt-2">
             Full guides, including running through the Monitoring Agent: <Link className="text-primary" href="/docs/getting-started">Docs → Getting started</Link>

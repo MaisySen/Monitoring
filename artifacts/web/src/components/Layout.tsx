@@ -24,6 +24,7 @@ import {
   Gauge,
   Boxes,
   Globe,
+  Menu,
 } from "lucide-react";
 import { MonitoringMark } from "./Logo";
 import { useAuthUser } from "@/lib/auth";
@@ -268,9 +269,23 @@ export function Layout({ children }: { children: ReactNode }) {
     return () => window.removeEventListener("keydown", f);
   }, []);
   const initial = (user?.firstName ?? user?.email ?? "?")[0]?.toUpperCase();
+  const [mobileNav, setMobileNav] = useState(false);
+  // Close the drawer after any navigation on small screens; desktop never sets mobileNav.
+  useEffect(() => setMobileNav(false), [loc]);
   return (
     <div className="flex h-full bg-nav">
-      <nav className="w-[200px] shrink-0 bg-nav text-white flex flex-col relative z-30" onMouseLeave={() => setHover(null)}>
+      {/* Mobile top bar: the sidebar becomes an overlay drawer below md. */}
+      <div className="md:hidden fixed top-0 inset-x-0 h-10 bg-nav text-white flex items-center px-3 z-40">
+        <button aria-label="Open navigation" className="p-1" onClick={() => setMobileNav(true)}>
+          <Menu size={18} />
+        </button>
+        <span className="ml-2 text-[13px] font-extrabold tracking-[0.12em]">MONITORING</span>
+      </div>
+      {mobileNav && <div className="fixed inset-0 bg-black/40 z-40 md:hidden" onClick={() => setMobileNav(false)} />}
+      <nav
+        className={`${mobileNav ? "flex" : "hidden"} md:flex fixed md:relative inset-y-0 left-0 z-50 md:z-30 w-[200px] shrink-0 bg-nav text-white flex-col`}
+        onMouseLeave={() => setHover(null)}
+      >
         <Link href="/" className="flex flex-col items-center justify-center pt-4 pb-3 gap-1" aria-label="Monitoring home">
           <MonitoringMark size={54} />
           <span className="text-[15px] font-extrabold tracking-[0.12em]">MONITORING</span>
@@ -321,7 +336,7 @@ export function Layout({ children }: { children: ReactNode }) {
           </div>
         </div>
       </nav>
-      <div className="flex-1 min-w-0 flex flex-col">
+      <div className="flex-1 min-w-0 flex flex-col pt-10 md:pt-0">
         <header className="h-9 shrink-0 bg-nav flex items-center px-3 relative">
           <button
             onClick={() => setPalette(true)}

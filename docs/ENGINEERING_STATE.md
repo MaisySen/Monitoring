@@ -667,3 +667,19 @@ Unit: 76/76. CI greens through 43f64b9.
   service note. Connect page flipped to "Receiving data from shop-api".
 - Stopwatch 190s first-load-to-answer (scripted path; human slower). Evidence:
   bench/evidence/validation-2026-11-21/ (4 screenshots + README with API confirmation).
+
+## 2026-11-21: onboarding UI-path verification + two fixes (parent review)
+
+- UI-only key path verified on the fresh org (visible controls only): Organization Settings
+  -> API Keys -> New Key -> masked banner (eye toggle reveals, copy writes the full key -
+  source-verified KeyCell; live clipboard read blocked twice by sandbox Chrome instability,
+  disclosed). Leave-and-return: banner gone, server list only ever returns hints. Shown-once
+  contract holds. No key value in any screenshot (banner masked by default).
+- FIX 1: install command had no copy control (long two-line command, manual selection across
+  an overflow-x scroll). Added a copy button on the onboarding snippet (full command, one
+  click, confirmation tint).
+- FIX 2: narrow viewport was broken - 200px sidebar never collapsed, squeezing content into
+  half a phone screen. Sidebar is now hidden below md behind a hamburger top bar; opens as
+  an overlay drawer with backdrop, closes on navigation and backdrop tap. Desktop unchanged.
+  Verified at 390x844: Now (chips wrap, disclosures collapsed), onboarding, drawer, and
+  drawer-closes-after-nav.
