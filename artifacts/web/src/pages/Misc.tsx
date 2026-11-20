@@ -434,7 +434,7 @@ export function OrgSettings() {
                       {keys.map((k: any) => (
                         <tr key={k.id}>
                           <td>{k.name}</td>
-                          <td>{k.key ? <KeyCell k={k.key} /> : <span className="mono text-xs text-ink-3">{k.hint}</span>}</td>
+                          <td><span className="mono text-xs text-ink-3">{k.hint}</span></td>
                           <td className="text-ink-2">{fmtAgo(new Date(k.created_at).getTime())}</td>
                           <td className="text-ink-2">{k.last_used_at ? fmtAgo(new Date(k.last_used_at).getTime()) : "never"}</td>
                           <td className="text-right">
@@ -687,7 +687,20 @@ export function OrgSettings() {
 
 export function AgentSetup() {
   const org = useQuery({ queryKey: ["org"], queryFn: () => api<any>("/ui/org") });
-  const key = (org.data?.keys ?? []).find((k: any) => k.kind === "api")?.key ?? "PASTE-YOUR-API-KEY";
+  const qc = useQueryClient();
+  const isAdmin = org.data?.me?.role === "admin";
+  // API keys are only ever shown once, at creation. The install command embeds a freshly
+  // created key on demand; it is never read back from the server. To rotate, revoke the
+  // key in Organization Settings and create a new one here.
+  const [newKey, setNewKey] = useState<string | null>(null);
+  const createKey = useMutation({
+    mutationFn: () => api<any>("/ui/org/keys", { body: { kind: "api", name: "Agent install key" } }),
+    onSuccess: (r) => {
+      setNewKey(r.key);
+      qc.invalidateQueries({ queryKey: ["org"] });
+    },
+  });
+  const key = newKey ?? "PASTE-YOUR-API-KEY";
   const url = org.data?.public_url ?? location.origin;
   const [tab, setTab] = useState("linux");
   const yaml = `api_key: ${key}
@@ -736,6 +749,24 @@ logs:
           </a>{" "}
           libraries.
         </p>
+        {newKey ? (
+          <div className="card bg-panel p-3 text-xs" data-testid="install-key-banner">
+            <div className="font-semibold mb-1">Install key created. It is embedded in the commands below and will not be shown again.</div>
+            <div className="text-ink-2">To rotate it later, revoke "Agent install key" in Organization Settings and create a new one.</div>
+          </div>
+        ) : (
+          <div className="card bg-panel p-3 text-xs flex items-center gap-3">
+            <span className="text-ink-2">
+              The commands below need an API key.{" "}
+              {isAdmin ? "Create one now - it is shown once, embedded in the commands." : "Ask an admin to create one on this page, then paste it in."}
+            </span>
+            {isAdmin && (
+              <button className="btn-primary shrink-0" disabled={createKey.isPending} onClick={() => createKey.mutate()} data-testid="create-install-key">
+                <Plus size={14} /> Create install key
+              </button>
+            )}
+          </div>
+        )}
         <div className="flex gap-1">
           {[
             ["linux", "Linux (one line)"],

@@ -131,3 +131,19 @@ Working copy of the Monitoring feature build. Local only: not published anywhere
   the unchanged agent, but it triggers on pushing a v* tag to a GitHub remote = publishing the working copy
   + account/release changes. Not authorized. No no-cost route exists inside current authority; sandbox RAM
   (2GB) OOMs on two giant SDK packages. Needs: approval to use a CI-backed remote (e.g. private fork).
+
+## 2026-11-20 19:08 - API key exposure fix (parent directive: treat as security issue, not preference)
+- GET /api/ui/org no longer returns full API keys to anyone (previously admins got kind=api keys in full,
+  which auto-filled the /account/agent install command and Docs examples). Routine responses carry only
+  the hint (first4...last4). Keys are shown exactly once: the POST /ui/org/keys creation response.
+- /account/agent: removed key autofill. Explicit flow: admin clicks "Create install key" -> new key named
+  "Agent install key" is embedded in the commands once, in-page; non-admins are told to ask an admin.
+  Rotation = revoke in Organization Settings + create new (documented in-page). Docs.tsx now always uses
+  the PASTE-YOUR-API-KEY placeholder. Org key list renders hints only (defense in depth).
+- Verified live (memtest, demo org): GET /ui/org has_key=false for admin; POST returns key once (32 chars);
+  intake 202 with new key; old key unaffected; DELETE revokes and intake then 403. UI test (headless
+  chrome): before creation, zero key-like strings in command blocks; screenshot agent-onboarding-masked.png
+  contains no secret; after clicking create, banner + embedded key render (one-time display, not
+  screenshotted). Test keys revoked afterwards.
+- Regression: unit 63/63, memberships 40/40 (fresh DB), oidc 38/38.
+- CI/private-repo build route: parent asked user for permission; do NOT push or tag until granted.

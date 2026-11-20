@@ -52,7 +52,8 @@ export function Docs() {
   const params = useParams<{ section?: string }>();
   const section = params.section ?? "getting-started";
   const org = useQuery({ queryKey: ["org"], queryFn: () => api<any>("/ui/org") });
-  const KEY = (org.data?.keys ?? []).find((k: any) => k.kind === "api")?.key ?? "PASTE-YOUR-API-KEY";
+  // API keys are only ever shown once at creation; docs always use a placeholder.
+  const KEY = "PASTE-YOUR-API-KEY";
   const URL = org.data?.public_url ?? location.origin;
   const HOST = new globalThis.URL(URL).host;
   const groups = [...new Set(SECTIONS.map((s) => s.group))];

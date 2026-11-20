@@ -405,12 +405,12 @@ router.get(
       org,
       me: req.authUser,
       public_url: getOrigin(req),
-      // Only admins see API keys in full; application keys are shown once, when created.
+      // Keys are never returned in full after creation; they are shown once, when created.
+      // Routine responses carry only a non-sensitive hint (see POST /ui/org/keys and rotation flow).
       keys: keys.map((k) => ({
         id: k.id,
         name: k.name,
         kind: k.kind,
-        key: req.authUser?.role === "admin" && k.kind === "api" ? k.key : undefined,
         hint: `${k.key.slice(0, 4)}…${k.key.slice(-4)}`,
         created_at: k.createdAt,
         last_used_at: k.lastUsedAt,
