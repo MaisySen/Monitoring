@@ -49,12 +49,16 @@ anything without one is listed under Not yet verified. Dates are 2026-11-20 (Syd
 
 ## Not yet verified (explicit gaps)
 
-- **Monitoring Agent binary**: never built in this environment (2GB sandbox OOMs on two large Go SDK
-  dependencies; the CI route requires publishing to a remote, which was not authorized). Consequently:
-  - the agent's disk-backed queue claims in `bench/resilience/README.md` (zero loss through 60s/240s
-    server outages) are upstream results, NOT re-verified here;
-  - no real host has ever been onboarded; `/account/agent` and `/install.sh` were verified server-side
-    only (endpoint, page, config translation tests, placeholder safety).
+- **Full-stack agent recovery, measured 2026-11-20** (app -> CI-built agent -> server -> Postgres,
+  evidence bench/evidence/recovery/agent-2026-11-20.json, all counts DB-verified):
+  - baseline, agent SIGTERM restart, and Postgres fast restart: zero loss, zero duplicates;
+  - **backend_outage 60s: FAILING GATE** - 617/18,000 spans and 3,888/9,000 logs lost. Root cause under
+    fix: agent intake refusal under outage accumulation + stock app-side log exporter without retry
+    (span path retries and lost only the ~3s kill window). See ENGINEERING_STATE 23:05;
+  - long_outage 240s at 600 spans/s: bounded loss (56,078/180,000 spans, 19,931/90,000 logs stored,
+    0 duplicates) dominated by app-side buffering limits, not agent queue failures;
+  - the agent's graceful-restart result does not by itself prove ungraceful-kill queue survival; the
+    dedicated agent_kill_pending scenario for that is pending.
 - **SSO revocation timing**: bounded by the 12h absolute session TTL plus issuance-time ordering; this is
   an explicit exposure limit, not prompt revocation. A fresh callback from an old provider login renewing
   stale claims is covered by iat-ordering + fail-closed ties, but identity-provider-specific behaviors
