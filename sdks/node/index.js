@@ -67,6 +67,7 @@ function init(options = {}) {
   const contextManager = new AsyncLocalStorageContextManager();
   const { OTLPMetricExporter } = require('@opentelemetry/exporter-metrics-otlp-proto');
   const { OTLPLogExporter } = require('@opentelemetry/exporter-logs-otlp-proto');
+  const { RetryingLogExporter } = require('./lib/retry-log-exporter');
   const { PeriodicExportingMetricReader, AggregationTemporality } = require('@opentelemetry/sdk-metrics');
   const { BatchLogRecordProcessor } = require('@opentelemetry/sdk-logs');
   const { ParentBasedSampler, TraceIdRatioBasedSampler } = require('@opentelemetry/sdk-trace');
@@ -93,7 +94,10 @@ function init(options = {}) {
       exportIntervalMillis: c.metricInterval,
     })],
     // sdk-logs 3.x takes an options object
-    logRecordProcessors: c.logShipping ? [new BatchLogRecordProcessor({ exporter: new OTLPLogExporter(exporter('logs')) })] : [],
+    // The stock log exporter drops a batch on the first transport error; wrap it in the same retry
+    // discipline as the span path. While an export is being retried the processor's queue absorbs new
+    // records, so it must be sized for a backpressure window, not the 2048-record default (~10 s at 200 logs/s).
+    logRecordProcessors: c.logShipping ? [new BatchLogRecordProcessor({ exporter: new RetryingLogExporter(new OTLPLogExporter(exporter('logs'))), maxQueueSize: 65536 })] : [],
     instrumentations: [getNodeAutoInstrumentations({
       // Low-value, high-volume spans are off by default (MONITORING_TRACE_NETWORK=true turns them on).
       '@opentelemetry/instrumentation-fs': { enabled: false },

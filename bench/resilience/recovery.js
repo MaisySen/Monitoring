@@ -134,7 +134,9 @@ async function scenario(name) {
     if (v && Number(v) > 0) freshAt = Date.now(); else await sleep(500);
   }
   await exited;
-  const sent = JSON.parse(out.trim().split('\n').pop() || '{}');
+  // With GEN_DEBUG_DIAG=1 the OTel diag logger writes to stdout too; the summary is the one {"spans":...} line.
+  const summaryLine = out.trim().split('\n').reverse().find((l) => l.startsWith('{"spans"')) || '{}';
+  const sent = JSON.parse(summaryLine);
   // drain: wait until counts stop changing for 20 s (max 6 min)
   let last = -1, stableSince = Date.now(), counts;
   const drainStart = Date.now();
