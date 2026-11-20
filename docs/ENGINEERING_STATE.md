@@ -683,3 +683,19 @@ Unit: 76/76. CI greens through 43f64b9.
   an overlay drawer with backdrop, closes on navigation and backdrop tap. Desktop unchanged.
   Verified at 390x844: Now (chips wrap, disclosures collapsed), onboarding, drawer, and
   drawer-closes-after-nav.
+
+## 2026-11-21: responsive polish round 2 (parent review) + clipboard runtime proof
+
+- 390px header: fixed-width centered search overlapped account/logout -> search is now a
+  flex item below md (absolute-centered only md+); kbd hint hidden on small screens.
+- Services row: status note no longer truncates on narrow screens (flex-wrap; note takes
+  full basis below sm, version chip wraps under it).
+- Caveat footer: methodology paragraph replaced by one essential line ("First-seen and
+  versions are observation facts ... never deploy claims or proof of cause") plus a "How
+  incidents are measured" disclosure holding the full text.
+- Clipboard runtime proof (previously open): writeText-spy harness - snippet copy button
+  writes the full 3-line command (npm install + env line); key banner copy writes the full
+  32-hex key. (First harness run mis-sliced the spy array after navigation and reported
+  empty; fixed and re-verified. Test keys accumulate only in the disposable valrun org.)
+- Verified 390x844: header clean, Services status readable, footer one line + disclosure;
+  desktop 1440 unchanged.

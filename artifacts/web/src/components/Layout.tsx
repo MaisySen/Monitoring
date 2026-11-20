@@ -340,11 +340,11 @@ export function Layout({ children }: { children: ReactNode }) {
         <header className="h-9 shrink-0 bg-nav flex items-center px-3 relative">
           <button
             onClick={() => setPalette(true)}
-            className="absolute left-1/2 -translate-x-1/2 w-[340px] h-[26px] rounded-[3px] bg-white/[0.12] hover:bg-white/[0.17] text-white/70 text-[12px] flex items-center gap-2 px-2.5"
+            className="flex-1 mx-2 md:mx-0 md:flex-none md:absolute md:left-1/2 md:-translate-x-1/2 md:w-[340px] h-[26px] rounded-[3px] bg-white/[0.12] hover:bg-white/[0.17] text-white/70 text-[12px] flex items-center gap-2 px-2.5"
             data-testid="global-search"
           >
             <Search size={13} /> <span className="flex-1 text-left">Search Monitoring</span>
-            <kbd className="text-[10px] text-white/60">⌘ K</kbd>
+            <kbd className="hidden md:inline text-[10px] text-white/60">⌘ K</kbd>
           </button>
           {user && (
             <div className="ml-auto flex items-center gap-2 text-white/80 text-[12px]">

@@ -1255,12 +1255,19 @@ export function Home() {
           )}
           {d && d.exceptionsSupported && (d.exceptions ?? []).length > 0 && (
             <div className="px-4 py-2 text-[11px] text-ink-3">
-              Exception incidents come from error groups active in the last {(d.exceptions ?? [])[0].coverage.windowDays * 24}h. First-seen is
-              when Monitoring first observed the exception; versions are the versions observed among matched spans. A version-timing line
-              appears only when every matched span in an untruncated scan sits in one environment and carries one version that was first
-              observed there strictly before the exception. Monitoring records version observations, not deployments, so this is never a
-              deploy claim and never proof of cause. Acknowledge, mute and resolve set your workflow status only - measured state stays
-              visible beside them.
+              First-seen and versions are observation facts from matched spans in the last
+              {(d.exceptions ?? [])[0].coverage.windowDays * 24}h - never deploy claims or proof of cause.{" "}
+              <details>
+                <summary className="inline cursor-pointer select-none text-primary">How incidents are measured</summary>
+                <div className="mt-1">
+                  Exception incidents come from error groups active in the last {(d.exceptions ?? [])[0].coverage.windowDays * 24}h.
+                  First-seen is when Monitoring first observed the exception; versions are the versions observed among matched spans. A
+                  version-timing line appears only when every matched span in an untruncated scan sits in one environment and carries one
+                  version that was first observed there strictly before the exception. Monitoring records version observations, not
+                  deployments, so this is never a deploy claim and never proof of cause. Acknowledge, mute and resolve set your workflow
+                  status only - measured state stays visible beside them.
+                </div>
+              </details>
             </div>
           )}
         </div>
@@ -1278,11 +1285,11 @@ export function Home() {
               <Link
                 key={s.service}
                 href={`/apm/services/${encodeURIComponent(s.service)}`}
-                className="flex items-center gap-3 px-4 py-2.5 border-b border-line hover:bg-[#eef2fc]"
+                className="flex items-center flex-wrap gap-x-3 gap-y-0.5 px-4 py-2.5 border-b border-line hover:bg-[#eef2fc]"
               >
                 <span className="w-2 h-2 rounded-full shrink-0" style={{ background: healthChip[s.state]?.dot }} title={healthChip[s.state]?.label} />
                 <span className="font-medium text-primary shrink-0">{s.service}</span>
-                <span className="text-xs text-ink-2 truncate">{s.note}</span>
+                <span className="text-xs text-ink-2 min-w-0 flex-1 basis-full sm:basis-auto">{s.note}</span>
                 {(() => {
                   const v = (d.serviceVersions ?? []).find((sv) => sv.service === s.service);
                   return v ? (
