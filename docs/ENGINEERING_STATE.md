@@ -742,3 +742,10 @@ Unit: 76/76. CI greens through 43f64b9.
 ## Datadog-compat published API verified (2026-11-21)
 - bench/regression/onboarding-dd-compat.sh: the 4 published DD-compat curl commands verbatim (v2/series, v2/logs, v1/events with API+app key, v1/monitor create + cleanup) plus wrong-app-key negative. Initial run: series "accepted but not queryable" was MY check bug (POST /api/v1/query with JSON body; the real read API is GET /api/v1/query?query=, telemetryCh.ts) - intake had stored the point correctly (verified in metric_points). Fixed; ALL 5 PASS.
 - Prerequisite verified to exist: Organization Settings has both API Keys and Application Keys tabs (kind api/app); app key created via the UI's own endpoint POST /api/ui/org/keys.
+
+## Regression suite isolated from the demo org (2026-11-21)
+- Discovered and cleaned regression-test pollution in the Fresh Shop validation org (valrun db): test services otlp-snippet-test/snippet-test/checkout/my-app (spans, service_versions, host_services, logs), ddreg-marked events/logs/metric points+series, one auto-monitor No Data event, host web-1. Deleted by exact match; shop-api validation data verified intact (10 spans, 27 logs, 3 story events, versions 1.0.0+1.1.0).
+- Dedicated regression org created on the e2e server (db e2e, org "regression", own api+app keys). Full 7-check suite re-run against it: ALL REGRESSION CHECKS PASSED (17 PASS lines).
+- Rule: regression checks never run against the demo/validation org again.
+- CI green through c482f57 (eab1676, c482f57 confirmed).
+- Note: Docs DD section already points to Organization Settings -> Application Keys for DD-APPLICATION-KEY (checked before editing; no change needed).
