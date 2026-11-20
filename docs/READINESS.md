@@ -19,7 +19,12 @@ anything without one is listed under Not yet verified. Dates are 2026-11-20 (Syd
 
 **Data isolation and quotas**
 - Cross-organization data isolation at the query layer, verified with two-process Postgres enforcement:
-  M5 audit (docs/AUDIT.md) and restore test (real backup -> restore -> data checks).
+  M5 audit (docs/AUDIT.md).
+- Backup/restore: restore test EXECUTED 2026-11-21 (bench/evidence/restore-test-2026-11-21.json):
+  full-database pg_dump -> pg_restore into an empty database, exact row-count equality on all 23
+  tables (915,675 spans, 499,686 logs) plus spot checks. This line previously listed the restore
+  test as done before it had ever been run; that was wrong and is corrected here - the first real
+  execution is the 2026-11-21 run. Not covered: PITR, incremental, non-empty target, cross-version.
 - Per-organization quotas (points/logs/spans per day, series cap, per-minute ingest bytes) enforced
   atomically in Postgres, safe across multiple server processes; 21 quota checks plus UI visibility of
   intake drops.

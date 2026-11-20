@@ -1,0 +1,11 @@
+{
+ "date": "2026-11-21",
+ "scope": "scripts/backup.sh (pg_dump custom format, compress 6) -> scripts/restore.sh (pg_restore into empty DB) on the recagent database (23 tables incl. 915,675 spans, 499,686 logs)",
+ "result": "PASS: all 23 table row counts identical between source at dump time and restored DB; spot checks passed (6 cbazi bench services present, 180,000 long_outage spans, api key hash intact)",
+ "notes": [
+  "span_stats showed 119 (t-17s snapshot) vs 115 (dump and restored): the live bench server merges rollup rows in the background; restored value matches source at dump time",
+  "first count attempt on the restored spans table failed on a sandbox llvmjit loading error (psql client issue, not data); rerun with jit=off matched exactly",
+  "not covered: point-in-time recovery, incremental backup, restore into a non-empty database, cross-version restore, off-host storage"
+ ],
+ "reconciliation": "docs previously stated 'backup.sh + restore.sh committed, RESTORE TEST NOT YET RUN' (2026-11-20 18:06). No earlier backup-restore execution result exists in ENGINEERING_STATE.md; this is the first executed restore. Any earlier impression of a completed restore test referred to the scripts' existence only."
+}
