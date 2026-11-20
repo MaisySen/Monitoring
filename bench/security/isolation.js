@@ -153,6 +153,19 @@ async function ingest(org, service) {
   check('isolation', "org B error-groups list hides org A's groups", '0 groups', `${groupsB?.groups?.length ?? 'n/a'} groups`, (groupsB?.groups || []).length === 0);
   const detailB = await req('GET', `/api/ui/errors/${fpA}/spans`, null, as(B));
   check('isolation', "org B cannot read org A's error-group detail", '404', `${detailB.status}`, detailB.status === 404);
+  // problem workflow status must obey the same org boundary: B cannot set or clear a status on
+  // A's error group or monitor, no row is written for B, and A's own status stays scoped to A.
+  const psLeak = [];
+  const ps1 = await req('POST', '/api/ui/problems/status', { kind: 'error_group', ref: fpA, status: 'resolved' }, as(B));
+  if (ps1.status !== 404) psLeak.push(`error_group status -> ${ps1.status}`);
+  const ps2 = await req('POST', '/api/ui/problems/status', { kind: 'monitor', ref: String(monA.id), status: 'muted' }, as(B));
+  if (ps2.status !== 404) psLeak.push(`monitor status -> ${ps2.status}`);
+  await req('POST', '/api/ui/problems/status', { kind: 'error_group', ref: fpA, status: 'resolved' }, as(A));
+  if (psql(`select count(*) from problem_status where org_id=${A.orgId} and kind='error_group' and ref='${fpA}'`) !== '1') psLeak.push("A's own status not stored");
+  const psRowsB = psql(`select count(*) from problem_status where org_id=${B.orgId}`);
+  if (psRowsB !== '0') psLeak.push(`${psRowsB} row(s) written for B`);
+  await req('POST', '/api/ui/problems/status', { kind: 'error_group', ref: fpA, status: 'open' }, as(A));
+  check('isolation', "problem status: B cannot write against A's monitor/error group; writes stay org-scoped", 'refused + scoped', psLeak.join('; ') || 'refused + scoped', psLeak.length === 0);
   const byId = [];
   const m1 = await req('GET', `/api/v1/monitor/${monA.id}`, null, as(B)); if (m1.status === 200) byId.push(`GET monitor ${m1.status}`);
   const m2 = await req('PUT', `/api/v1/monitor/${monA.id}`, { name: 'hijacked', type: 'metric alert', query: monA.query }, as(B)); if (m2.status === 200 && json(await req('GET', `/api/v1/monitor/${monA.id}`, null, as(A)))?.name === 'hijacked') byId.push('PUT monitor changed it');
