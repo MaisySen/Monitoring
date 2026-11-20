@@ -19,7 +19,13 @@ const baseUrl = new URL(process.env.DATABASE_URL!);
 function psql(db: string, sql: string): string {
   return execFileSync("psql", ["-X", "-v", "ON_ERROR_STOP=1", "-tA", "-d", db, "-c", sql], {
     encoding: "utf8",
-    env: { ...process.env, PGHOST: baseUrl.hostname, PGPORT: baseUrl.port || "5432", PGUSER: decodeURIComponent(baseUrl.username) },
+    env: {
+      ...process.env,
+      PGHOST: baseUrl.hostname,
+      PGPORT: baseUrl.port || "5432",
+      PGUSER: decodeURIComponent(baseUrl.username),
+      PGPASSWORD: decodeURIComponent(baseUrl.password),
+    },
   }).trim();
 }
 
