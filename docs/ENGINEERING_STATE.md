@@ -228,3 +228,18 @@ queue). 100 spans/s, 60s runs, fault at 20s. Evidence: bench/evidence/recovery/s
   against the downloaded artifact. Not from readiness docs. Recurring wake carries the follow-through.
 - Force-push note: history was rewritten (scrub) and force-pushed; the pre-scrub history exists only
   in the old private remote refs, now overwritten.
+
+## 2026-11-20 21:03 Real agent onboarding verified (CI artifact) + two genuine fixes
+- Downloaded the CI-built agent artifact (run 44710994706, artifact 14618621071; SHA256SUMS verified)
+  and ran agent/verify.sh end-to-end against a fresh stack (port 4600, fresh DB): host registered
+  (agent_version 0.1.0), 182 metric series / 51 names incl. smoke metrics, 4/4 logs trace-correlated,
+  both smoke spans in storage with resource/env/host, exit 0.
+- Fix 1 (fresh-install error): flushSpanStats compacted before ensureSpanStats, so the first flush on
+  a new install logged "relation span_stats does not exist". Order swapped; zero compaction errors since.
+- Fix 2 (vacuous verify, upstream): verify.sh queried spans right after SIGTERM - before the agent's
+  shutdown flush landed - AND matched hex OTLP trace ids against storage's low-64-bit decimal form, so
+  the span/log storage checks could only ever return 0 rows while exiting 0. verify.sh now polls up to
+  90s for the flushed spans, converts hex to the storage decimal form, and FAILS loudly on missing rows.
+  Confirmed the failure mode fires (caught the race), then the fixed script passes with real rows.
+- Commit 65f27d7. Full app->agent->server->Postgres recovery bench (all 5 scenarios) launched against
+  the same artifact binary under its own restart loop; results pending in /tmp/recovery-agent.json.
