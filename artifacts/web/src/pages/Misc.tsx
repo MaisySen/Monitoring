@@ -867,8 +867,8 @@ export function Home() {
               </div>
             </div>
             <SampleDataButton />
-            <Link href="/docs/getting-started" className="btn-primary">
-              Get started
+            <Link href="/onboarding" className="btn-primary">
+              Connect your app
             </Link>
           </div>
         )}
@@ -928,6 +928,97 @@ export function Home() {
               traffic are shown, never hidden.
             </div>
           )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+const STACKS = [
+  { id: "node", label: "Node.js" },
+  { id: "python", label: "Python" },
+  { id: "otlp", label: "Any OpenTelemetry" },
+];
+
+export function Onboarding() {
+  const org = useQuery({ queryKey: ["org"], queryFn: () => api<any>("/ui/org") });
+  const now = useQuery({ queryKey: ["onboard-now"], queryFn: () => api<NowData>("/ui/now"), refetchInterval: 3_000 });
+  const [stack, setStack] = useState("node");
+  const URL = org.data?.public_url ?? location.origin;
+  const KEY = "PASTE-YOUR-API-KEY"; // placeholder: the real key stays in Organization Settings, never in this page
+  const receiving = !!now.data?.receiving;
+  const services = now.data?.services ?? [];
+  const snippet: Record<string, string> = {
+    node: `npm install ${URL}/downloads/monitoring-trace-0.1.0.tgz
+
+MONITORING_URL=${URL} \
+MONITORING_API_KEY=${KEY} \
+MONITORING_SERVICE=my-app MONITORING_ENV=prod \
+node -r @monitoring/trace/init app.js`,
+    python: `pip install "monitoring-trace[instrumentation] @ ${URL}/downloads/monitoring_trace-0.1.0-py3-none-any.whl"
+
+MONITORING_URL=${URL} \
+MONITORING_API_KEY=${KEY} \
+MONITORING_SERVICE=my-app MONITORING_ENV=prod \
+python app.py`,
+    otlp: `export OTEL_EXPORTER_OTLP_ENDPOINT=${URL}/otlp
+export OTEL_EXPORTER_OTLP_HEADERS=DC-API-KEY=${KEY}
+export OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
+
+# point your existing OpenTelemetry SDK or Collector at these`,
+  };
+  return (
+    <div>
+      <PageHeader title="Connect your app" sub="First data usually arrives within a minute of starting your app" />
+      <div className="p-6 space-y-4 max-w-3xl">
+        <div className={"card p-4 flex items-center gap-3 " + (receiving ? "border-ok" : "")}>
+          <span className={"w-2.5 h-2.5 rounded-full shrink-0 " + (receiving ? "bg-ok" : "bg-warn animate-pulse")} />
+          <div className="flex-1">
+            {receiving ? (
+              <>
+                <div className="font-semibold">Receiving data{services.length ? ` from ${services.map((s) => s.service).join(", ")}` : ""}</div>
+                <div className="text-xs text-ink-2">Default monitors now watch each new service for sustained errors and silence. Their thresholds are starting points, not tuned detection.</div>
+              </>
+            ) : (
+              <>
+                <div className="font-semibold">Waiting for data…</div>
+                <div className="text-xs text-ink-2">
+                  This checks every few seconds. If nothing arrives after a couple of minutes, check that MONITORING_URL and the API key
+                  reached your app - Monitoring cannot see why a client is not connecting.
+                </div>
+              </>
+            )}
+          </div>
+          {receiving && (
+            <Link href="/" className="btn-primary">
+              Open your Now page →
+            </Link>
+          )}
+        </div>
+        <div className="card p-4">
+          <div className="section-title mb-1">1. Create an API key</div>
+          <div className="text-[13px] text-ink-2">
+            It identifies your organization. Create or copy it under{" "}
+            <Link className="text-primary" href="/organization-settings">
+              Organization Settings → API Keys
+            </Link>
+            . Keep it secret: snippets below use a placeholder on purpose.
+          </div>
+        </div>
+        <div className="card p-4">
+          <div className="section-title mb-2">2. Add Monitoring to your app</div>
+          <div className="flex gap-2 mb-3">
+            {STACKS.map((s) => (
+              <button key={s.id} className={"btn " + (stack === s.id ? "btn-primary" : "")} onClick={() => setStack(s.id)}>
+                {s.label}
+              </button>
+            ))}
+          </div>
+          <pre className="mono text-[12px] bg-panel border border-line rounded p-3 overflow-x-auto whitespace-pre">{snippet[stack]}</pre>
+          <div className="text-[12px] text-ink-3 mt-2">
+            Full guides, including running through the Monitoring Agent: <Link className="text-primary" href="/docs/getting-started">Docs → Getting started</Link>
+          </div>
         </div>
       </div>
     </div>
