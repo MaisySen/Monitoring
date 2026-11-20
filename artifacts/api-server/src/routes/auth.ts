@@ -4,6 +4,7 @@ import { eq, sql } from "drizzle-orm";
 import { clearSession, createSession, getSessionId, setSessionCookie, hashPassword, verifyPassword, type SessionData } from "../lib/auth";
 import { getOrigin } from "../lib/config";
 import { listMemberships } from "../lib/org";
+import { oidcConfigFromEnv, discover, startPkce, sealPkce, openPkce, authorizeUrl, exchangeCode } from "../lib/oidc";
 import crypto from "node:crypto";
 
 // First-run setup creates the first admin and always needs the setup token: MONITORING_SETUP_TOKEN if set, otherwise a
@@ -232,6 +233,96 @@ router.post("/auth/invites/:token", async (req, res) => {
 router.post("/auth/logout", async (req, res) => {
   await clearSession(res, getSessionId(req));
   res.json({ ok: true });
+});
+
+// ---------- OIDC sign-in (authorization code + PKCE; see docs/MULTIES-BRIDGE.md) ----------
+const PKCE_COOKIE = "oidc_pkce";
+const oidcSecret = () => process.env.SESSION_SECRET || "monitoring-oidc-unsigned";
+
+router.get("/auth/oidc/enabled", (_req, res) => {
+  res.json({ enabled: !!oidcConfigFromEnv() });
+});
+
+router.get("/auth/oidc/start", async (req, res) => {
+  const cfg = oidcConfigFromEnv();
+  if (!cfg) {
+    res.status(404).json({ error: "OIDC sign-in is not configured" });
+    return;
+  }
+  try {
+    const ep = await discover(cfg);
+    const { state, challenge, cookiePayload } = startPkce();
+    res.cookie(PKCE_COOKIE, sealPkce(cookiePayload, oidcSecret()), {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: !!process.env.SESSION_SECRET && getOrigin(req).startsWith("https:"),
+      maxAge: 10 * 60_000,
+      path: "/api/auth/oidc",
+    });
+    res.redirect(authorizeUrl(ep, cfg, `${getOrigin(req)}/api/auth/oidc/callback`, state, challenge));
+  } catch (e) {
+    res.status(502).json({ error: `OIDC provider error: ${(e as Error).message}` });
+    return;
+  }
+});
+
+router.get("/auth/oidc/callback", async (req, res) => {
+  const cfg = oidcConfigFromEnv();
+  if (!cfg) {
+    res.status(404).json({ error: "OIDC sign-in is not configured" });
+    return;
+  }
+  const fail = (msg: string) => res.status(401).json({ error: msg });
+  try {
+    const sealed = String(req.cookies?.[PKCE_COOKIE] ?? "");
+    res.clearCookie(PKCE_COOKIE, { path: "/api/auth/oidc" });
+    const pkce = openPkce(sealed, oidcSecret());
+    const code = String(req.query.code ?? "");
+    const state = String(req.query.state ?? "");
+    if (!pkce || !code || state !== pkce.state) return fail("Sign-in state mismatch; start again");
+    const ep = await discover(cfg);
+    const id = await exchangeCode(ep, cfg, `${getOrigin(req)}/api/auth/oidc/callback`, code, pkce.verifier);
+
+    // Find or provision the user (password stays null: OIDC accounts cannot sign in with a password).
+    let [user] = await db.select().from(usersTable).where(sql`lower(${usersTable.email}) = ${id.email}`);
+    if (!user) {
+      [user] = await db
+        .insert(usersTable)
+        .values({ email: id.email, firstName: (id.name ?? id.email.split("@")[0]).slice(0, 100) })
+        .returning();
+    }
+
+    // Map provider workspace claims onto memberships: find-or-create the organization by name,
+    // add the membership, never downgrade an existing admin.
+    for (const o of id.orgs) {
+      let [org] = await db.select().from(orgsTable).where(sql`lower(${orgsTable.name}) = ${o.name.toLowerCase()}`);
+      if (!org) [org] = await db.insert(orgsTable).values({ name: o.name.slice(0, 150) }).returning();
+      const [mem] = await db
+        .select()
+        .from(orgMembershipsTable)
+        .where(sql`${orgMembershipsTable.userId} = ${user.id} and ${orgMembershipsTable.orgId} = ${org.id}`);
+      if (!mem) await db.insert(orgMembershipsTable).values({ userId: user.id, orgId: org.id, role: o.role });
+      else if (o.role === "admin" && mem.role !== "admin")
+        await db.update(orgMembershipsTable).set({ role: "admin" }).where(sql`${orgMembershipsTable.userId} = ${user.id} and ${orgMembershipsTable.orgId} = ${org.id}`);
+    }
+
+    await clearSession(res, getSessionId(req));
+    const sid = await createSession({
+      kind: "local",
+      user: {
+        id: user.id,
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        profileImageUrl: user.profileImageUrl,
+      },
+    });
+    setSessionCookie(res, sid);
+    res.redirect("/");
+    return;
+  } catch (e) {
+    return fail(`OIDC sign-in failed: ${(e as Error).message}`);
+  }
 });
 
 export default router;

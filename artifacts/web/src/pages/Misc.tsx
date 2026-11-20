@@ -922,6 +922,11 @@ export function Login({ restricted, email }: { restricted?: boolean; email?: str
     retry: false,
   });
   const setup = !!data?.setupRequired && !token;
+  const oidc = useQuery({
+    queryKey: ["oidc-enabled"],
+    queryFn: () => api<{ enabled: boolean }>("/auth/oidc/enabled"),
+    staleTime: 60_000,
+  });
   const submit = useMutation({
     mutationFn: () =>
       api(token ? `/auth/invites/${encodeURIComponent(token)}` : setup ? "/auth/setup" : "/auth/login", {
@@ -989,6 +994,11 @@ export function Login({ restricted, email }: { restricted?: boolean; email?: str
           </>
         ) : (
           <>
+            {!token && !setup && oidc.data?.enabled && (
+              <a className="btn w-full justify-center h-10 mb-3 flex items-center" href="/api/auth/oidc/start" data-testid="login-sso">
+                Sign in with SSO
+              </a>
+            )}
             {(!token || invite.data) && (
               <form
                 className="text-left space-y-3"
