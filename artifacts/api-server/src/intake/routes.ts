@@ -81,7 +81,7 @@ async function withOrg(req: Request, res: Response, next: NextFunction) {
   // Per-organization ingest rate limit on request bytes, checked once per intake call.
   const quotas = await getQuotas(orgId);
   const bytes = Number(req.headers["content-length"] ?? 0);
-  if (!checkByteRate(orgId, bytes, quotas.maxIngestBytesPerMinute)) {
+  if (!(await checkByteRate(orgId, bytes, quotas.maxIngestBytesPerMinute))) {
     recordDrop(orgId, intakePath(req.path), 1, "quota:ingest_bytes_per_minute");
     res.status(429).json({ errors: ["Organization ingest rate limit reached; slow down or raise the limit"], status: "error" });
     return;
@@ -95,6 +95,12 @@ function wrap(fn: (req: Request, res: Response) => Promise<void>) {
   return (req: Request, res: Response) => {
     fn(req, res).catch((err) => {
       if (res.headersSent) return;
+      // Quota refusals are the client's signal to back off: 429 with the reason, drop recorded with its real count.
+      if (err?.status === 429 && err?.quotaReason) {
+        if (req.orgId) recordDrop(req.orgId, err.path ?? intakePath(req.path), err.count ?? 1, err.quotaReason);
+        res.status(429).json({ errors: [String(err.message)], status: "error" });
+        return;
+      }
       const fromDb = isStorageError(err);
       if (req.orgId) recordDrop(req.orgId, intakePath(req.path), 1, fromDb ? "storage error" : `rejected: ${String(err?.message ?? err).slice(0, 120)}`);
       if (fromDb) {

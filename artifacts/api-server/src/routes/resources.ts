@@ -515,7 +515,7 @@ router.get(
       usage: {
         ...(await usageToday(req.orgId!)),
         series: await seriesCount(req.orgId!),
-        bytesThisMinute: bytesThisMinute(req.orgId!),
+        bytesThisMinute: await bytesThisMinute(req.orgId!),
       },
       intake: intakeStats(req.orgId!),
     });

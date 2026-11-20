@@ -2,14 +2,22 @@ import { pool } from "@workspace/db";
 import { logger } from "./logger";
 
 /**
- * Per-organization ingestion quotas and usage metering. Limits live in org_quotas (NULL = unlimited);
- * daily usage is counted in memory and persisted to org_usage_daily for display and restart recovery.
- * The server is a single process (see SELF_HOSTING), so in-memory counters are authoritative;
- * the database copy can lag by the writes in flight at a crash.
+ * Per-organization ingestion quotas and usage metering. Limits live in org_quotas (NULL = unlimited).
+ *
+ * Enforcement is safe with multiple server processes sharing one PostgreSQL: every reservation is a
+ * single atomic statement holding a row lock, so concurrent batches across processes cannot combine
+ * past a limit. Daily counters and the per-minute byte window live in PostgreSQL (org_usage_daily,
+ * org_usage_minute); the in-memory cache of the *limits* refreshes within 10 seconds per process.
+ *
+ * Crash/retry semantics: reservation happens before storage, so a crash between the two over-counts
+ * usage (conservative; intake is refused earlier, never over-admitted). A client retry of an accepted
+ * batch after an ambiguous failure counts usage again, same conservative direction. A refused batch is
+ * all-or-nothing: it is rejected whole with 429 even when part of it would fit.
  *
  * Enforcement points: intake/routes.ts (per-minute request bytes, on the wire) and intake/store.ts
- * (daily points/logs/spans, metric series cap). The series cap is enforced for PostgreSQL storage;
- * ClickHouse installs track high-cardinality volume differently and the cap does not apply there.
+ * (daily points/logs/spans, metric series cap under a per-organization advisory lock). The series cap
+ * is enforced for PostgreSQL storage; ClickHouse installs are for large volumes and the cap does not
+ * apply there.
  */
 export interface OrgQuotas {
   maxSeries: number | null;
@@ -79,79 +87,81 @@ export function parseQuotas(body: any): OrgQuotas | string {
   return out;
 }
 
-// ---- daily usage ----
-type DayCounter = { day: string; points: number; logs: number; spans: number; loaded: boolean };
-const dayCounters = new Map<number, DayCounter>();
+// ---- daily usage (PostgreSQL, atomic across processes) ----
 const USAGE_COLS = { points: "points", logs: "logs", spans: "spans" } as const;
 export type UsageKind = keyof typeof USAGE_COLS;
 
-async function counter(orgId: number): Promise<DayCounter> {
-  const today = new Date().toISOString().slice(0, 10);
-  let c = dayCounters.get(orgId);
-  if (!c || c.day !== today) {
-    c = { day: today, points: 0, logs: 0, spans: 0, loaded: false };
-    dayCounters.set(orgId, c);
-  }
-  if (!c.loaded) {
-    c.loaded = true;
-    try {
-      const r = await pool.query("select points, logs, spans from org_usage_daily where org_id=$1 and day=current_date", [orgId]);
-      if (r.rows[0]) {
-        c.points += Number(r.rows[0].points);
-        c.logs += Number(r.rows[0].logs);
-        c.spans += Number(r.rows[0].spans);
-      }
-    } catch (e) {
-      // A missing usage table (schema mid-upgrade) must never block ingestion.
-      c.loaded = false;
-      logger.warn({ err: String(e) }, "usage counter load failed");
-    }
-  }
-  return c;
-}
-
 /**
- * Reserve n units of a daily quota. Returns true and counts the batch when the org is under its limit;
- * returns false (and counts nothing) once the limit is reached. A batch may carry usage slightly past
- * the limit; the next batch is refused.
+ * Reserve n units of a daily quota in one atomic statement: concurrent batches in any process serialize
+ * on the usage row, and the increment only lands when it fits the limit. Returns false when refused.
  */
 export async function admitDaily(orgId: number, kind: UsageKind, n: number, limit: number | null): Promise<boolean> {
   if (n <= 0) return true;
-  const c = await counter(orgId);
-  if (limit != null && c[kind] >= limit) return false;
-  c[kind] += n;
   const col = USAGE_COLS[kind];
-  pool
-    .query(
+  if (limit == null) {
+    await pool.query(
       `insert into org_usage_daily (org_id, day, ${col}) values ($1, current_date, $2)
        on conflict (org_id, day) do update set ${col} = org_usage_daily.${col} + $2`,
       [orgId, n],
-    )
-    .catch((e) => logger.debug({ err: String(e) }, "usage persist failed"));
-  return true;
+    );
+    return true;
+  }
+  const r = await pool.query(
+    `insert into org_usage_daily (org_id, day, ${col}) values ($1, current_date, least($2, $3))
+     on conflict (org_id, day) do update set ${col} = org_usage_daily.${col} + $2
+     where org_usage_daily.${col} + $2 <= $3
+     returning ${col}`,
+    [orgId, n, limit],
+  );
+  // The insert path lands at most `limit`; the update path refuses when it would cross it. An insert of
+  // exactly least(n, limit) followed by no room means the batch overran: refuse unless it fit whole.
+  if (r.rowCount === 0) return false;
+  return Number(r.rows[0][col]) <= limit;
 }
 
 export async function usageToday(orgId: number): Promise<{ day: string; points: number; logs: number; spans: number }> {
-  const c = await counter(orgId);
-  return { day: c.day, points: c.points, logs: c.logs, spans: c.spans };
+  const r = await pool.query("select day::text, points, logs, spans from org_usage_daily where org_id=$1 and day=current_date", [orgId]);
+  const row = r.rows[0];
+  return {
+    day: row ? String(row.day).slice(0, 10) : new Date().toISOString().slice(0, 10),
+    points: Number(row?.points ?? 0),
+    logs: Number(row?.logs ?? 0),
+    spans: Number(row?.spans ?? 0),
+  };
 }
 
-// ---- per-minute request byte window (in-memory, single-process) ----
-const minuteWindow = new Map<number, { minute: number; bytes: number }>();
+// ---- per-minute request byte window (PostgreSQL, atomic across processes) ----
 
-export function checkByteRate(orgId: number, bytes: number, limit: number | null): boolean {
+export async function checkByteRate(orgId: number, bytes: number, limit: number | null): Promise<boolean> {
   if (limit == null || bytes <= 0) return true;
   const minute = Math.floor(Date.now() / 60_000);
-  const w = minuteWindow.get(orgId);
-  const cur = w && w.minute === minute ? w.bytes : 0;
-  if (cur + bytes > limit) return false;
-  minuteWindow.set(orgId, { minute, bytes: cur + bytes });
-  return true;
+  const r = await pool.query(
+    `insert into org_usage_minute (org_id, minute, bytes) values ($1, $2, least($3, $4))
+     on conflict (org_id, minute) do update set bytes = org_usage_minute.bytes + $3
+     where org_usage_minute.bytes + $3 <= $4
+     returning bytes`,
+    [orgId, minute, bytes, limit],
+  );
+  if (r.rowCount === 0) return false;
+  return Number(r.rows[0].bytes) <= limit;
 }
 
-export function bytesThisMinute(orgId: number): number {
-  const w = minuteWindow.get(orgId);
-  return w && w.minute === Math.floor(Date.now() / 60_000) ? w.bytes : 0;
+export async function bytesThisMinute(orgId: number): Promise<number> {
+  const r = await pool.query("select bytes from org_usage_minute where org_id=$1 and minute=$2", [orgId, Math.floor(Date.now() / 60_000)]);
+  return Number(r.rows[0]?.bytes ?? 0);
+}
+
+/** A batch refused by a daily quota: the intake layer answers 429 with this reason and records the drop. */
+export class QuotaExceeded extends Error {
+  readonly status = 429;
+  constructor(
+    public readonly path: string,
+    public readonly count: number,
+    public readonly quotaReason: string,
+  ) {
+    super(`Organization ${quotaReason.replace("quota:", "").replaceAll("_", " ")} limit reached; data was not stored. Raise the limit in Organization Settings or reduce volume.`);
+    this.name = "QuotaExceeded";
+  }
 }
 
 /** Current metric series count (PostgreSQL storage), for the series cap and the usage display. */

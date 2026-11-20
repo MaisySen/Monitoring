@@ -117,6 +117,10 @@ CREATE TABLE IF NOT EXISTS org_usage_daily (
  points bigint NOT NULL DEFAULT 0, logs bigint NOT NULL DEFAULT 0, spans bigint NOT NULL DEFAULT 0,
  PRIMARY KEY (org_id, day)
 );
+CREATE TABLE IF NOT EXISTS org_usage_minute (
+ org_id integer NOT NULL, minute bigint NOT NULL, bytes bigint NOT NULL DEFAULT 0,
+ PRIMARY KEY (org_id, minute)
+);
 `,
 ];
 

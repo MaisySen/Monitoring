@@ -27,7 +27,7 @@ import { logger } from "../lib/logger";
 import { recordSpanStats } from "../query/apmStats";
 import { useClickHouse } from "../lib/storage";
 import { chInsert, ensureChSchema } from "../lib/ch";
-import { getQuotas, admitDaily, seriesCount } from "../lib/quotas";
+import { getQuotas, admitDaily, seriesCount, QuotaExceeded } from "../lib/quotas";
 import { recordDrop } from "../lib/intakeStats";
 
 export interface PointIn {
@@ -85,32 +85,45 @@ async function seriesIds(orgId: number, list: PointIn[], now: number, maxSeries:
     if (!seriesCache.has(key) && !missing.has(key))
       missing.set(key, { metric: p.metric, host: p.host ?? "", tags, tags_key: tagsKey, type: p.type, unit: p.unit ?? null });
   }
-  if (missing.size && maxSeries != null) {
-    const room = Math.max(0, maxSeries - (await seriesCount(orgId)));
-    const allowed = new Set([...missing.keys()].sort().slice(0, room));
-    for (const k of missing.keys()) {
-      if (!allowed.has(k)) {
-        missing.delete(k);
-        seriesRefused.set(k, Date.now());
-      }
-    }
-  }
   if (missing.size) {
-    const sorted = [...missing.entries()].sort((a, b) => (a[0] < b[0] ? -1 : 1));
-    for (let i = 0; i < sorted.length; i += 1000) {
-      const chunk = sorted.slice(i, i + 1000).map(([, v]) => v);
-      const r = await pool.query(
-        `insert into metric_series (org_id, metric, host, tags, tags_key, type, unit, last_seen)
-         select $1, x.metric, x.host, array(select jsonb_array_elements_text(x.tags)), x.tags_key, x.type, x.unit, $2
-         from jsonb_to_recordset($3::jsonb) as x(metric text, host text, tags jsonb, tags_key text, type text, unit text)
-         on conflict (org_id, metric, host, tags_key) do update set last_seen = excluded.last_seen, type = excluded.type
-         returning id, metric, host, tags_key`,
-        [orgId, now, JSON.stringify(chunk)],
-      );
-      for (const row of r.rows) {
-        seriesCache.set(`${orgId}|${row.metric}|${row.host}|${row.tags_key}`, row.id as number);
-        lastSeenTouched.set(row.id as number, now);
+    // With a series cap, count + create run under a per-organization advisory lock so concurrent batches
+    // (in this or another process) cannot pass the count check together and overshoot the cap.
+    const c = maxSeries != null ? await pool.connect() : null;
+    try {
+      if (c) {
+        await c.query("BEGIN");
+        await c.query("select pg_advisory_xact_lock(hashtext($1))", [`series-cap:${orgId}`]);
+        const room = Math.max(0, maxSeries! - (await seriesCount(orgId)));
+        const allowed = new Set([...missing.keys()].sort().slice(0, room));
+        for (const k of missing.keys()) {
+          if (!allowed.has(k)) {
+            missing.delete(k);
+            seriesRefused.set(k, Date.now());
+          }
+        }
       }
+      const sorted = [...missing.entries()].sort((a, b) => (a[0] < b[0] ? -1 : 1));
+      for (let i = 0; i < sorted.length; i += 1000) {
+        const chunk = sorted.slice(i, i + 1000).map(([, v]) => v);
+        const r = await (c ?? pool).query(
+          `insert into metric_series (org_id, metric, host, tags, tags_key, type, unit, last_seen)
+           select $1, x.metric, x.host, array(select jsonb_array_elements_text(x.tags)), x.tags_key, x.type, x.unit, $2
+           from jsonb_to_recordset($3::jsonb) as x(metric text, host text, tags jsonb, tags_key text, type text, unit text)
+           on conflict (org_id, metric, host, tags_key) do update set last_seen = excluded.last_seen, type = excluded.type
+           returning id, metric, host, tags_key`,
+          [orgId, now, JSON.stringify(chunk)],
+        );
+        for (const row of r.rows) {
+          seriesCache.set(`${orgId}|${row.metric}|${row.host}|${row.tags_key}`, row.id as number);
+          lastSeenTouched.set(row.id as number, now);
+        }
+      }
+      if (c) await c.query("COMMIT");
+    } catch (e) {
+      if (c) await c.query("ROLLBACK").catch((err) => logger.warn({ err }, "rollback failed"));
+      throw e;
+    } finally {
+      c?.release();
     }
   }
   const ids = keys.map((k) => seriesCache.get(k)!);
@@ -197,10 +210,8 @@ async function writeMetricsCh(orgId: number, series: PointIn[]) {
 export async function writeMetrics(orgId: number, series: PointIn[]) {
   const quotas = await getQuotas(orgId);
   const pointCount = series.reduce((n, s) => n + (s.points?.length ?? 0), 0);
-  if (!(await admitDaily(orgId, "points", pointCount, quotas.maxPointsPerDay))) {
-    recordDrop(orgId, "metrics", pointCount, "quota:points_per_day");
-    return;
-  }
+  if (!(await admitDaily(orgId, "points", pointCount, quotas.maxPointsPerDay)))
+    throw new QuotaExceeded("metrics", pointCount, "quota:points_per_day");
   if (useClickHouse) return writeMetricsCh(orgId, series);
   const now = Math.floor(Date.now() / 1000);
   const vals: any[] = [];
@@ -354,10 +365,8 @@ const nextLogId = () => Date.now() * 4096 + (logSeq = (logSeq + 1) % 4096);
 
 export async function writeLogs(orgId: number, logs: LogIn[]) {
   const quotas = await getQuotas(orgId);
-  if (!(await admitDaily(orgId, "logs", logs.length, quotas.maxLogsPerDay))) {
-    recordDrop(orgId, "logs", logs.length, "quota:logs_per_day");
-    return;
-  }
+  if (!(await admitDaily(orgId, "logs", logs.length, quotas.maxLogsPerDay)))
+    throw new QuotaExceeded("logs", logs.length, "quota:logs_per_day");
   // Sensitive data is masked before anything is stored (intake/redact.ts).
   for (const l of logs) {
     if (typeof l.message === "string") l.message = cut(stripAnsi(l.message), MAX_MESSAGE);
@@ -441,10 +450,8 @@ export function markTopLevel(spans: SpanIn[]) {
 export async function writeSpans(orgId: number, spans: SpanIn[]) {
   if (!spans.length) return;
   const quotas = await getQuotas(orgId);
-  if (!(await admitDaily(orgId, "spans", spans.length, quotas.maxSpansPerDay))) {
-    recordDrop(orgId, "traces", spans.length, "quota:spans_per_day");
-    return;
-  }
+  if (!(await admitDaily(orgId, "spans", spans.length, quotas.maxSpansPerDay)))
+    throw new QuotaExceeded("traces", spans.length, "quota:spans_per_day");
   // service/env are normalized to lowercase so searches can compare exactly and use indexes.
   for (const s of spans) {
     limitValues(s.meta);
