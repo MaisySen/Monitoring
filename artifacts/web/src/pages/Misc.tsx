@@ -895,6 +895,11 @@ export function Home() {
                     {p.service}
                   </Link>
                 )}
+                {p.service && p.name.includes("Errors in") && (
+                  <Link href={`/errors?service=${encodeURIComponent(p.service)}`} className="text-xs text-primary">
+                    Error groups →
+                  </Link>
+                )}
                 {p.since && <span className="ml-auto text-xs text-ink-3">{fmtAgo(p.since)}</span>}
               </Link>
             ))
@@ -1019,6 +1024,80 @@ export OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
           <div className="text-[12px] text-ink-3 mt-2">
             Full guides, including running through the Monitoring Agent: <Link className="text-primary" href="/docs/getting-started">Docs → Getting started</Link>
           </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+interface ErrorGroupsData {
+  supported: boolean;
+  groups: {
+    fingerprint: string;
+    service: string;
+    env: string;
+    errorType: string;
+    messageExample: string;
+    firstSeen: number;
+    lastSeen: number;
+    count: number;
+  }[];
+}
+
+export function Errors() {
+  const search = useSearch();
+  const svcFilter = new URLSearchParams(search).get("service") ?? "";
+  const d = useQuery({
+    queryKey: ["error-groups", svcFilter],
+    queryFn: () => api<ErrorGroupsData>(`/ui/errors${svcFilter ? `?service=${encodeURIComponent(svcFilter)}` : ""}`),
+    refetchInterval: 30_000,
+  });
+  const groups = d.data?.groups ?? [];
+  return (
+    <div>
+      <PageHeader title="Errors" sub="Recurring exceptions grouped by type and message shape" />
+      <div className="p-6 space-y-4 max-w-5xl">
+        {svcFilter && (
+          <div className="text-[13px] text-ink-2">
+            Filtered to <span className="font-semibold">{svcFilter}</span> · <Link className="text-primary" href="/errors">show all services</Link>
+          </div>
+        )}
+        <div className="card">
+          {!d.data ? null : !d.data.supported ? (
+            <div className="px-4 py-4 text-ink-3 text-xs">Error grouping is not available on this storage backend yet.</div>
+          ) : groups.length === 0 ? (
+            <div className="px-4 py-4 text-ink-3 text-xs">
+              No error groups recorded yet. Groups form when spans arrive with error details; an empty list here only means none have been
+              observed, not that none occurred.
+            </div>
+          ) : (
+            groups.map((g) => (
+              <div key={g.fingerprint} className="px-4 py-3 border-b border-line">
+                <div className="flex items-center gap-2 flex-wrap">
+                  {g.errorType ? (
+                    <span className="mono text-[11px] px-1.5 py-0.5 rounded bg-[#fde8e8] text-bad">{g.errorType}</span>
+                  ) : (
+                    <span className="mono text-[11px] px-1.5 py-0.5 rounded bg-panel text-ink-2">error</span>
+                  )}
+                  <span className="font-medium text-[13px]">{g.service}</span>
+                  {g.env && <span className="text-xs text-ink-3">{g.env}</span>}
+                  <span className="ml-auto text-xs text-ink-3">
+                    {fmtNum(g.count)}× · first {fmtAgo(g.firstSeen)} · last {fmtAgo(g.lastSeen)}
+                  </span>
+                </div>
+                <div className="mono text-[12px] text-ink-2 mt-1 break-all">{g.messageExample}</div>
+                <div className="text-xs mt-1">
+                  <Link className="text-primary" href={`/apm/traces?query=${encodeURIComponent(`service:${g.service} status:error`)}`}>
+                    Error traces for {g.service} →
+                  </Link>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+        <div className="text-[11px] text-ink-3">
+          Grouped at intake by error type and message shape (numbers and ids are normalized). Counts come from stored error spans;
+          re-delivered data is not double-counted.
         </div>
       </div>
     </div>

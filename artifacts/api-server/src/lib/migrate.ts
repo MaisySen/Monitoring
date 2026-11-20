@@ -178,6 +178,25 @@ DELETE FROM spans a USING spans b
  WHERE a.org_id = b.org_id AND a.trace_id = b.trace_id AND a.span_id = b.span_id AND a.id > b.id;
 CREATE UNIQUE INDEX IF NOT EXISTS spans_uniq ON spans(org_id, trace_id, span_id);
 `,
+  // 11: error fingerprint groups (PG backend). Upserted inside the span intake transaction from
+  // fresh error spans only, so counts cannot double-count re-deliveries. count/first_seen/
+  // last_seen are occurrence facts derived from committed spans; message_example keeps the
+  // first raw message seen for the group.
+  `
+CREATE TABLE IF NOT EXISTS error_groups (
+  org_id integer NOT NULL,
+  fingerprint text NOT NULL,
+  service text NOT NULL,
+  env text NOT NULL DEFAULT '',
+  error_type text NOT NULL DEFAULT '',
+  message_example text NOT NULL DEFAULT '',
+  first_seen bigint NOT NULL,
+  last_seen bigint NOT NULL,
+  count bigint NOT NULL DEFAULT 0,
+  PRIMARY KEY (org_id, fingerprint)
+);
+CREATE INDEX IF NOT EXISTS error_groups_org_lastseen ON error_groups(org_id, last_seen);
+`,
 ];
 
 export async function migrateDatabase() {

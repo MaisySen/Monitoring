@@ -20,6 +20,7 @@ import {
   Building2,
   ChevronDown,
   Check,
+  Bug,
 } from "lucide-react";
 import { MonitoringMark } from "./Logo";
 import { useAuthUser } from "@/lib/auth";
@@ -95,6 +96,7 @@ const NAV_GROUPS: NavItem[][] = [
       ],
     },
     { label: "Events", icon: CalendarClock, href: "/event/explorer", match: ["/event"] },
+    { label: "Errors", icon: Bug, href: "/errors", match: ["/errors"] },
   ],
 ];
 const NAV = NAV_GROUPS.flat();

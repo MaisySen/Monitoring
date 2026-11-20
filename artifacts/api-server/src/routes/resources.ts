@@ -17,7 +17,7 @@ import { logger } from "../lib/logger";
 
 const router: Router = Router();
 router.use(
-  ["/v1/dashboard", "/v1/monitor", "/v1/events", "/ui/org", "/ui/events", "/ui/channels", "/ui/monitors", "/ui/now", "/v1/integration/webhooks", "/v1/intake"],
+  ["/v1/dashboard", "/v1/monitor", "/v1/events", "/ui/org", "/ui/events", "/ui/channels", "/ui/monitors", "/ui/now", "/ui/errors", "/v1/integration/webhooks", "/v1/intake"],
   requireOrg,
 );
 
@@ -426,6 +426,43 @@ router.get(
       totals: { spans: Number(totals.spans), logs: Number(totals.logs) },
       services,
       problems,
+    });
+  }),
+);
+
+// ---------- Error groups ----------
+// Supporting evidence for error problems: recurring exceptions collapsed by fingerprint at
+// intake. Empty on the ClickHouse backend (groups are PG-only for now) - report that honestly
+// rather than implying no errors occurred.
+router.get(
+  "/ui/errors",
+  h(async (req, res) => {
+    const service = String(req.query.service ?? "");
+    const hasTable = (await pool.query("select to_regclass('error_groups') is not null as e")).rows[0].e;
+    if (!hasTable) {
+      res.json({ supported: false, groups: [] });
+      return;
+    }
+    const rows = (
+      await pool.query(
+        `select fingerprint, service, env, error_type, message_example, first_seen, last_seen, count
+         from error_groups where org_id=$1 and ($2='' or service=$2)
+         order by last_seen desc limit 200`,
+        [req.orgId, service],
+      )
+    ).rows;
+    res.json({
+      supported: true,
+      groups: rows.map((g: any) => ({
+        fingerprint: g.fingerprint,
+        service: g.service,
+        env: g.env,
+        errorType: g.error_type,
+        messageExample: g.message_example,
+        firstSeen: Number(g.first_seen),
+        lastSeen: Number(g.last_seen),
+        count: Number(g.count),
+      })),
     });
   }),
 );

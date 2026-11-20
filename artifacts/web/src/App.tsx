@@ -9,7 +9,7 @@ import { MetricsExplorer, MetricsSummary } from "@/pages/Metrics";
 import { MonitorList, MonitorEdit, MonitorStatus } from "@/pages/Monitors";
 import { LogsExplorer } from "@/pages/Logs";
 import { ApmServices, ApmService, TraceExplorer, TraceView } from "@/pages/Apm";
-import { Events, OrgSettings, AgentSetup, Home, Login, Onboarding } from "@/pages/Misc";
+import { Events, OrgSettings, AgentSetup, Home, Login, Onboarding, Errors } from "@/pages/Misc";
 import { Docs } from "@/pages/Docs";
 
 export default function App() {
@@ -43,6 +43,7 @@ export default function App() {
             <Route path="/account/agent" component={AgentSetup} />
             <Route path="/docs" component={Docs} />
             <Route path="/onboarding" component={Onboarding} />
+            <Route path="/errors" component={Errors} />
             <Route path="/docs/:section" component={Docs} />
             <Route path="/search">
               <Redirect to="/" />

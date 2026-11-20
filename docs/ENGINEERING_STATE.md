@@ -457,3 +457,33 @@ queue). 100 spans/s, 60s runs, fault at 20s. Evidence: bench/evidence/recovery/s
   service link, since), Services health list (state dot + honest note), honest empty state,
   30s refetch, footer disclaimer. Visually verified (headless Chrome, real login): billing
   degraded 12/120 (10.0%) with ALERT problem row; frontend/shop-api "No errors observed".
+
+## 2026-11-21 06:56 AEDT - Onboarding page, timed silence soak, P1 error groups
+
+### Onboarding page (38deb37)
+- `/onboarding` "Connect your app": live status card polling `/ui/now` every 3s (honest
+  "Waiting for data..." with client-side troubleshooting caveat -> "Receiving data from <svc>"
+  + link to Now), API-key step linking to Organization Settings (placeholder key in snippets,
+  no full-key autofill), stack tabs Node.js / Python / any-OTLP. Now empty state links here.
+- Visually verified (headless Chrome): receiving state rendered correctly.
+
+### Timed silence soak - PASSED (real wait, no simulation)
+- Fresh org, soak-svc seeded 50 spans 06:44:12 AEDT, then silence. At 06:55:09:
+  `[Default] soak-svc stopped sending data` = **No Data**; `/api/ui/now` shows soak-svc
+  `quiet` ("No data for 10 minutes ... silence alone is not proof of failure"). ~11 min to flip
+  (10m no-data timeframe + evaluator cadence).
+
+### P1: error fingerprint grouping (this commit)
+- `query/errorGroups.ts`: fingerprint = sha1(service | error.type | normalized error.message);
+  normalization replaces uuids/ips/hex/timestamps/numbers. Stack frames and env deliberately
+  excluded from the fingerprint (documented why in file header).
+- Migration 11: `error_groups` table. Upserted inside the span intake transaction from FRESH
+  error spans only (same atomicity/dedup story as span_stats).
+- `GET /api/ui/errors?service=` (PG; `supported:false` on CH backend - grouping is PG-only
+  for now, same class of limitation as the trace-metric transactionality).
+- `/errors` page + nav; Now Problems card links error problems to their error groups.
+- LIVE VERIFY (soak org, err-svc): 7 TypeErrors ("user <n> not found") collapsed to ONE group
+  count=7, 3 KeyErrors to one group count=3. The identical batch re-delivered (lost-response
+  retry) did NOT double-count (still 7/3). env=prod captured from OTLP resource attrs.
+  Bonus: the journey closes - err-svc's `[Default] Errors in err-svc` monitor went Alert.
+- Unit: 68/68 pass (5 new error-groups tests incl. normalization, stability, generic grouping).

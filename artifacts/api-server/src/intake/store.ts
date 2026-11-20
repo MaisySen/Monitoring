@@ -25,6 +25,7 @@ import { pool } from "@workspace/db";
 import { createHash } from "node:crypto";
 import { logger } from "../lib/logger";
 import { aggregateSpanStats, insertSpanStatsTx, startStatsTimer, ensureSpanStats } from "../query/apmStats";
+import { aggregateErrorGroups, upsertErrorGroupsTx } from "../query/errorGroups";
 import { ensureServiceMonitors } from "../jobs/autoMonitors";
 import { useClickHouse } from "../lib/storage";
 import { chInsert, ensureChSchema } from "../lib/ch";
@@ -587,6 +588,9 @@ export async function writeSpans(orgId: number, spans: SpanIn[]) {
       const freshSpans = spans.filter((s) => inserted.has(s.traceId + "\0" + s.spanId));
       if (freshSpans.length) {
         await insertSpanStatsTx(c, orgId, aggregateSpanStats(freshSpans));
+        // Error groups ride in the same transaction from fresh spans only, so a retry after a
+        // lost response cannot double-count occurrences.
+        await upsertErrorGroupsTx(c, orgId, aggregateErrorGroups(freshSpans));
         if (traceAdmitted && traceIdByKey.size)
           traceUsedIds = await insertTracePointsTx(c, orgId, deriveTracePoints(freshSpans), traceIdByKey);
       }
