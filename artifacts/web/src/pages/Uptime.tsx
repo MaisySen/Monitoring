@@ -5,6 +5,8 @@ import { api } from "@/lib/api";
 import { PageHeader } from "@/components/Layout";
 import { fmtAgo } from "@/lib/format";
 
+// Availability is never claimed: the figures below are successful measured probes over the
+// window covered by samples, not continuous availability.
 type UptimeCheck = {
   id: number;
   name: string;
@@ -21,8 +23,10 @@ type UptimeCheck = {
   lastDurationMs: number | null;
   lastError: string | null;
   createdAt: number;
-  availability24h: number | null;
+  probesOkPct24h: number | null;
   samples24h: number;
+  samplesOk24h: number;
+  coverageSinceMs: number | null;
   recent: { ts: number; ok: boolean; status: number | null; durationMs: number | null; error: string | null }[];
 };
 
@@ -136,16 +140,18 @@ export function Uptime() {
               </div>
               <div className="ml-auto text-right shrink-0">
                 <div className="text-sm">
-                  {c.availability24h == null ? (
+                  {c.probesOkPct24h == null ? (
                     <span className="text-ink-3">no probes yet</span>
                   ) : (
-                    <span className={c.availability24h >= 99 ? "text-ok" : c.availability24h >= 95 ? "text-warn" : "text-bad"}>
-                      {c.availability24h}% up
+                    <span className={c.probesOkPct24h >= 99 ? "text-ok" : c.probesOkPct24h >= 95 ? "text-warn" : "text-bad"}>
+                      {c.samplesOk24h}/{c.samples24h} probes ok
                     </span>
                   )}
                 </div>
                 <div className="text-[11px] text-ink-3">
-                  {c.samples24h > 0 ? `${c.samples24h} probes in 24h · ` : ""}
+                  {c.samples24h > 0
+                    ? `measured over ${Math.max(1, Math.round(((c.coverageSinceMs ? Date.now() - c.coverageSinceMs : 0) || 0) / 60000))}m (24h window) · `
+                    : ""}
                   {c.lastCheckedAt ? `last ${fmtAgo(c.lastCheckedAt)}` : "never probed"}
                   {c.lastDurationMs != null ? ` · ${c.lastDurationMs}ms` : ""}
                 </div>

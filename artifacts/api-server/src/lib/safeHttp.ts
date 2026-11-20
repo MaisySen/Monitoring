@@ -105,12 +105,22 @@ export function makeSafeLookup(allow: boolean = allowPrivate): net.LookupFunctio
     dns.lookup(hostname, { ...options, all: true }, (err, addresses) => {
       if (err) return (callback as any)(err);
       const list = addresses as dns.LookupAddress[];
-      const bad = list.find((a) => isBlockedAddress(a.address, allow));
-      if (bad) return (callback as any)(Object.assign(new Error(`refused: ${hostname} resolves to a private or local address`), { code: "EBLOCKED" }));
+      const bad = firstBlockedAddress(list.map((a) => a.address), allow);
+      if (bad) return (callback as any)(Object.assign(new Error(`refused: ${hostname} resolves to a private or local address (${bad})`), { code: "EBLOCKED" }));
       if ((options as any)?.all) return (callback as any)(null, list);
       (callback as any)(null, list[0].address, list[0].family);
     });
   };
+}
+
+/**
+ * The first blocked address in a resolution result, or null when every address is allowed.
+ * A hostname is refused when ANY of its addresses is blocked (mixed public+private results
+ * included): the lookup that runs this check is the lookup the connection itself uses, so
+ * the addresses validated here are the only ones the socket can connect to.
+ */
+export function firstBlockedAddress(addresses: string[], allow: boolean = allowPrivate): string | null {
+  return addresses.find((a) => isBlockedAddress(a, allow)) ?? null;
 }
 
 const safeLookup: net.LookupFunction = makeSafeLookup(allowPrivate);

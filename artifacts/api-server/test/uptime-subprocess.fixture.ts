@@ -19,6 +19,9 @@ const server = http.createServer((req, res) => {
   } else if (url === "/loop") {
     res.writeHead(302, { location: "/loop" });
     res.end();
+  } else if (url === "/credredir") {
+    res.writeHead(302, { location: `http://user:pass@127.0.0.1:${port}/ok` });
+    res.end();
   } else if (url === "/ftp") {
     res.writeHead(302, { location: "ftp://example.com/file" });
     res.end();
@@ -76,6 +79,12 @@ r = await probeUptime(`${base}/ftp`, {});
 assert.equal(r.ok, false);
 assert.match(r.error ?? "", /redirect refused/);
 out.redirectRefused = r;
+
+// A redirect carrying credentials is refused at the hop even with the private override set.
+r = await probeUptime(`${base}/credredir`, {});
+assert.equal(r.ok, false);
+assert.match(r.error ?? "", /redirect refused/);
+out.redirectCredsRefused = r;
 
 // A hanging server is bounded by the timeout.
 r = await probeUptime(`${base}/hang`, { timeoutMs: 1000 });

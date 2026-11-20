@@ -25,6 +25,15 @@ export const MAX_INTERVAL_S = 3600;
 export const MIN_TIMEOUT_MS = 1000;
 export const MAX_TIMEOUT_MS = 30000;
 export const MAX_CHECKS_PER_ORG = 50;
+/** Per-org manual probe runs per minute (POST /ui/uptime/:id/run). */
+export const MANUAL_RUNS_PER_ORG_PER_MIN = 10;
+/** Per-org cap on checks claimed in one loop tick (global tick claim is CLAIM_LIMIT in jobs/uptime). */
+export const MAX_CHECKS_CLAIMED_PER_ORG_PER_TICK = 5;
+
+/** Resolves a redirect Location against its base URL and validates the hop like any target. */
+export function nextHopUrl(location: string, base: URL): URL {
+  return checkUptimeUrl(new URL(location, base).toString());
+}
 
 /** Throws (status 400) when the URL is not a plain http(s) URL or points at a refused address. */
 export function checkUptimeUrl(raw: string): URL {
@@ -113,6 +122,26 @@ export interface ProbeOptions {
   expectMax?: number;
 }
 
+/** Fixed-window rate limiter (per key), in-memory per process. Bounds manual probe runs. */
+export class RateLimiter {
+  private hits = new Map<string, number[]>();
+  constructor(
+    private limit: number,
+    private windowMs: number,
+  ) {}
+  allow(key: string, now: number = Date.now()): boolean {
+    const arr = (this.hits.get(key) ?? []).filter((t) => t > now - this.windowMs);
+    if (arr.length >= this.limit) {
+      this.hits.set(key, arr);
+      return false;
+    }
+    arr.push(now);
+    this.hits.set(key, arr);
+    if (this.hits.size > 5000) this.hits.clear();
+    return true;
+  }
+}
+
 export async function probeUptime(raw: string, opts: ProbeOptions = {}): Promise<UptimeProbeResult> {
   const method = opts.method === "HEAD" ? "HEAD" : "GET";
   const timeoutMs = Math.min(Math.max(opts.timeoutMs ?? 8000, MIN_TIMEOUT_MS), MAX_TIMEOUT_MS);
@@ -154,7 +183,7 @@ export async function probeUptime(raw: string, opts: ProbeOptions = {}): Promise
       redirects++;
       let next: URL;
       try {
-        next = checkUptimeUrl(new URL(hop.location, u).toString());
+        next = nextHopUrl(hop.location, u);
       } catch (e: any) {
         return {
           ok: false,

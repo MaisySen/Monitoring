@@ -109,3 +109,47 @@ test("runUptimeCheck records the result and increments consecutive_failures", as
     await pool.query("delete from uptime_checks where id=$1", [id]);
   }
 });
+
+// SSRF claims as tested controls (parent review 2026-11-21): redirect-to-private refusal,
+// DNS-rebinding/mixed-address refusal, and validated-addresses-are-connected (the same
+// lookup that validates backs the socket - see makeSafeLookup in lib/safeHttp.ts).
+import { firstBlockedAddress, makeSafeLookup } from "../src/lib/safeHttp";
+import { nextHopUrl, RateLimiter } from "../src/lib/uptime";
+
+test("redirect hops are re-validated: private targets and credentials are refused", () => {
+  const base = new URL("https://example.com/a");
+  assert.throws(() => nextHopUrl("http://169.254.169.254/latest/meta-data", base), /private or local/);
+  assert.throws(() => nextHopUrl("http://10.1.2.3/", base), /private or local/);
+  assert.throws(() => nextHopUrl("http://[::1]/", base), /private or local/);
+  assert.throws(() => nextHopUrl("//127.0.0.1:9000/", base), /private or local/); // scheme-relative
+  assert.throws(() => nextHopUrl("http://user:pass@example.com/", base), /[Cc]redentials/);
+  assert.throws(() => nextHopUrl("ftp://example.com/", base), /http\(s\)/);
+  assert.equal(nextHopUrl("/health", base).toString(), "https://example.com/health");
+  assert.equal(nextHopUrl("https://status.example.com/", base).hostname, "status.example.com");
+});
+
+test("mixed resolution results are refused: any blocked address blocks the hostname", () => {
+  // DNS rebinding / round-robin mixes: a hostname is only probed when EVERY resolved address
+  // is clean. The lookup performing this check is the one passed to the HTTP request, so the
+  // validated addresses are the only addresses the socket can connect to (no re-resolution).
+  assert.equal(firstBlockedAddress(["8.8.8.8", "10.0.0.1"]), "10.0.0.1");
+  assert.equal(firstBlockedAddress(["1.1.1.1", "169.254.169.254"]), "169.254.169.254");
+  assert.equal(firstBlockedAddress(["2606:4700:4700::1111", "::1"]), "::1");
+  assert.equal(firstBlockedAddress(["8.8.8.8", "::ffff:127.0.0.1"]), "::ffff:127.0.0.1"); // IPv4-mapped
+  assert.equal(firstBlockedAddress(["8.8.8.8", "64:ff9b::7f00:1"]), "64:ff9b::7f00:1"); // NAT64 well-known
+  assert.equal(firstBlockedAddress(["8.8.8.8", "1.1.1.1"]), null);
+  // The live lookup object the probes use refuses through the same path.
+  const lookup = makeSafeLookup(false);
+  lookup("localhost", {}, (err: any) => assert.equal(err?.code, "EBLOCKED"));
+});
+
+test("manual-run rate limiter: fixed window per key", () => {
+  const rl = new RateLimiter(3, 60_000);
+  const t0 = 1_000_000;
+  assert.equal(rl.allow("org:1", t0), true);
+  assert.equal(rl.allow("org:1", t0 + 1000), true);
+  assert.equal(rl.allow("org:2", t0 + 1000), true); // independent keys
+  assert.equal(rl.allow("org:1", t0 + 2000), true);
+  assert.equal(rl.allow("org:1", t0 + 3000), false); // 4th within the window
+  assert.equal(rl.allow("org:1", t0 + 61_000), true); // window slid
+});

@@ -1,6 +1,6 @@
 import { pool } from "@workspace/db";
 import { logger } from "../lib/logger";
-import { probeUptime } from "../lib/uptime";
+import { probeUptime, MAX_CHECKS_CLAIMED_PER_ORG_PER_TICK } from "../lib/uptime";
 
 // Uptime probe loop. Every tick it atomically claims due checks (next_run_at bumped inside
 // the same UPDATE ... FOR UPDATE SKIP LOCKED, so multiple API processes never double-probe),
@@ -46,11 +46,24 @@ export async function runUptimeCheck(c: {
 
 async function tick(): Promise<void> {
   const now = Date.now();
+  // Fair claim: at most MAX_CHECKS_CLAIMED_PER_ORG_PER_TICK due checks per org per tick, so one
+  // org with many failing/slow targets cannot starve the others; CLAIM_LIMIT bounds the tick.
+  const cand = (
+    await pool.query(
+      `select id from (select id, row_number() over (partition by org_id order by next_run_at) rn
+         from uptime_checks where enabled and next_run_at <= $1) t
+       where rn <= $2 order by id limit $3`,
+      [now, MAX_CHECKS_CLAIMED_PER_ORG_PER_TICK, CLAIM_LIMIT],
+    )
+  ).rows.map((r: any) => Number(r.id));
+  if (!cand.length) return;
+  // Atomic claim: the UPDATE re-checks next_run_at on the locked latest row version, so a
+  // second process racing the same check updates 0 rows and does not double-probe.
   const { rows } = await pool.query(
     `update uptime_checks set next_run_at = $1 + interval_s * 1000
-     where id in (select id from uptime_checks where enabled and next_run_at <= $1 order by next_run_at limit ${CLAIM_LIMIT} for update skip locked)
+     where id = any($2::int[]) and enabled and next_run_at <= $1
      returning id, org_id, url, method, timeout_ms, expect_status_min, expect_status_max`,
-    [now],
+    [now, cand],
   );
   // Bounded concurrency: CLAIM_LIMIT checks per tick, 4 at a time, so a batch of slow
   // targets cannot stack up sockets (each probe is also individually time-capped).

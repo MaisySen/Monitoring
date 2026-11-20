@@ -14,7 +14,7 @@ import { computeServiceHealth } from "../query/serviceHealth";
 import { fingerprintFor, normalizeMessage, buildVersionCorrelation } from "../query/errorGroups";
 import { computeExceptionIncidents } from "../query/incidents";
 import { effectiveProblem, loadProblemStatuses } from "../query/problemStatus";
-import { checkUptimeUrl, probeUptime, uptimeAllowsPrivate, MIN_INTERVAL_S, MAX_INTERVAL_S, MIN_TIMEOUT_MS, MAX_TIMEOUT_MS, MAX_CHECKS_PER_ORG } from "../lib/uptime";
+import { checkUptimeUrl, probeUptime, uptimeAllowsPrivate, RateLimiter, MIN_INTERVAL_S, MAX_INTERVAL_S, MIN_TIMEOUT_MS, MAX_TIMEOUT_MS, MAX_CHECKS_PER_ORG, MANUAL_RUNS_PER_ORG_PER_MIN } from "../lib/uptime";
 import { SURFACE_AFTER_FAILURES } from "../jobs/uptime";
 import { startSampleData, stopSampleData, sampleRunning } from "../jobs/sample";
 import { intakeStats } from "../lib/intakeStats";
@@ -550,15 +550,21 @@ router.get(
         [req.orgId],
       )
     ).rows;
-    // 24h availability from measured results only; a check with no results reports null, not 100%.
+    // Measured success ratio from probes only; a check with no results reports null, not 100%.
+    // first_ts bounds the actual coverage: a check created 10 minutes ago cannot claim a 24h record.
     const avail = (
       await pool.query(
-        `select check_id, count(*) as n, count(*) filter (where ok) as ok_n
+        `select check_id, count(*) as n, count(*) filter (where ok) as ok_n, min(ts) as first_ts
          from uptime_results where org_id=$1 and ts >= $2 group by check_id`,
         [req.orgId, dayAgo],
       )
     ).rows;
-    const availBy = new Map(avail.map((a: any) => [Number(a.check_id), { n: Number(a.n), pct: (100 * Number(a.ok_n)) / Number(a.n) }]));
+    const availBy = new Map(
+      avail.map((a: any) => [
+        Number(a.check_id),
+        { n: Number(a.n), okN: Number(a.ok_n), firstTs: Number(a.first_ts), pct: (100 * Number(a.ok_n)) / Number(a.n) },
+      ]),
+    );
     const recent = (
       await pool.query(
         `select check_id, ts, ok, status_code, duration_ms, error from (
@@ -594,8 +600,10 @@ router.get(
         lastDurationMs: c.last_duration_ms == null ? null : Number(c.last_duration_ms),
         lastError: c.last_error,
         createdAt: Number(c.created_at),
-        availability24h: availBy.has(Number(c.id)) ? Math.round(availBy.get(Number(c.id))!.pct * 10) / 10 : null,
+        probesOkPct24h: availBy.has(Number(c.id)) ? Math.round(availBy.get(Number(c.id))!.pct * 10) / 10 : null,
         samples24h: availBy.get(Number(c.id))?.n ?? 0,
+        samplesOk24h: availBy.get(Number(c.id))?.okN ?? 0,
+        coverageSinceMs: availBy.get(Number(c.id))?.firstTs ?? null,
         recent: recentBy.get(Number(c.id)) ?? [],
       })),
     });
@@ -647,10 +655,14 @@ router.delete(
 );
 
 // Manual run: probes immediately (through the same validated path as the background loop),
-// records the result and returns it. Used to confirm a check works when it is created.
+// records the result and returns it. Rate-limited per org; background claims are additionally
+// capped per org per tick and globally (see jobs/uptime.ts).
+const uptimeRunLimiter = new RateLimiter(MANUAL_RUNS_PER_ORG_PER_MIN, 60_000);
 router.post(
   "/ui/uptime/:id/run",
   h(async (req, res) => {
+    if (!uptimeRunLimiter.allow(`org:${req.orgId}`))
+      throw new HttpError(429, `At most ${MANUAL_RUNS_PER_ORG_PER_MIN} manual probe runs per minute per organization`);
     const id = intId(req.params.id, "uptime check");
     const c = (
       await pool.query(
