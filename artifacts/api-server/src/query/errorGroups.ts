@@ -108,11 +108,14 @@ export async function upsertErrorGroupsTx(c: { query: (q: string, v?: any[]) => 
   );
 }
 
-// ---------- Deploy evidence: first/last observation of each (service, version) ----------
+// ---------- Version observation: first/last sighting of each (service, env, version) ----------
 // Same fresh-spans-only transaction discipline as error groups: a retry cannot move a
 // version's first_seen earlier than the truth, only repeat an identical observation.
+// This is a VERSION OBSERVATION record, not a deployment event; nothing here may be
+// presented as a deploy or deploy time.
 export interface ServiceVersionAgg {
   service: string;
+  env: string;
   version: string;
   firstMs: number;
   lastMs: number;
@@ -124,13 +127,14 @@ export function aggregateServiceVersions(spans: ErrorSpanLike[]): ServiceVersion
     const v = String(s.meta?.["version"] ?? "").trim().slice(0, 100);
     if (!v) continue;
     const service = s.service || "unnamed-service";
+    const env = (s.env ?? "").trim() || "unknown";
     const ms = Math.floor(s.start / 1e6);
-    const key = `${service}\0${v}`;
+    const key = `${service}\0${env}\0${v}`;
     const cur = m.get(key);
     if (cur) {
       if (ms < cur.firstMs) cur.firstMs = ms;
       if (ms > cur.lastMs) cur.lastMs = ms;
-    } else m.set(key, { service, version: v, firstMs: ms, lastMs: ms });
+    } else m.set(key, { service, env, version: v, firstMs: ms, lastMs: ms });
   }
   return [...m.values()];
 }
@@ -141,13 +145,13 @@ export async function upsertServiceVersionsTx(c: { query: (q: string, v?: any[])
   const ph: string[] = [];
   for (const r of rows) {
     const b = vals.length;
-    vals.push(orgId, r.service, r.version, r.firstMs, r.lastMs);
-    ph.push(`(${Array.from({ length: 5 }, (_, j) => `$${b + j + 1}`).join(",")})`);
+    vals.push(orgId, r.service, r.env, r.version, r.firstMs, r.lastMs);
+    ph.push(`(${Array.from({ length: 6 }, (_, j) => `$${b + j + 1}`).join(",")})`);
   }
   await c.query(
-    `insert into service_versions (org_id, service, version, first_seen, last_seen)
+    `insert into service_versions (org_id, service, env, version, first_seen, last_seen)
      values ${ph.join(",")}
-     on conflict (org_id, service, version) do update set
+     on conflict (org_id, service, env, version) do update set
        first_seen = least(service_versions.first_seen, excluded.first_seen),
        last_seen = greatest(service_versions.last_seen, excluded.last_seen)`,
     vals,

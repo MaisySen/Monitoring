@@ -37,7 +37,10 @@ what broke, why, and what to do next — no dashboards to build, no query langua
 - New home page, "Now": per-service health line (OK / degraded / down, with the one-line
   reason), and a **Problems** list — computed, deduplicated incidents, e.g.
   "Error rate in `shop-api` 12% (baseline 0.4%) since 14:02. Top new error: TypeError in
-  POST /api/checkout. Started after deploy v1.4.2."
+  POST /api/checkout. Version v1.4.2 first observed before this exception."
+  (A literal "started after deploy" line requires separately recorded deployment evidence -
+  a real deploy marker feed - which the product does not have; version-first-observed
+  timing is what the data honestly supports today.)
 - Default monitors are auto-created per service (error rate, latency, silence/no-data
   heartbeat). Hand-written monitor queries stay available but are never required.
 
@@ -45,8 +48,10 @@ what broke, why, and what to do next — no dashboards to build, no query langua
 - Exception group: message, stack, occurrence count, first/last seen.
 - An example failing trace (waterfall exists today), logs scoped to that trace, affected
   endpoints ranked by error count.
-- Deploy markers on the timeline; "started after deploy v1.4.2" stated explicitly when the
-  data supports it.
+- Version-first-observed timing on the incident ("all matched spans in env prod carry
+  v1.4.2, first observed there before this exception") - shipped, environment-scoped,
+  wording never calls it a deploy. Actual deploy markers on the timeline ("started after
+  deploy v1.4.2") require separately recorded deployment evidence and are NOT built.
 - New backend work: group error spans/logs by exception fingerprint at intake (new table +
   derivation). Verify span event storage carries exception.type/message/stacktrace; if not,
   extract at intake.
@@ -77,14 +82,16 @@ not the audience.
 - **P0 — experience core (no new deps):** onboarding flow with live data detection; Now page;
   auto default monitors; service health summary. Reliability fix parked from the resilience
   work (trace.* postcommit undercount window) lands alongside P0 as an independent fix.
-- **P1 — understanding:** exception grouping + error pages; deploy markers + correlation.
+- **P1 — understanding:** exception grouping + error pages; version-first-observed timing
+  (shipped). True deploy markers need recorded deployment evidence - unbuilt, separate.
 - **P2 — reach:** uptime checks; problem acknowledge/resolve; Multies delivery (chat / task /
   mail — needs Multies-side bridge authority, currently held).
 
 ## Validation bar (how we prove it is not "ordinary" this time)
 
-1. Demo scenario rebuilt around a small business: a shop API with a deploy that introduces a
-   bug. From an empty account, the product must surface "New exception in POST /api/checkout
-   since deploy v1.4.2" on the Now page with zero user configuration. Screenshots as proof.
+1. Demo scenario rebuilt around a small business: a shop API that ships a new version
+   introducing a bug. From an empty account, the product must surface the new exception in
+   POST /api/checkout on the Now page with its env-scoped version-first-observed timing,
+   zero user configuration. Screenshots as proof. (No "deploy" wording anywhere.)
 2. Stopwatch test: empty account to first useful answer in under 5 minutes.
 3. The user reviews the experience itself this time, not a milestone list.

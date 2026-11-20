@@ -258,18 +258,38 @@ CREATE TABLE IF NOT EXISTS uptime_results (
 );
 CREATE INDEX IF NOT EXISTS uptime_results_check_ts ON uptime_results (org_id, check_id, ts desc);
 `,
-  // 15: first/last observation of each (service, version) pair - the deploy evidence base.
-  // A version's first_seen is the first span carrying it; an exception may be described as
-  // observed after a deploy only through this table plus complete observation coverage
-  // (see deployEvidenceFor in query/incidents.ts), never from version concentration alone.
+  // 15: first/last observation of each (service, env, version) pair - a VERSION OBSERVATION
+  // record. It is NOT a deployment event and carries no deployment time: it says only when
+  // Monitoring first saw spans carrying that version in that environment. The
+  // version-first-observed timing rule (versionTimingFor in query/incidents.ts) may reference
+  // it as observation timing, never as deploy evidence. Real deploy markers need separately
+  // recorded deployment evidence, which the product does not have.
   `
 CREATE TABLE IF NOT EXISTS service_versions (
   org_id integer NOT NULL,
   service text NOT NULL,
+  env text NOT NULL,
   version text NOT NULL,
   first_seen bigint NOT NULL,
   last_seen bigint NOT NULL,
-  PRIMARY KEY (org_id, service, version)
+  PRIMARY KEY (org_id, service, env, version)
+);
+`,
+  // 16: environment scope correction. The first version of this table (migration 15, hours
+  // old, dev/e2e only) had no env column: a version first observed in staging could have
+  // backed a timing claim about prod. Rebuild with env in the key. The dropped rows were
+  // pure observation data and repopulate from new intake within minutes; they could not be
+  // honestly attributed to an environment, so they are not migrated.
+  `
+DROP TABLE IF EXISTS service_versions;
+CREATE TABLE service_versions (
+  org_id integer NOT NULL,
+  service text NOT NULL,
+  env text NOT NULL,
+  version text NOT NULL,
+  first_seen bigint NOT NULL,
+  last_seen bigint NOT NULL,
+  PRIMARY KEY (org_id, service, env, version)
 );
 `,
 ];

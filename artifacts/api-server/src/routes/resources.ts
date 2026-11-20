@@ -444,18 +444,18 @@ router.get(
       }));
     }
 
-    // Latest observed deploy per service: the version with the most recent first_seen. This
-    // is an observation record ("version first seen <time>"), not a deployment-time feed.
+    // Latest observed version per (service, env): a version OBSERVATION record ("version
+    // first seen <time>"), not a deployment feed - Monitoring has no deployment records.
     let serviceVersions: any[] = [];
     const hasSvTable = (await pool.query("select to_regclass('service_versions') is not null as e")).rows[0].e;
     if (hasSvTable) {
       serviceVersions = (
         await pool.query(
-          `select distinct on (service) service, version, first_seen, last_seen
-           from service_versions where org_id=$1 order by service, first_seen desc limit 100`,
+          `select distinct on (service, env) service, env, version, first_seen, last_seen
+           from service_versions where org_id=$1 order by service, env, first_seen desc limit 100`,
           [orgId],
         )
-      ).rows.map((r: any) => ({ service: r.service, version: r.version, firstSeen: Number(r.first_seen), lastSeen: Number(r.last_seen) }));
+      ).rows.map((r: any) => ({ service: r.service, env: r.env, version: r.version, firstSeen: Number(r.first_seen), lastSeen: Number(r.last_seen) }));
     }
 
     res.json({

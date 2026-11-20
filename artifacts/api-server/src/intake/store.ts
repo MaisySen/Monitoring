@@ -591,8 +591,9 @@ export async function writeSpans(orgId: number, spans: SpanIn[]) {
         // Error groups ride in the same transaction from fresh spans only, so a retry after a
         // lost response cannot double-count occurrences.
         await upsertErrorGroupsTx(c, orgId, aggregateErrorGroups(freshSpans));
-        // Deploy evidence: first/last observation of each (service, version), same
-        // fresh-spans-only transaction discipline as error groups.
+        // Version observation: first/last sighting of each (service, env, version), same
+        // fresh-spans-only transaction discipline as error groups. Observation only - not
+        // deployment evidence.
         await upsertServiceVersionsTx(c, orgId, aggregateServiceVersions(freshSpans));
         if (traceAdmitted && traceIdByKey.size)
           traceUsedIds = await insertTracePointsTx(c, orgId, deriveTracePoints(freshSpans), traceIdByKey);

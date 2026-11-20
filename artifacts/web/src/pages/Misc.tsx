@@ -838,7 +838,7 @@ type NowData = {
   lastDataAt: number | null;
   totals: { spans: number; logs: number };
   services: { service: string; state: "ok" | "degraded" | "low" | "quiet"; note: string; ops5: number; errOps5: number; lastActiveAt: number }[];
-  serviceVersions?: { service: string; version: string; firstSeen: number; lastSeen: number }[];
+  serviceVersions?: { service: string; env: string; version: string; firstSeen: number; lastSeen: number }[];
   problems: { monitorId: number; name: string; state: string; service: string | null; auto: boolean; since: number | null; query: string; effective: Effective }[];
   exceptions?: ExceptionIncident[];
   exceptionsSupported?: boolean;
@@ -879,10 +879,11 @@ type ExceptionIncident = {
   isNew: boolean;
   topEndpoints: { name: string; count: number }[];
   versionsObserved: string[];
-  // Set only when the server's deploy-evidence rule passes completely (untruncated scan,
-  // every matched span tagged, exactly one version, deploy record strictly older than the
-  // group's first sighting). Wording stays "first observed after" - never "caused by".
-  deployEvidence?: { version: string; deployFirstSeen: number } | null;
+  // Set only when the server's version-timing rule passes completely (untruncated scan,
+  // every matched span tagged, exactly one version and one env among matched spans, version
+  // first observed strictly before the group's first sighting in that env). This is version
+  // OBSERVATION timing - Monitoring has no deployment records. Never "deploy", never cause.
+  versionTiming?: { version: string; env: string; versionFirstSeen: number } | null;
   coverage: { matchedTotal: number; groupCount: number; scanned: number; scanTruncated: boolean; windowDays: number };
   effective: Effective;
 };
@@ -1026,8 +1027,8 @@ export function Home() {
           {x.effective.reopened && "New occurrences after this was marked resolved. "}
           {x.envs.length ? `Environments: ${x.envs.join(", ")}. ` : ""}
           {x.versionsObserved.length ? `Observed in versions: ${x.versionsObserved.join(", ")} (among matched spans). ` : ""}
-          {x.deployEvidence
-            ? `First observed after deploy ${x.deployEvidence.version} (deploy first seen ${fmtAgo(x.deployEvidence.deployFirstSeen)}; all ${x.coverage.matchedTotal} matched spans in the ${x.coverage.windowDays * 24}h scan carry this version). Timing observation, not proof of cause. `
+          {x.versionTiming
+            ? `All ${x.coverage.matchedTotal} matched spans in env ${x.versionTiming.env} carry version ${x.versionTiming.version}, first observed in ${x.versionTiming.env} ${fmtAgo(x.versionTiming.versionFirstSeen)}, strictly before this exception's first sighting. Version-observation timing, not a deployment record and not proof of cause. `
             : ""}
           {x.topEndpoints.length ? `Mostly in: ${x.topEndpoints.map((e) => `${e.name} (${e.count}×)`).join(", ")}. ` : ""}
           {guide && guideFor({ x })}
@@ -1234,10 +1235,11 @@ export function Home() {
           {d && d.exceptionsSupported && (d.exceptions ?? []).length > 0 && (
             <div className="px-4 py-2 text-[11px] text-ink-3">
               Exception incidents come from error groups active in the last {(d.exceptions ?? [])[0].coverage.windowDays * 24}h. First-seen is
-              when Monitoring first observed the exception; versions are the versions observed among matched spans. A "first observed after
-              deploy" line appears only when every matched span in an untruncated scan carries one version and that version was first observed
-              strictly before the exception - a timing observation, never proof of cause. Acknowledge, mute and resolve set your workflow
-              status only - measured state stays visible beside them.
+              when Monitoring first observed the exception; versions are the versions observed among matched spans. A version-timing line
+              appears only when every matched span in an untruncated scan sits in one environment and carries one version that was first
+              observed there strictly before the exception. Monitoring records version observations, not deployments, so this is never a
+              deploy claim and never proof of cause. Acknowledge, mute and resolve set your workflow status only - measured state stays
+              visible beside them.
             </div>
           )}
         </div>
@@ -1263,8 +1265,8 @@ export function Home() {
                 {(() => {
                   const v = (d.serviceVersions ?? []).find((sv) => sv.service === s.service);
                   return v ? (
-                    <span className="ml-auto text-[11px] text-ink-3 shrink-0" title={`Version ${v.version} first observed ${new Date(v.firstSeen).toLocaleString()}`}>
-                      v{v.version} first seen {fmtAgo(v.firstSeen)}
+                    <span className="ml-auto text-[11px] text-ink-3 shrink-0" title={`Version ${v.version} first observed in ${v.env} at ${new Date(v.firstSeen).toLocaleString()}`}>
+                      v{v.version} first seen {fmtAgo(v.firstSeen)} ({v.env})
                     </span>
                   ) : null;
                 })()}

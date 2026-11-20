@@ -621,3 +621,26 @@ Unit: 76/76. CI greens through 43f64b9.
 - Unit: 108/108 (+9: deployEvidenceFor gate matrix incl. 6 negative controls, buildIncidents observation-state exposure, aggregateServiceVersions).
 - Live e2e (db e2e, port 4730): Flask app as checkout-deploy v3.0.1 (traffic, no errors) -> restart v3.0.2, /ok first, then 5x /checkout ValueError -> /ui/now incident carries deployEvidence {version 3.0.2, deployFirstSeen 1795211685563 < firstSeen 1795211693571}, all 5 matched spans on 3.0.2, zero untagged. Live negative control: checkout-equal v4.0.0 whose FIRST span is the KeyError itself -> deploy record exists with first_seen == group first_seen -> claim withheld (deployEvidence null). Both verified via API and Now page screenshot (deploy-now.png).
 - CI: greens through 6b1ace9 (a55d141 run covers df3ded9 as ancestor; df3ded9 itself had no dispatched run).
+
+## 2026-11-21 (later): correction - version-first-observed timing, never deploy (parent review)
+
+- Parent review: first observation of a service.version is not a deployment event; no guard
+  matrix turns it into one. Corrected before any P2 work:
+  - All deploy naming removed from UI/API/docs: deployEvidenceFor -> versionTimingFor;
+    field deployEvidence -> versionTiming; service_versions described everywhere as a version
+    OBSERVATION record. UI line: "all N matched spans in env <E> carry version <V>, first
+    observed in <E> <ago>, strictly before this exception's first sighting.
+    Version-observation timing, not a deployment record and not proof of cause."
+  - ENVIRONMENT SCOPE added (migration 16 rebuilds service_versions with env in the PK;
+    hours-old env-less rows dropped - they could not be honestly attributed). New gate:
+    matched spans must sit in exactly ONE env, and the version's first_seen is looked up
+    for (service, env, version). A staging-first observation can no longer back a prod line.
+  - PRODUCT-PLAN.md amended: true deploy markers (recorded deployment evidence) are unbuilt
+    and listed separately; validation bar reworded without "deploy".
+- Unit 110/110 (+2: staging-record negative, buildIncidents env exposure).
+- Live re-verified (db e2e): positive checkout-v2 (prod, v3.0.1 traffic -> v3.0.2 errors):
+  versionTiming {3.0.2, prod, versionFirstSeen 1795212085510 < firstSeen 1795212093517}.
+  Negative checkout-xenv: v5.0.0 observed in staging FIRST (1795212113128), prod error is the
+  version's first prod span (first_seen == group first_seen) -> versionTiming null. Without
+  env scoping the staging row would have passed strict-before and produced a false claim.
+  Screenshot version-timing-now.png.
