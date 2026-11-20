@@ -151,6 +151,50 @@ async function main() {
   r = await req('POST', '/api/ui/org/invites/accept', { token: tokenCarol }, { cookie: bobCookies });
   check('invite for another email refused', 403, r.status, r.status === 403);
 
+  // 14. Data-level isolation: telemetry written to org A is invisible while another org is active,
+  //     visible after switching back, and gone for a member removed from the org entirely.
+  const nowNs = () => String(BigInt(Date.now()) * 1000000n);
+  const token = `isolation${RUN}`;
+  const otlpLog = (message) => ({
+    resourceLogs: [{ resource: { attributes: [{ key: 'service.name', value: { stringValue: 'memiso' } }] }, scopeLogs: [{ scope: { name: 'm' }, logRecords: [{ timeUnixNano: nowNs(), severityText: 'INFO', body: { stringValue: message } }] }] }],
+  });
+  // The default search window ends at the current whole second, so a log written within the same
+  // second is not visible yet; pass an explicit upper bound a few seconds ahead.
+  const searchLogs = (cookie) =>
+    req('POST', '/api/ui/logs/search', { query: token, limit: 5, from: Math.floor(Date.now() / 1000) - 3600, to: Math.floor(Date.now() / 1000) + 10 }, { cookie });
+
+  await req('POST', '/api/ui/org/select', { orgId: orgA }, { cookie: aliceCookies });
+  r = await req('POST', '/api/ui/org/keys', { name: 'iso', kind: 'api' }, { cookie: aliceCookies });
+  const keyA = json(r)?.key;
+  check('org A api key for isolation', true, !!keyA, !!keyA);
+  r = await req('POST', '/otlp/v1/logs', otlpLog(`marker ${token}`), { 'dd-api-key': keyA });
+  check('log written to org A', 200, r.status, r.status === 200);
+
+  await req('POST', '/api/ui/org/select', { orgId: orgC }, { cookie: aliceCookies });
+  r = await searchLogs(aliceCookies);
+  check('A log invisible while C active', 0, json(r)?.total, r.status === 200 && json(r)?.total === 0);
+  await req('POST', '/api/ui/org/select', { orgId: orgA }, { cookie: aliceCookies });
+  r = await searchLogs(aliceCookies);
+  check('A log visible after switching back', 1, json(r)?.total, r.status === 200 && json(r)?.total === 1);
+
+  // Bob is still a member of A only: he can read the log while active in A.
+  r = await searchLogs(bobCookies);
+  check('member reads org data', 1, json(r)?.total, r.status === 200 && json(r)?.total === 1);
+  r = await req('GET', '/api/ui/org/quotas', null, { cookie: bobCookies });
+  check('member sees org A usage', 1, json(r)?.usage?.logs, r.status === 200 && json(r)?.usage?.logs === 1);
+
+  // Removing Bob from his last organization ends his data access entirely.
+  const orgViewA = json(await req('GET', '/api/ui/org', null, { cookie: aliceCookies }));
+  const bobIdA = orgViewA?.members?.find((m) => m.email === bob.email)?.id;
+  r = await req('DELETE', `/api/ui/org/members/${bobIdA}`, null, { cookie: aliceCookies });
+  check('alice removes bob from A', 200, r.status, r.status === 200);
+  r = await searchLogs(bobCookies);
+  check('org-less member cannot search logs', true, [401, 403].includes(r.status), [401, 403].includes(r.status));
+  r = await req('GET', '/api/ui/org/quotas', null, { cookie: bobCookies });
+  check('org-less member cannot read usage', true, [401, 403].includes(r.status), [401, 403].includes(r.status));
+  r = await req('POST', '/otlp/v1/logs', otlpLog('should not matter'), { 'dd-api-key': keyA });
+  check('intake with org key still works after member removal', 200, r.status, r.status === 200);
+
   const failed = results.filter((x) => !x.pass);
   console.log(JSON.stringify({ suite: 'memberships', total: results.length, failed: failed.length, results }, null, 1));
   process.exit(failed.length ? 1 : 0);
