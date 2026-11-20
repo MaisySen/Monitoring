@@ -61,7 +61,8 @@ Monitoring org's settings. Monitoring verifies it by calling a read endpoint of 
 Multies v1 API and records the binding (Multies workspace id ↔ Monitoring org id) plus
 the key hash. This proves the same people operate both sides and enables later per-org
 integrations (e.g. posting alert notifications into Multies chat). It is *not* person
-sign-in: keys act as the workspace, not as a user.
+sign-in and must never become one: an `mm_live_` key acts as the workspace admin, so
+accepting it as a user credential would hand workspace-admin power to any login.
 
 ### B2. Sign in with Multies via its OAuth 2.1 server (needs a small Multies change)
 
@@ -72,11 +73,24 @@ additive Multies change (new scope, e.g. `identity:read`, returning user id/emai
 workspace membership and role). That change is a **Multies write and stays out of scope
 until the user authorizes it**.
 
-The Monitoring half of this — a generic OIDC/OAuth authorization-code + PKCE sign-in
-that provisions the user and maps provider workspace claims onto `org_memberships` — is
-provider-independent and is built and tested locally against a stub identity provider
-(see `bench/security/oidc.js`). When Multies exposes the scope, pointing Monitoring at it
-is configuration, not new code.
+The Monitoring half of this — a generic OIDC authorization-code + PKCE sign-in — is
+provider-independent and is built and tested locally against stub identity providers
+(see `bench/security/oidc.js`). Its tenant-isolation rules, enforced and tested:
+
+- Identity binds to the immutable `(issuer, sub)` pair (`sso_identities`). An email
+  claim never links a login to an existing account, so a provider asserting someone
+  else's address cannot inherit their privileges.
+- Organizations bind to `(issuer, external workspace id)` (`sso_org_bindings`). Display
+  names are rendering only, never lookup keys: a same-named workspace from any issuer
+  cannot land a user in the wrong organization.
+- id_tokens are verified properly: RS256 signature against the provider JWKS, plus
+  issuer, audience, expiry and nonce checks.
+- Provider role claims sync only `sso`-sourced memberships on each login: downgrades
+  and removals apply, locally granted roles always stand, and the last-admin guard
+  refuses a sync that would orphan an organization.
+
+When Multies exposes the scope, pointing Monitoring at it is configuration, not new
+code.
 
 ### B3. Deep embedding (iframe/navigation from the Multies shell)
 

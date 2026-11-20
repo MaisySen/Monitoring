@@ -122,6 +122,22 @@ CREATE TABLE IF NOT EXISTS org_usage_minute (
  PRIMARY KEY (org_id, minute)
 );
 `,
+  // 6: SSO tenant binding. Memberships gain a grant source so provider-derived roles can be synced without
+  // touching locally granted access; identities and organization bindings key on immutable (issuer, id)
+  // pairs, never on emails or display names.
+  `
+ALTER TABLE org_memberships ADD COLUMN IF NOT EXISTS source text NOT NULL DEFAULT 'local';
+ALTER TABLE org_memberships ADD COLUMN IF NOT EXISTS sso_issuer text;
+CREATE TABLE IF NOT EXISTS sso_identities (
+ issuer text NOT NULL, sub text NOT NULL, user_id varchar NOT NULL,
+ created_at timestamptz NOT NULL DEFAULT now(), PRIMARY KEY (issuer, sub)
+);
+CREATE INDEX IF NOT EXISTS sso_identities_user ON sso_identities(user_id);
+CREATE TABLE IF NOT EXISTS sso_org_bindings (
+ issuer text NOT NULL, external_id text NOT NULL, org_id integer NOT NULL, name text NOT NULL,
+ created_at timestamptz NOT NULL DEFAULT now(), PRIMARY KEY (issuer, external_id)
+);
+`,
 ];
 
 export async function migrateDatabase() {

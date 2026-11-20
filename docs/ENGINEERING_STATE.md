@@ -41,3 +41,15 @@ Working copy of the Monitoring feature build. Local only: not published anywhere
 - Bridge design options (to write up in docs/MULTIES-BRIDGE.md): A) Monitoring as OAuth client (needs Multies scope extension = Multies writes, external dep); B) workspace API key org binding (works today, org-level not person-level); C) Monitoring-side generic OIDC client sign-in buildable+testable NOW against a local stub IdP.
 - Parent 18:05: don't stop at readiness report; continue testable gaps: agent build/onboarding, bounded storage/load/failure tests; confirm bridge study (this). 
 - TODO next runs: docs/MULTIES-BRIDGE.md; Monitoring generic OIDC client sign-in + stub-IdP test; Go agent build (go1.26.6 at /usr/local/go/bin/go, agent in artifacts/agent?); bench/scale + bench/resilience bounded runs; docs/READINESS.md; MODIFICATIONS.md refresh.
+
+## 2026-11-20 18:21 - OIDC hardened to tenant-isolation bar (post-review rework)
+- Review found the first OIDC cut unsafe: orgs matched by display name (cross-issuer/cross-name hijack),
+  users matched by email (account linking), no id_token verification, no downgrade/revocation sync.
+- Fixed: sso_identities (issuer, sub) binding; sso_org_bindings (issuer, external id) binding; membership
+  source column ('local'|'sso'); RS256+JWKS id_token verification with iss/aud/exp/nonce; per-login sync of
+  sso-sourced memberships (downgrade + revoke) with last-admin guard; email-linking of existing accounts refused.
+- bench/security/oidc.js rewritten: two stub IdPs (real RSA keys, JWKS, one-time codes), 25/25 covering
+  happy path, idempotent re-login, email-link refusal, downgrade, revocation, last-admin guard, local-grant
+  retention, unverified email, state mismatch, tampered cookie, code replay, five id_token adversarial modes
+  (sig/iss/aud/exp/nonce), cross-issuer same-sub/email/org-name isolation, SSO account has no password.
+- Regression after rework: unit 63/63, memberships 40/40. Migration 6 added (ALTER org_memberships + 2 tables).

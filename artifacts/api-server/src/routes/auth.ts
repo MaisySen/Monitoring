@@ -1,9 +1,10 @@
-import { db, usersTable, invitesTable, orgsTable, orgMembershipsTable } from "@workspace/db";
+import { db, usersTable, invitesTable, orgsTable, orgMembershipsTable, ssoIdentitiesTable, ssoOrgBindingsTable } from "@workspace/db";
 import { Router, type IRouter, type Request, type Response } from "express";
 import { eq, sql } from "drizzle-orm";
 import { clearSession, createSession, getSessionId, setSessionCookie, hashPassword, verifyPassword, type SessionData } from "../lib/auth";
 import { getOrigin } from "../lib/config";
-import { listMemberships } from "../lib/org";
+import { listMemberships, countOrgAdmins } from "../lib/org";
+import { logger } from "../lib/logger";
 import { oidcConfigFromEnv, discover, startPkce, sealPkce, openPkce, authorizeUrl, exchangeCode } from "../lib/oidc";
 import crypto from "node:crypto";
 
@@ -251,7 +252,7 @@ router.get("/auth/oidc/start", async (req, res) => {
   }
   try {
     const ep = await discover(cfg);
-    const { state, challenge, cookiePayload } = startPkce();
+    const { state, challenge, nonce, cookiePayload } = startPkce();
     res.cookie(PKCE_COOKIE, sealPkce(cookiePayload, oidcSecret()), {
       httpOnly: true,
       sameSite: "lax",
@@ -259,7 +260,7 @@ router.get("/auth/oidc/start", async (req, res) => {
       maxAge: 10 * 60_000,
       path: "/api/auth/oidc",
     });
-    res.redirect(authorizeUrl(ep, cfg, `${getOrigin(req)}/api/auth/oidc/callback`, state, challenge));
+    res.redirect(authorizeUrl(ep, cfg, `${getOrigin(req)}/api/auth/oidc/callback`, state, challenge, nonce));
   } catch (e) {
     res.status(502).json({ error: `OIDC provider error: ${(e as Error).message}` });
     return;
@@ -281,29 +282,69 @@ router.get("/auth/oidc/callback", async (req, res) => {
     const state = String(req.query.state ?? "");
     if (!pkce || !code || state !== pkce.state) return fail("Sign-in state mismatch; start again");
     const ep = await discover(cfg);
-    const id = await exchangeCode(ep, cfg, `${getOrigin(req)}/api/auth/oidc/callback`, code, pkce.verifier);
+    const id = await exchangeCode(ep, cfg, `${getOrigin(req)}/api/auth/oidc/callback`, code, pkce.verifier, pkce.nonce);
 
-    // Find or provision the user (password stays null: OIDC accounts cannot sign in with a password).
-    let [user] = await db.select().from(usersTable).where(sql`lower(${usersTable.email}) = ${id.email}`);
-    if (!user) {
+    // Identity binding on (issuer, sub) only. An email claim never links an SSO login to an existing
+    // account: a provider that asserts someone else's address must not inherit their privileges.
+    let user;
+    const [ident] = await db
+      .select()
+      .from(ssoIdentitiesTable)
+      .where(sql`${ssoIdentitiesTable.issuer} = ${cfg.issuer} and ${ssoIdentitiesTable.sub} = ${id.sub}`);
+    if (ident) {
+      [user] = await db.select().from(usersTable).where(eq(usersTable.id, ident.userId));
+      if (!user) return fail("SSO identity points at a removed account");
+    } else {
+      const [existing] = await db.select().from(usersTable).where(sql`lower(${usersTable.email}) = ${id.email}`);
+      if (existing)
+        return fail("An account with this email already exists; SSO sign-in is not linked by email. Ask an admin to invite you or remove the old account first.");
       [user] = await db
         .insert(usersTable)
         .values({ email: id.email, firstName: (id.name ?? id.email.split("@")[0]).slice(0, 100) })
         .returning();
+      await db.insert(ssoIdentitiesTable).values({ issuer: cfg.issuer, sub: id.sub, userId: user.id });
     }
 
-    // Map provider workspace claims onto memberships: find-or-create the organization by name,
-    // add the membership, never downgrade an existing admin.
+    // Resolve claimed workspaces through immutable (issuer, external org id) bindings; display names are
+    // never lookup keys, so a same-named workspace from any issuer cannot land in the wrong organization.
+    const roleByOrgId = new Map<number, string>();
     for (const o of id.orgs) {
-      let [org] = await db.select().from(orgsTable).where(sql`lower(${orgsTable.name}) = ${o.name.toLowerCase()}`);
-      if (!org) [org] = await db.insert(orgsTable).values({ name: o.name.slice(0, 150) }).returning();
+      let [binding] = await db
+        .select()
+        .from(ssoOrgBindingsTable)
+        .where(sql`${ssoOrgBindingsTable.issuer} = ${cfg.issuer} and ${ssoOrgBindingsTable.externalId} = ${o.id}`);
+      if (!binding) {
+        const [org] = await db.insert(orgsTable).values({ name: o.name.slice(0, 150) }).returning();
+        [binding] = await db.insert(ssoOrgBindingsTable).values({ issuer: cfg.issuer, externalId: o.id, orgId: org.id, name: o.name.slice(0, 150) }).returning();
+      }
+      roleByOrgId.set(binding.orgId, o.role);
       const [mem] = await db
         .select()
         .from(orgMembershipsTable)
-        .where(sql`${orgMembershipsTable.userId} = ${user.id} and ${orgMembershipsTable.orgId} = ${org.id}`);
-      if (!mem) await db.insert(orgMembershipsTable).values({ userId: user.id, orgId: org.id, role: o.role });
-      else if (o.role === "admin" && mem.role !== "admin")
-        await db.update(orgMembershipsTable).set({ role: "admin" }).where(sql`${orgMembershipsTable.userId} = ${user.id} and ${orgMembershipsTable.orgId} = ${org.id}`);
+        .where(sql`${orgMembershipsTable.userId} = ${user.id} and ${orgMembershipsTable.orgId} = ${binding.orgId}`);
+      if (!mem)
+        await db.insert(orgMembershipsTable).values({ userId: user.id, orgId: binding.orgId, role: o.role, source: "sso", ssoIssuer: cfg.issuer });
+    }
+
+    // Sync provider-derived memberships to the current claims: downgrades and removals apply, and only
+    // sso-sourced rows for this issuer are touched, so an independently granted local role always stands.
+    // The last-admin guard refuses a sync that would orphan an organization.
+    const ssoRows = await db
+      .select()
+      .from(orgMembershipsTable)
+      .where(sql`${orgMembershipsTable.userId} = ${user.id} and ${orgMembershipsTable.source} = 'sso' and ${orgMembershipsTable.ssoIssuer} = ${cfg.issuer}`);
+    for (const m of ssoRows) {
+      const claimedRole = roleByOrgId.get(m.orgId);
+      if (claimedRole !== undefined && m.role === claimedRole) continue;
+      if (m.role === "admin" && (await countOrgAdmins(m.orgId)) <= 1) {
+        logger.warn({ userId: user.id, orgId: m.orgId, claimedRole }, "SSO sync kept the last organization admin");
+        continue;
+      }
+      if (claimedRole === undefined) {
+        await db.delete(orgMembershipsTable).where(sql`${orgMembershipsTable.userId} = ${user.id} and ${orgMembershipsTable.orgId} = ${m.orgId}`);
+      } else {
+        await db.update(orgMembershipsTable).set({ role: claimedRole }).where(sql`${orgMembershipsTable.userId} = ${user.id} and ${orgMembershipsTable.orgId} = ${m.orgId}`);
+      }
     }
 
     await clearSession(res, getSessionId(req));
