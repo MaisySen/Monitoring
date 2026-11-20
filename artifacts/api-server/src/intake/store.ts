@@ -24,7 +24,7 @@ function limitValues(o: Record<string, any> | undefined, depth = 0): Record<stri
 import { pool } from "@workspace/db";
 import { createHash } from "node:crypto";
 import { logger } from "../lib/logger";
-import { recordSpanStats } from "../query/apmStats";
+import { aggregateSpanStats, insertSpanStatsTx, startStatsTimer, ensureSpanStats } from "../query/apmStats";
 import { useClickHouse } from "../lib/storage";
 import { chInsert, ensureChSchema } from "../lib/ch";
 import { getQuotas, admitDaily, seriesCount, QuotaExceeded } from "../lib/quotas";
@@ -546,27 +546,27 @@ export async function writeSpans(orgId: number, spans: SpanIn[]) {
       ]);
     }
     // All chunks in one transaction: a mid-batch failure rolls back every row, so no
-    // committed rows can be left without their rollup contribution.
+    // committed rows can be left without their rollup contribution. The per-minute rollup
+    // rows are inserted in the SAME transaction (append-only; compacted later), so a crash
+    // cannot split committed span rows from their span_stats contribution.
+    await ensureSpanStats();
     const inserted = new Set<string>();
     await inTransaction(async (c) => {
       for (const [q, v] of stmts) {
         const r = (await c.query(q, v)) as { rows: { trace_id: string; span_id: string }[] };
         for (const row of r.rows) inserted.add(row.trace_id + "\0" + row.span_id);
       }
+      const freshSpans = spans.filter((s) => inserted.has(s.traceId + "\0" + s.spanId));
+      if (freshSpans.length) await insertSpanStatsTx(c, orgId, aggregateSpanStats(freshSpans));
+      fresh = freshSpans;
     });
-    fresh = spans.filter((s) => inserted.has(s.traceId + "\0" + s.spanId));
     if (!fresh.length) return; // pure re-delivery: rows and rollups already counted
+    startStatsTimer(); // keeps minute compaction running (rows are append-only)
   }
   const stored = useClickHouse ? spans : fresh;
   await recordHostServices(orgId, stored);
-  // Per-minute APM rollups (service/resource counts and latency histograms) for the APM screens.
+  // Per-minute APM rollups for the PostgreSQL path are inserted in the intake transaction above.
   // With ClickHouse a materialized view on spans maintains them (lib/ch.ts).
-  if (!useClickHouse)
-    try {
-      await recordSpanStats(orgId, stored);
-    } catch (e) {
-      logger.warn({ err: e }, "span stats rollup failed");
-    }
   // Derive trace metrics (trace.<operation>.hits/errors/duration) from top-level spans
   const agg = new Map<string, { metric: string; tags: string[]; host: string; ts: number; hits: number; errors: number; dur: number }>();
   for (const s of stored) {

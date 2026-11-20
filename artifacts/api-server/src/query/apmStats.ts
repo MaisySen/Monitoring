@@ -94,6 +94,11 @@ export async function recordSpanStats(orgId: number, spans: SpanLike[]) {
   if (useClickHouse) return;
   let agg = pending.get(orgId);
   if (!agg) pending.set(orgId, (agg = new Map()));
+  accumulate(agg, spans);
+  startStatsTimer();
+}
+
+function accumulate(agg: Map<string, Agg>, spans: SpanLike[]) {
   for (const s of spans) {
     if (!s.isTopLevel) continue;
     const bucket = Math.floor(s.start / 1e9 / 60) * 60;
@@ -127,6 +132,36 @@ export async function recordSpanStats(orgId: number, spans: SpanLike[]) {
     const b = bucketOf(d);
     a.hist.set(b, (a.hist.get(b) ?? 0) + 1);
   }
+}
+
+/** Aggregate rows for spans, in the shape insertStats/insertSpanStatsTx insert. */
+export function aggregateSpanStats(spans: SpanLike[]) {
+  const agg = new Map<string, Agg>();
+  accumulate(agg, spans);
+  return [...agg.values()].map((a) => ({ ...a, hist_idx: [...a.hist.keys()], hist_cnt: [...a.hist.values()], hist: undefined }));
+}
+
+/**
+ * Insert rollup rows on an existing transaction client (intake path). Rolls the per-minute
+ * aggregates into the SAME transaction as the span-row insert, so a crash cannot leave committed
+ * span rows whose rollup contribution was lost (or vice versa). Rows are append-only; compaction
+ * merges them later. Returns the number of aggregate groups written.
+ */
+export async function insertSpanStatsTx(client: { query: (q: string, v?: any[]) => Promise<any> }, orgId: number, rows: any[]) {
+  for (let i = 0; i < rows.length; i += 1000) {
+    await client.query(
+      `insert into span_stats (org_id, bucket, service, env, name, resource, type, lang, hits, errors, dur_sum, dur_max, hist_idx, hist_cnt)
+       select $1, x.bucket, x.service, x.env, x.name, x.resource, x.type, x.lang, x.hits, x.errors, x.sum, x.max,
+              array(select jsonb_array_elements_text(x.hist_idx)::int), array(select jsonb_array_elements_text(x.hist_cnt)::int)
+       from jsonb_to_recordset($2::jsonb) as x(bucket bigint, service text, env text, name text, resource text, type text, lang text, hits int, errors int, sum float8, max float8, hist_idx jsonb, hist_cnt jsonb)`,
+      [orgId, JSON.stringify(rows.slice(i, i + 1000))],
+    );
+  }
+}
+
+/** Start the flush/compaction timer without queueing anything (tx path keeps compaction alive). */
+export function startStatsTimer() {
+  if (useClickHouse) return;
   if (!flushTimer) {
     flushTimer = setInterval(() => {
       flushSpanStats().catch((e) => logger.warn({ err: e }, "span stats flush failed"));
