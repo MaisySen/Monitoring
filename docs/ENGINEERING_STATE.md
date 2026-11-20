@@ -385,3 +385,12 @@ queue). 100 spans/s, 60s runs, fault at 20s. Evidence: bench/evidence/recovery/s
   empty service/host because ResourceImpl serializes as _rawAttributes/_memoizedAttributes;
   slimRecord now resolves via _memoizedAttributes / first-wins _rawAttributes). See round 4 in the
   spool-idempotency evidence md.
+
+## 2026-11-21 05:00 - Product direction pivot (user critique)
+- User (04:57): current build is "primal ordinary piece that no one would use". Correct: the UI is a
+  Datadog-clone IA for observability professionals; Multies customers are small businesses.
+- docs/PRODUCT-PLAN.md holds the revised plan: four-beat journey (connect -> Now/Problems -> evidence
+  chain -> next step), zero-config onboarding, auto default monitors, exception grouping, deploy
+  correlation, zero-instrumentation uptime checks, Multies-native alert delivery (P2, bridge-held).
+  Dashboard builder/metrics explorer/host map demoted to Advanced, not deleted.
+- UI implementation pauses until the plan gets a user/parent reaction. Backend/reliability work unaffected.
