@@ -103,3 +103,17 @@ Working copy of the Monitoring feature build. Local only: not published anywhere
   applies, re-grant never happens), strictly-older skip, org switch preserves absolute SSO expiry.
 - Test lessons: forced iat must stay within the 60s future skew; ties are deterministic only via forced iat.
 - Regression: unit 63/63, memberships 40/40.
+
+## 2026-11-20 19:01 - Agent: build environment limit + onboarding verified server-side
+- Full agent binary build is environmentally blocked in this 2GB sandbox: compiling
+  github.com/aws/aws-sdk-go-v2/service/ec2 and DataDog/datadog-api-client-go/v2 (pulled by
+  resourcedetectionprocessor and the datadog receiver) OOMs even with -p 1, GOGC=5/10, GOMEMLIMIT 1-1.45GiB.
+  Toolchain go1.26.11 + builder + module cache all fine; this is a RAM ceiling, not a code problem.
+  Needs a CI runner or larger host (build.sh unchanged). NOT a silent skip: tracked as an open dependency.
+- Config translation layer (config.go + logoperator.go) verified standalone: 6/6 Go tests pass in a scratch
+  module (only yaml dep; excludes the collector tree). Covers the config shape the installer writes.
+- Server-side onboarding verified end-to-end: /install.sh embeds the server-computed sha256 of the hosted
+  binary (verified byte-identical download), refuses plain-HTTP third-party sources without a pinned
+  checksum, and /account/agent renders the correct one-liner (screenshot, visually inspected).
+- datacat.example.yaml renamed to monitoring.example.yaml (README/verify.sh already referenced that name).
+- NEXT: bounded bench/scale + bench/resilience runs; docs/READINESS.md + MODIFICATIONS.md refresh.
