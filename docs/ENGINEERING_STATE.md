@@ -53,3 +53,15 @@ Working copy of the Monitoring feature build. Local only: not published anywhere
   retention, unverified email, state mismatch, tampered cookie, code replay, five id_token adversarial modes
   (sig/iss/aud/exp/nonce), cross-issuer same-sub/email/org-name isolation, SSO account has no password.
 - Regression after rework: unit 63/63, memberships 40/40. Migration 6 added (ALTER org_memberships + 2 tables).
+
+## 2026-11-20 18:26 - SSO fail-closed sync + session freshness
+- Second review round: last-admin retention would have preserved revoked provider authority. Replaced with
+  fail-closed: claims always apply to sso-sourced grants; a warning is logged when an org ends admin-less;
+  recovery is a separately authorized local grant only.
+- Verified roles are read from the DB per request (resolveMembership -> listMemberships, no session cache),
+  so existing sessions converge the moment a sync commits. Documented freshness bound in MULTIES-BRIDGE.md:
+  provider changes apply at next SSO login; no push revocation channel exists.
+- oidc.js now 29/29, adding: fail-closed sole-admin downgrade (org admin-less), pre-downgrade session loses
+  admin (403 on admin route), revocation with missing claims clears old-session org access, recovery via
+  local grant on the same old session, concurrent login/removal settles consistently without 500.
+- Regression: unit 63/63, memberships 40/40.

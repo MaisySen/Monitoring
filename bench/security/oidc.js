@@ -249,16 +249,48 @@ async function main() {
   const carolMem = psql(`select count(*) from org_memberships m join users u on u.id=m.user_id where u.email='${carol.email}'`);
   check('provider revocation removes the membership', '0', carolMem, carolMem === '0');
 
-  // 10. last-admin guard: frank is the sole admin of his org; a downgrade claim must not orphan it
+  // 10. fail closed: frank is the sole (SSO-derived) admin of his org; a downgrade claim strips his
+  // privilege even though it orphans the org - revoked provider authority is never retained.
   const frank = { sub: 'sub-frank', email: `frank-${RUN}@example.com`, email_verified: true, name: null, orgs: [{ id: 'w9', name: `Frank Org ${RUN}`, role: 'owner' }] };
   idp1.state.currentUser = frank;
   flow = await runFlow(idp1);
-  await finishFlow(flow);
+  r = await finishFlow(flow);
+  const frankSid = cookieOf(r, 'sid'); // an existing session from BEFORE the provider downgrade
+  const frankOrgId = psql(`select m.org_id from org_memberships m join users u on u.id=m.user_id where u.email='${frank.email}'`);
   idp1.state.currentUser = { ...frank, orgs: [{ id: 'w9', name: `Frank Org ${RUN}`, role: 'member' }] };
   flow = await runFlow(idp1);
   await finishFlow(flow);
   const frankRole = psql(`select m.role from org_memberships m join users u on u.id=m.user_id where u.email='${frank.email}'`);
-  check('last-admin guard keeps the only admin', 'admin', frankRole, frankRole === 'admin');
+  const frankAdmins = psql(`select count(*) from org_memberships where org_id=${frankOrgId} and role='admin'`);
+  check('fail closed: sole SSO admin downgraded, org left without admin', 'member:0', `${frankRole}:${frankAdmins}`, frankRole === 'member' && frankAdmins === '0');
+
+  // 10b. the pre-downgrade session converges immediately (roles are read per request, not cached)
+  let meOld = json(await req(APP, 'GET', '/api/auth/user', null, { cookie: frankSid }));
+  const oldSessionAdmin = await req(APP, 'POST', '/api/ui/org/keys', { name: 'nope', kind: 'api' }, { cookie: frankSid });
+  check('existing session loses admin on downgrade', 'member:403', `${meOld?.orgs?.[0]?.role}:${oldSessionAdmin.status}`, meOld?.orgs?.[0]?.role === 'member' && oldSessionAdmin.status === 403);
+
+  // 10c. revocation with missing workspace claims: membership gone, old session has no org
+  idp1.state.currentUser = { ...frank, orgs: [] };
+  flow = await runFlow(idp1);
+  await finishFlow(flow);
+  const frankMem = psql(`select count(*) from org_memberships m join users u on u.id=m.user_id where u.email='${frank.email}'`);
+  meOld = json(await req(APP, 'GET', '/api/auth/user', null, { cookie: frankSid }));
+  check('revocation removes membership and old-session org access', '0:0', `${frankMem}:${meOld?.orgs?.length}`, frankMem === '0' && (meOld?.orgs?.length ?? -1) === 0);
+
+  // 10d. recovery is an independently authorized local grant, which takes effect on the same old session
+  psql(`insert into org_memberships (user_id, org_id, role, source) values ((select id from users where email='${frank.email}'), ${frankOrgId}, 'admin', 'local')`);
+  meOld = json(await req(APP, 'GET', '/api/auth/user', null, { cookie: frankSid }));
+  const recovered = meOld?.orgs?.find((o) => o.orgId === Number(frankOrgId));
+  check('authorized local grant restores admin on the existing session', 'admin:local', `${recovered?.role}:${psql(`select source from org_memberships where org_id=${frankOrgId} and user_id=(select id from users where email='${frank.email}')`)}`, recovered?.role === 'admin');
+
+  // 10e. concurrent logins with conflicting claims settle without a 500; final state is one of the two
+  idp1.state.currentUser = { ...carol, orgs: [{ id: 'w1', name: ORG, role: 'owner' }] };
+  const flowA = await runFlow(idp1);
+  idp1.state.currentUser = { ...carol, orgs: [] };
+  const flowB = await runFlow(idp1);
+  const [concA, concB] = await Promise.all([finishFlow(flowA), finishFlow(flowB)]);
+  const concRole = psql(`select coalesce((select m.role from org_memberships m join users u on u.id=m.user_id where u.email='${carol.email}' and m.org_id=${carolOrgId}), 'none')`);
+  check('concurrent login/removal settles consistently', 'admin|none', concRole, concA.status !== 500 && concB.status !== 500 && (concRole === 'admin' || concRole === 'none'));
 
   // 11. local grant retention: erin holds a local admin grant in carol's org; an SSO member claim for the
   // same workspace must not strip it

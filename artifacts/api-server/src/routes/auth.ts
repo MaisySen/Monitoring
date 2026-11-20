@@ -328,7 +328,9 @@ router.get("/auth/oidc/callback", async (req, res) => {
 
     // Sync provider-derived memberships to the current claims: downgrades and removals apply, and only
     // sso-sourced rows for this issuer are touched, so an independently granted local role always stands.
-    // The last-admin guard refuses a sync that would orphan an organization.
+    // Fail closed: a revoked provider grant is never retained, even when it orphans the organization -
+    // recovery is a separately authorized local grant, not stale SSO privilege. Roles are read from the
+    // database per request, so every existing session of this user converges as soon as the sync commits.
     const ssoRows = await db
       .select()
       .from(orgMembershipsTable)
@@ -336,15 +338,13 @@ router.get("/auth/oidc/callback", async (req, res) => {
     for (const m of ssoRows) {
       const claimedRole = roleByOrgId.get(m.orgId);
       if (claimedRole !== undefined && m.role === claimedRole) continue;
-      if (m.role === "admin" && (await countOrgAdmins(m.orgId)) <= 1) {
-        logger.warn({ userId: user.id, orgId: m.orgId, claimedRole }, "SSO sync kept the last organization admin");
-        continue;
-      }
       if (claimedRole === undefined) {
         await db.delete(orgMembershipsTable).where(sql`${orgMembershipsTable.userId} = ${user.id} and ${orgMembershipsTable.orgId} = ${m.orgId}`);
       } else {
         await db.update(orgMembershipsTable).set({ role: claimedRole }).where(sql`${orgMembershipsTable.userId} = ${user.id} and ${orgMembershipsTable.orgId} = ${m.orgId}`);
       }
+      if ((await countOrgAdmins(m.orgId)) === 0)
+        logger.warn({ userId: user.id, orgId: m.orgId, claimedRole: claimedRole ?? null }, "SSO sync left an organization with no admin; recovery needs an authorized local grant");
     }
 
     await clearSession(res, getSessionId(req));

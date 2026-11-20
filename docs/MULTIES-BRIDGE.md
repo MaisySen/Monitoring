@@ -86,8 +86,14 @@ provider-independent and is built and tested locally against stub identity provi
 - id_tokens are verified properly: RS256 signature against the provider JWKS, plus
   issuer, audience, expiry and nonce checks.
 - Provider role claims sync only `sso`-sourced memberships on each login: downgrades
-  and removals apply, locally granted roles always stand, and the last-admin guard
-  refuses a sync that would orphan an organization.
+  and removals apply, locally granted roles always stand. The sync fails closed: a
+  revoked grant is never retained, even when it leaves the organization without an
+  admin. Recovery then requires a separately authorized local grant, not stale SSO
+  privilege.
+- Freshness bound: provider changes apply at the user's next SSO login (there is no
+  push revocation channel). Once a sync commits, every existing session converges
+  immediately, because roles and memberships are read from the database per request,
+  never cached in the session.
 
 When Multies exposes the scope, pointing Monitoring at it is configuration, not new
 code.
