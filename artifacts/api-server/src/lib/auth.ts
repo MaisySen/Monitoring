@@ -18,17 +18,17 @@ export interface AuthUser {
 
 export interface SessionData {
   user: AuthUser;
-  kind?: "local";
+  kind?: "local" | "sso";
   /** The organization the user is currently working in; must be one of their memberships. */
   activeOrgId?: number;
 }
 
-export async function createSession(data: SessionData): Promise<string> {
+export async function createSession(data: SessionData, ttlMs: number = SESSION_TTL): Promise<string> {
   const sid = crypto.randomBytes(32).toString("hex");
   await db.insert(sessionsTable).values({
     sid,
     sess: data as unknown as Record<string, unknown>,
-    expire: new Date(Date.now() + SESSION_TTL),
+    expire: new Date(Date.now() + ttlMs),
   });
   return sid;
 }

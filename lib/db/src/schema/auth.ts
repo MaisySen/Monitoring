@@ -7,7 +7,7 @@ export const sessionsTable = pgTable(
   {
     sid: varchar("sid").primaryKey(),
     sess: jsonb("sess").notNull(),
-    expire: timestamp("expire").notNull(),
+    expire: timestamp("expire", { withTimezone: true }).notNull(),
   },
   (table) => [index("IDX_session_expire").on(table.expire)],
 );

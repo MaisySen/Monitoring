@@ -99,7 +99,8 @@ export async function verifyIdToken(
   const aud = Array.isArray(claims.aud) ? claims.aud : [claims.aud];
   if (!aud.includes(cfg.clientId)) throw new Error("id_token audience mismatch");
   if (typeof claims.exp !== "number" || now > claims.exp + SKEW) throw new Error("id_token expired");
-  if (typeof claims.iat === "number" && claims.iat > now + SKEW) throw new Error("id_token issued in the future");
+  if (typeof claims.iat !== "number") throw new Error("id_token has no iat");
+  if (claims.iat > now + SKEW) throw new Error("id_token issued in the future");
   if (claims.nonce !== expectedNonce) throw new Error("id_token nonce mismatch");
   return claims;
 }
@@ -167,6 +168,8 @@ export function openPkce(sealed: string, secret: string): PkceState | null {
 
 export interface OidcIdentity {
   sub: string;
+  /** Authentication clock for sync ordering: auth_time when present, else iat (seconds). */
+  syncClock: number;
   email: string;
   emailVerified: boolean;
   name: string | null;
@@ -212,5 +215,6 @@ export async function exchangeCode(
           role: o.role === "admin" || o.role === "owner" ? "admin" : "member",
         }))
     : [];
-  return { sub: String(p.sub), email, emailVerified: p.email_verified !== false, name: typeof p.name === "string" ? p.name : null, orgs };
+  const syncClock = typeof p.auth_time === "number" ? p.auth_time : (p.iat as number);
+  return { sub: String(p.sub), email, emailVerified: p.email_verified !== false, name: typeof p.name === "string" ? p.name : null, orgs, syncClock };
 }

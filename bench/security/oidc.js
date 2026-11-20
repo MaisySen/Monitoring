@@ -76,7 +76,7 @@ function makeIdp() {
   jwk.alg = 'RS256';
   jwk.use = 'sig';
   const codes = new Map();
-  const state = { currentUser: null, tamper: null, pkceVerified: false };
+  const state = { currentUser: null, tamper: null, pkceVerified: false, clock: Math.floor(Date.now() / 1000) };
   const sign = (claims, key = privateKey) => {
     const h = Buffer.from(JSON.stringify({ alg: 'RS256', typ: 'JWT', kid: 'stub-1' })).toString('base64url');
     const p = Buffer.from(JSON.stringify(claims)).toString('base64url');
@@ -99,7 +99,7 @@ function makeIdp() {
       if (!q.get('redirect_uri') || !q.get('state') || !q.get('nonce') || !q.get('code_challenge') || q.get('code_challenge_method') !== 'S256')
         return send(400, { error: 'bad request shape' });
       const code = 'code-' + crypto.randomBytes(8).toString('hex');
-      codes.set(code, { challenge: q.get('code_challenge'), nonce: q.get('nonce'), user: state.currentUser });
+      codes.set(code, { challenge: q.get('code_challenge'), nonce: q.get('nonce'), user: state.currentUser, authTime: ++state.clock });
       const back = new URL(q.get('redirect_uri'));
       back.searchParams.set('code', code);
       back.searchParams.set('state', q.get('state'));
@@ -124,6 +124,7 @@ function makeIdp() {
         const claims = {
           iss: base, sub: user.sub, aud: CLIENT_ID, exp: now + 300, iat: now, nonce: rec.nonce,
           email: user.email, email_verified: user.email_verified, name: user.name, orgs: user.orgs,
+          auth_time: rec.authTime,
         };
         if (state.tamper === 'iss') claims.iss = 'https://evil.example.com';
         if (state.tamper === 'aud') claims.aud = 'someone-else';
@@ -155,7 +156,7 @@ async function startApp(issuerBase) {
     env: {
       ...process.env, NODE_ENV: 'production', PORT: String(port), PUBLIC_URL: APP, DATABASE_URL: appDbUrl,
       MONITORING_SETUP_TOKEN: SETUP_TOKEN, SESSION_SECRET,
-      MONITORING_OIDC_ISSUER: issuerBase, MONITORING_OIDC_CLIENT_ID: CLIENT_ID, MONITORING_OIDC_CLIENT_SECRET: CLIENT_SECRET,
+      MONITORING_OIDC_ISSUER: issuerBase, MONITORING_OIDC_CLIENT_ID: CLIENT_ID, MONITORING_OIDC_CLIENT_SECRET: CLIENT_SECRET, MONITORING_OIDC_SESSION_TTL_HOURS: '2',
     },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
@@ -283,14 +284,31 @@ async function main() {
   const recovered = meOld?.orgs?.find((o) => o.orgId === Number(frankOrgId));
   check('authorized local grant restores admin on the existing session', 'admin:local', `${recovered?.role}:${psql(`select source from org_memberships where org_id=${frankOrgId} and user_id=(select id from users where email='${frank.email}')`)}`, recovered?.role === 'admin');
 
-  // 10e. concurrent logins with conflicting claims settle without a 500; final state is one of the two
+  // 10e. stale callback cannot restore revoked authority: claim syncs apply strictly in authentication
+  // order (auth_time), so the older flow's grants never re-apply after the newer revocation
   idp1.state.currentUser = { ...carol, orgs: [{ id: 'w1', name: ORG, role: 'owner' }] };
-  const flowA = await runFlow(idp1);
+  const flowOld = await runFlow(idp1); // authorized while carol was admin
   idp1.state.currentUser = { ...carol, orgs: [] };
-  const flowB = await runFlow(idp1);
-  const [concA, concB] = await Promise.all([finishFlow(flowA), finishFlow(flowB)]);
-  const concRole = psql(`select coalesce((select m.role from org_memberships m join users u on u.id=m.user_id where u.email='${carol.email}' and m.org_id=${carolOrgId}), 'none')`);
-  check('concurrent login/removal settles consistently', 'admin|none', concRole, concA.status !== 500 && concB.status !== 500 && (concRole === 'admin' || concRole === 'none'));
+  const flowNew = await runFlow(idp1);
+  await finishFlow(flowNew); // revocation applies first and records the newer auth_time
+  r = await finishFlow(flowOld); // stale sync must be skipped
+  const staleRole = psql(`select coalesce((select m.role from org_memberships m join users u on u.id=m.user_id where u.email='${carol.email}' and m.org_id=${carolOrgId}), 'none')`);
+  check('stale callback cannot restore revoked authority', 'none', staleRole, r.status === 302 && staleRole === 'none');
+
+  // 10f. a newer flow still applies (forward order keeps working)
+  idp1.state.currentUser = { ...carol, orgs: [{ id: 'w1', name: ORG, role: 'owner' }] };
+  flow = await runFlow(idp1);
+  r = await finishFlow(flow);
+  const freshRole = psql(`select m.role from org_memberships m join users u on u.id=m.user_id where u.email='${carol.email}' and m.org_id=${carolOrgId}`);
+  check('newer claims still apply after a stale skip', 'admin', freshRole, r.status === 302 && freshRole === 'admin');
+
+  // 10g. SSO sessions carry the bounded TTL (2h in this test server) and expiry fails closed
+  const carolSid = (decodeURIComponent(cookieOf(r, 'sid')).match(/[0-9a-f]{64}/) || [])[0];
+  const ttlH = psql(`select round(extract(epoch from (expire - now()))/3600, 1) from sessions where sid='${carolSid}'`);
+  check('SSO session carries the bounded TTL', '2.0', ttlH, Math.abs(Number(ttlH) - 2) < 0.2);
+  psql(`update sessions set expire = now() - interval '1 minute' where sid='${carolSid}'`);
+  const expiredMe = json(await req(APP, 'GET', '/api/auth/user', null, { cookie: `sid=${carolSid}` }));
+  check('expired SSO session fails closed', false, expiredMe?.signedIn, expiredMe?.signedIn === false);
 
   // 11. local grant retention: erin holds a local admin grant in carol's org; an SSO member claim for the
   // same workspace must not strip it

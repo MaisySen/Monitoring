@@ -90,10 +90,17 @@ provider-independent and is built and tested locally against stub identity provi
   revoked grant is never retained, even when it leaves the organization without an
   admin. Recovery then requires a separately authorized local grant, not stale SSO
   privilege.
+- Claim syncs apply strictly in authentication order (`auth_time`, else `iat`): a
+  callback carrying claims older than the most recently applied sync creates its
+  session but never re-applies stale grants, so an out-of-order completion cannot
+  restore revoked authority.
 - Freshness bound: provider changes apply at the user's next SSO login (there is no
-  push revocation channel). Once a sync commits, every existing session converges
-  immediately, because roles and memberships are read from the database per request,
-  never cached in the session.
+  push revocation channel). To keep that bound finite, SSO sessions expire after
+  `MONITORING_OIDC_SESSION_TTL_HOURS` (default 12h) and expiry fails closed: the user
+  re-authenticates, which re-syncs. Between syncs, every existing session converges
+  immediately after any login, because roles and memberships are read from the
+  database per request, never cached in the session. Worst case for a revoked grant
+  reaching a never-relogging session is therefore the session TTL.
 
 When Multies exposes the scope, pointing Monitoring at it is configuration, not new
 code.

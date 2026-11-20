@@ -32,8 +32,8 @@ export async function authMiddleware(req: Request, res: Response, next: NextFunc
     }
     if (sid) {
       const session = await getSession(sid);
-      // Only local-account sessions are valid; anything else is cleared.
-      if (!session?.user?.id || (session.kind !== undefined && session.kind !== "local")) {
+      // Only user sessions are valid (password or SSO sign-in); anything else is cleared.
+      if (!session?.user?.id || (session.kind !== undefined && session.kind !== "local" && session.kind !== "sso")) {
         await clearSession(res, sid);
       } else {
         req.sessionUser = session.user;

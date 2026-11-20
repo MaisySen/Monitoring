@@ -1,4 +1,4 @@
-import { pgTable, serial, text, timestamp, integer, boolean, jsonb, varchar } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, timestamp, integer, boolean, jsonb, varchar, bigint } from "drizzle-orm/pg-core";
 
 export const orgsTable = pgTable("orgs", {
   id: serial("id").primaryKey(),
@@ -25,6 +25,8 @@ export const ssoIdentitiesTable = pgTable("sso_identities", {
   issuer: text("issuer").notNull(),
   sub: text("sub").notNull(),
   userId: varchar("user_id").notNull(),
+  // auth_time (or iat) of the most recently applied claim sync: older callbacks never re-apply.
+  lastSyncAt: bigint("last_sync_at", { mode: "number" }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

@@ -138,6 +138,16 @@ CREATE TABLE IF NOT EXISTS sso_org_bindings (
  created_at timestamptz NOT NULL DEFAULT now(), PRIMARY KEY (issuer, external_id)
 );
 `,
+  // 7: SSO sync ordering clock. Membership syncs apply strictly in authentication order, so a callback
+  // carrying claims older than the last applied sync cannot restore revoked authority.
+  `
+ALTER TABLE sso_identities ADD COLUMN IF NOT EXISTS last_sync_at bigint;
+`,
+  // 8: sessions.expire was timestamp-without-tz while node-pg writes UTC and reads local, silently
+  // shortening every session by the server offset (fatal for short SSO sessions). Stored values are UTC.
+  `
+ALTER TABLE sessions ALTER COLUMN expire TYPE timestamptz USING expire AT TIME ZONE 'UTC';
+`,
 ];
 
 export async function migrateDatabase() {

@@ -65,3 +65,18 @@ Working copy of the Monitoring feature build. Local only: not published anywhere
   admin (403 on admin route), revocation with missing claims clears old-session org access, recovery via
   local grant on the same old session, concurrent login/removal settles consistently without 500.
 - Regression: unit 63/63, memberships 40/40.
+
+## 2026-11-20 18:35 - Bounded SSO freshness + sync ordering; session-tz bug found and fixed
+- Claim syncs now apply strictly in authentication order: id_token auth_time (else iat) is stored on
+  sso_identities.last_sync_at; older callbacks create a session but never re-apply stale grants.
+- SSO sessions get a bounded TTL (MONITORING_OIDC_SESSION_TTL_HOURS, default 12h); expiry fails closed.
+  This is the documented worst-case revocation bound for a session that never logs in again.
+- Found while testing: sessions.expire was timestamp-without-tz; node-pg writes UTC, reads local, silently
+  shortening every session by the server offset (invisible at 7d TTL). Migration 8 converts to timestamptz
+  (USING expire AT TIME ZONE 'UTC'). Real pre-existing bug.
+- Middleware now accepts kind 'sso' sessions as user sessions.
+- oidc.js 32/32 (adds stale-callback-cannot-restore, forward-order still applies, TTL value, expiry fail-close).
+- Regression: unit 63/63, memberships 40/40.
+- NEXT: Go agent build died OOM (compile signal: killed during go mod tidy/build with go1.26.11 toolchain).
+  Retry staged: cd agent/_build && GOFLAGS=-p=1 go mod tidy, then go test/build with -p 1. Builder + _build
+  exist. Then verify.sh end-to-end onboarding, bench/scale + bench/resilience bounded runs, READINESS.md.

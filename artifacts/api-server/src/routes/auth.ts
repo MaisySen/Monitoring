@@ -305,9 +305,15 @@ router.get("/auth/oidc/callback", async (req, res) => {
       await db.insert(ssoIdentitiesTable).values({ issuer: cfg.issuer, sub: id.sub, userId: user.id });
     }
 
+    // Syncs apply strictly in authentication order (auth_time, else iat): a callback carrying claims
+    // older than the most recently applied sync can create a session but can never re-apply stale grants.
+    const staleSync = ident?.lastSyncAt != null && id.syncClock <= ident.lastSyncAt;
+    if (staleSync) logger.info({ userId: user.id, issuer: cfg.issuer }, "skipped stale SSO claim sync");
+
     // Resolve claimed workspaces through immutable (issuer, external org id) bindings; display names are
     // never lookup keys, so a same-named workspace from any issuer cannot land in the wrong organization.
     const roleByOrgId = new Map<number, string>();
+    if (!staleSync) {
     for (const o of id.orgs) {
       let [binding] = await db
         .select()
@@ -346,10 +352,18 @@ router.get("/auth/oidc/callback", async (req, res) => {
       if ((await countOrgAdmins(m.orgId)) === 0)
         logger.warn({ userId: user.id, orgId: m.orgId, claimedRole: claimedRole ?? null }, "SSO sync left an organization with no admin; recovery needs an authorized local grant");
     }
+      await db
+        .update(ssoIdentitiesTable)
+        .set({ lastSyncAt: id.syncClock })
+        .where(sql`${ssoIdentitiesTable.issuer} = ${cfg.issuer} and ${ssoIdentitiesTable.sub} = ${id.sub}`);
+    }
 
     await clearSession(res, getSessionId(req));
+    // SSO sessions are short-lived on purpose: the provider contract has no push revocation, so this TTL
+    // is the upper bound on how long a revoked grant can persist. Expiry fails closed at re-auth.
+    const ssoTtlMs = Number(process.env.MONITORING_OIDC_SESSION_TTL_HOURS || 12) * 3600_000;
     const sid = await createSession({
-      kind: "local",
+      kind: "sso",
       user: {
         id: user.id,
         email: user.email,
@@ -357,7 +371,7 @@ router.get("/auth/oidc/callback", async (req, res) => {
         lastName: user.lastName,
         profileImageUrl: user.profileImageUrl,
       },
-    });
+    }, ssoTtlMs);
     setSessionCookie(res, sid);
     res.redirect("/");
     return;
