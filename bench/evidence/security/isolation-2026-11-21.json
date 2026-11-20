@@ -1,8 +1,8 @@
 {
-  "run": "6a37f4",
-  "server": "http://127.0.0.1:4602",
-  "passed": 13,
-  "total": 13,
+  "run": "psx1",
+  "server": "http://127.0.0.1:4730",
+  "passed": 17,
+  "total": 17,
   "results": [
     {
       "area": "isolation",
@@ -34,6 +34,34 @@
     },
     {
       "area": "isolation",
+      "name": "org A sees its own error group (sanity)",
+      "expected": ">=1 group with fingerprint",
+      "actual": "1 groups",
+      "pass": true
+    },
+    {
+      "area": "isolation",
+      "name": "org B error-groups list hides org A's groups",
+      "expected": "0 groups",
+      "actual": "0 groups",
+      "pass": true
+    },
+    {
+      "area": "isolation",
+      "name": "org B cannot read org A's error-group detail",
+      "expected": "404",
+      "actual": "404",
+      "pass": true
+    },
+    {
+      "area": "isolation",
+      "name": "problem status: B cannot write against A's monitor/error group; writes stay org-scoped",
+      "expected": "refused + scoped",
+      "actual": "refused + scoped",
+      "pass": true
+    },
+    {
+      "area": "isolation",
       "name": "cross-org access by id (monitor GET/PUT/DELETE, dashboard GET/DELETE, channel DELETE, key revoke)",
       "expected": "all refused, nothing changed",
       "actual": "all refused, nothing changed",
@@ -42,8 +70,8 @@
     {
       "area": "isolation",
       "name": "org override headers ignored: B's key writes only into B",
-      "expected": "2",
-      "actual": "2",
+      "expected": "3",
+      "actual": "3",
       "pass": true
     },
     {
@@ -57,7 +85,7 @@
       "area": "revocation",
       "name": "new key accepted, then refused right after revocation (OTLP and Agent intake)",
       "expected": "2xx then 403/401",
-      "actual": "200 then 403/403 after 3 ms",
+      "actual": "200 then 403/403 after 7 ms",
       "pass": true
     },
     {
@@ -71,7 +99,7 @@
       "area": "malformed",
       "name": "server memory bounded after the malformed payloads (incl. 60 MB body and gzip bomb)",
       "expected": "< +300 MB",
-      "actual": "123 -> 206 MB",
+      "actual": "129 -> 220 MB",
       "pass": true
     },
     {
