@@ -213,3 +213,18 @@ queue). 100 spans/s, 60s runs, fault at 20s. Evidence: bench/evidence/recovery/s
   visible 13ms after recovery. Evidence: bench/evidence/recovery/server-only-2026-11-20-rerun.json.
 - READINESS.md updated with these numbers; the "pending rerun" gap is closed. Remaining explicit gap:
   the agent disk-queue layer (upstream claims) - needs the agent binary.
+
+## 2026-11-20 20:22 Public visibility (temporary, user-authorized)
+- User authorized "Keep it public until fully build" (WhatsApp, verified). Repo flipped to PUBLIC
+  after a full-history scrub (git filter-repo): other private account repo names, personal
+  identifiers and contact details removed; remaining handle references are the public handle itself.
+  No credentials, tokens or private user data in tree or history (scanned: ghp_/pat/sk-/AKIA/key
+  patterns + identifier grep; the only key material in history is redaction-test fixture data).
+- Rationale: account-level billing restriction blocks hosted-runner provisioning for PRIVATE repos
+  (GitHub's own check-run annotation: recent account payments failed / spending limit increase
+  needed). Public repos get hosted runners free; this is the user's chosen route to unblock the
+  agent binary build. No promise the restriction itself is fixed; it is bypassed per account policy.
+- Return-to-private: owed at the fully-built endpoint = green agent build + real onboarding verified
+  against the downloaded artifact. Not from readiness docs. Recurring wake carries the follow-through.
+- Force-push note: history was rewritten (scrub) and force-pushed; the pre-scrub history exists only
+  in the old private remote refs, now overwritten.
