@@ -42,7 +42,7 @@ HEADER="$(sed -n 2p "$WORK/otlp.env" | sed 's/=/: /')"  # OTel env form Name=Val
 
 # 2. Hand-encode a minimal ExportTraceServiceRequest (protobuf, stdlib only).
 python3 - "$WORK/payload.bin" <<'PY'
-import sys, time
+import sys, time, os
 def varint(n):
     out = b""
     while True:
@@ -57,7 +57,8 @@ def f64(num, v): return field(num, 1) + int(v).to_bytes(8, "little")
 kv = lambda k, v: msg(1, s(1, k) + msg(2, s(1, v)))           # KeyValue{key, AnyValue{string_value}}
 resource = msg(1, kv("service.name", "otlp-snippet-test"))      # Resource{attributes}
 now = time.time_ns()
-span = (msg(1, bytes(range(16))) + msg(2, bytes(range(8)))      # trace_id, span_id
+tid, sid = os.urandom(16), os.urandom(8)   # fresh ids per run: intake dedupes (org, trace_id, span_id)
+span = (msg(1, tid) + msg(2, sid)                                # trace_id, span_id
         + s(3, "otlp-snippet-op")                               # name
         + f64(7, now - 1_000_000) + f64(8, now))                # start/end unix nanos
 scope_spans = msg(2, msg(2, span))                              # ScopeSpans{spans}

@@ -732,3 +732,9 @@ Unit: 76/76. CI greens through 43f64b9.
 - Default privileged/systemd install is UNVERIFIED: MONITORING_PREFIX validation exercises the full download/checksum/install/config path but not root installation or systemd unit registration (no systemd in this environment). Recorded as unverified until exercised in a disposable VM/container with systemd.
 - bench/regression/onboarding-agent-compose.sh: the published "with agent" path verbatim (Docs run line, no MONITORING_URL/KEY; SDK -> localhost:4318 -> agent -> server). PASS: spans 1->2, service_versions checkout 1.0.0/prod. Uses bench/lib/procs.sh (own_start/own_stop) for all process management.
 - Full no-manual-steps chain verified: rm -rf agent/dist + wiped downloads -> fetch-agent-dist.mjs (run 44829598532, artifact 14675443142) -> installer-clean-deploy.sh: ALL CHECKS PASSED.
+
+## Full regression suite green + OTLP check fix (2026-11-21)
+- bench/regression/run-all.sh runs all 6 published-path checks against a live server. Full run: ALL REGRESSION CHECKS PASSED (12 PASS lines).
+- Harness bug found by the suite's first run: the OTLP check used FIXED trace/span ids, and intake is idempotent (store.ts: on conflict (org_id, trace_id, span_id) do nothing), so the second run's replay was correctly deduped and the check flapped. Fixed to fresh random ids per run; two consecutive runs PASS. Note: this also corrects the older "no idempotency keys" remark (2026-11-21 00:31 entry) - span intake IS idempotent per (org, trace_id, span_id).
+- Served web bundle confirmed current (monitoring-run python app.py present in served asset).
+- systemd/default privileged install remains UNVERIFIED (no docker/systemd in this environment).
