@@ -1,0 +1,51 @@
+name: Build checks
+# Automated build verification only. This workflow never creates releases, tags, or deployments;
+# release.yml (tag-triggered) is the only release path and is not exercised by branch pushes.
+on:
+  push:
+    branches: [develop]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  agent:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.11"
+          cache-dependency-path: agent/manifest.yaml
+      - name: Agent unit tests
+        run: cd agent && go test ./...
+      - name: Build agent
+        run: DESTDIR="$RUNNER_TEMP/downloads" bash agent/release.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: agent
+          path: ${{ runner.temp }}/downloads/*
+          retention-days: 7
+  server:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:14
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ["5432:5432"]
+        options: --health-cmd "pg_isready" --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: "10.11.0"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: API server unit tests
+        working-directory: artifacts/api-server
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/postgres
+        run: npm test

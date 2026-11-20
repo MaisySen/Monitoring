@@ -90,6 +90,8 @@ async function runScenario(name) {
   });
   let out = '', err = '';
   gen.stderr.on('data', (c) => (err += c));
+  gen.on('exit', (code, sig) => process.stderr.write(`  ${name}: generator exited code=${code} sig=${sig}\n`));
+  process.stderr.write(`  ${name}: generator pid=${gen.pid}\n`);
   // Resolve when the generator prints its {"spans":..,"logs":..} summary line, then stop the child.
   // (Waiting for a natural 'exit' is unreliable: OTEL timers can keep the process alive and a lost
   // SIGCHLD leaves the promise pending forever.)
@@ -108,10 +110,20 @@ async function runScenario(name) {
       if (typeof j.spans === 'number') resolveSent(j);
     } catch {}
   });
+  // Zombie-safe liveness: kill(pid, 0) succeeds on zombies in this environment, so also watch the
+  // clock - if the summary has not arrived SECONDS+45s after spawn, take whatever stdout we have.
   const childWatch = setInterval(() => {
     if (!gen.pid) return;
-    try { process.kill(gen.pid, 0); } catch { clearInterval(childWatch); finish(); }
+    let dead = false;
+    try { process.kill(gen.pid, 0); } catch { dead = true; }
+    if (!dead) { try { dead = require('fs').readFileSync(`/proc/${gen.pid}/stat`, 'utf8').split(' ')[2] === 'Z'; } catch { dead = true; } }
+    if (dead) { clearInterval(childWatch); finish(); }
   }, 1000);
+  const hardTimeout = setTimeout(() => {
+    process.stderr.write(`  ${name}: generator summary timeout; stderr tail: ${err.slice(-300)}\n`);
+    finish();
+  }, (SECONDS + 45) * 1000);
+  sentP.then(() => clearTimeout(hardTimeout));
   sentP.then(() => {
     clearInterval(childWatch);
     setTimeout(() => { try { gen.kill('SIGKILL'); } catch {} }, 500).unref();
