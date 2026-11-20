@@ -74,7 +74,14 @@ export function TimeseriesChart({
       const m = chunk.reduce((a, b) => (b[1] > a[1] ? b : a), chunk[0]);
       if (m && m[1] > mean + 1.5 * sd) out.push(m);
     }
-    return out;
+    // labels collide when two chunk maxima sit on the same crest: keep the more prominent peak
+    // and require a minimum horizontal separation between the labels that remain
+    const minSep = (pts[pts.length - 1][0] - pts[0][0]) / 6;
+    const kept: [number, number][] = [];
+    for (const c of [...out].sort((a, b) => b[1] - a[1])) {
+      if (kept.every((k) => Math.abs(k[0] - c[0]) >= minSep)) kept.push(c);
+    }
+    return kept.sort((a, b) => a[0] - b[0]);
   }, [series, peaks, type]);
   const span = data.length > 1 ? data[data.length - 1].t - data[0].t : 3600_000;
   const tickFmt = (t: number) => (span > 2 * 86400_000 ? new Date(t).toLocaleDateString([], { month: "short", day: "numeric" }) : fmtTime(t).slice(0, 5));

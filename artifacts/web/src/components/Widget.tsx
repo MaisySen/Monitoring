@@ -360,6 +360,14 @@ export function WidgetFrame({
       <div className="flex items-center gap-2 px-2.5 pt-2 pb-1 min-h-7">
         <div className="truncate flex-1" style={{ textAlign: def.title_align ?? "left" }}>
           {def.title ? <span className="ws-title">{def.title}</span> : ""}
+          {(() => {
+            const q = def.type === "timeseries" ? (def.requests?.[0]?.q ?? def.requests?.[0]?.queries?.[0]?.query) : undefined;
+            return q ? (
+              <div className="truncate text-[10px] font-normal text-ink-3" title={q}>
+                {q}
+              </div>
+            ) : null;
+          })()}
         </div>
         <div className={`flex gap-1.5 text-ink-3 ${editing ? "" : "opacity-0 group-hover:opacity-100"}`}>
           {onEdit && (
