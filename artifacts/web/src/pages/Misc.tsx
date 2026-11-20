@@ -963,6 +963,9 @@ const STACKS = [
 
 export function Onboarding() {
   const org = useQuery({ queryKey: ["org"], queryFn: () => api<any>("/ui/org") });
+  const downloads = useQuery({ queryKey: ["downloads"], queryFn: () => api<{ files: { name: string }[] }>("/downloads") });
+  const haveTgz = !!downloads.data?.files.some((f) => f.name === "monitoring-trace-0.1.0.tgz");
+  const haveWhl = !!downloads.data?.files.some((f) => f.name === "monitoring_trace-0.1.0-py3-none-any.whl");
   const now = useQuery({ queryKey: ["onboard-now"], queryFn: () => api<NowData>("/ui/now"), refetchInterval: 3_000 });
   const [stack, setStack] = useState("node");
   const URL = org.data?.public_url ?? location.origin;
@@ -1036,6 +1039,18 @@ export OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
             ))}
           </div>
           <pre className="mono text-[12px] bg-panel border border-line rounded p-3 overflow-x-auto whitespace-pre">{snippet[stack]}</pre>
+          {downloads.data && stack === "node" && !haveTgz && (
+            <div className="text-[12px] text-bad mt-2">
+              The npm package is not in this server's downloads directory - the install command above will fail until the SDK is packed
+              (pnpm run pack:sdks).
+            </div>
+          )}
+          {downloads.data && stack === "python" && !haveWhl && (
+            <div className="text-[12px] text-bad mt-2">
+              The Python wheel is not in this server's downloads directory - the install command above will fail until the SDK is packed
+              (pnpm run pack:sdks with pip install build available).
+            </div>
+          )}
           <div className="text-[12px] text-ink-3 mt-2">
             Full guides, including running through the Monitoring Agent: <Link className="text-primary" href="/docs/getting-started">Docs → Getting started</Link>
           </div>

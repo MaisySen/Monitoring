@@ -77,6 +77,7 @@ def patch_flask():
     tracer = trace.get_tracer("monitoring.flask")
     original_wsgi_app = flask.Flask.wsgi_app
     original_dispatch = flask.Flask.dispatch_request
+    original_handle_exception = flask.Flask.handle_exception
 
     def wsgi_app(self, environ, start_response):
         method = environ.get("REQUEST_METHOD", "GET")
@@ -123,7 +124,17 @@ def patch_flask():
             pass
         return original_dispatch(self, *args, **kwargs)
 
+    def handle_exception(self, e):
+        # Flask converts application exceptions into a 500 response inside wsgi_app, so they never reach the WSGI
+        # wrapper above. Record them here so the server span carries the type, message and stack.
+        span = trace.get_current_span()
+        if span is not None and span.is_recording():
+            span.record_exception(e)
+            span.set_status(Status(StatusCode.ERROR))
+        return original_handle_exception(self, e)
+
     flask.Flask.wsgi_app = wsgi_app
     flask.Flask.dispatch_request = dispatch_request
+    flask.Flask.handle_exception = handle_exception
     _patched = True
     return True

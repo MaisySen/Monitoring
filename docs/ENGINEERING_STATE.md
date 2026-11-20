@@ -573,3 +573,11 @@ Parent direction: prove the published onboarding path with a fresh app, not fixt
   error spans, capped 10 traces/100 rows) with a "none" state that says none were ingested
   with those trace ids, not that nothing was logged.
 Unit: 76/76. CI greens through 43f64b9.
+
+## Python onboarding e2e + fast_flask exception capture (pending commit)
+- Exercised the published Python setup against server :4730 (db e2e): pip-installed the wheel from the server's own /downloads URL into a fresh venv, ran a Flask app via `monitoring-run python app.py`.
+- Found + fixed a real SDK gap: Flask converts app exceptions to 500s inside wsgi_app, so the lean fast_flask wrapper never saw them; error groups had empty type and no stack. Fix: patch Flask.handle_exception to record_exception + ERROR status on the active server span (ingest already maps exception events to error.type/message/stack).
+- Verified live after fix: py-shop spans 29+13 across versions 2.0.1/2.0.2; Now shows degraded (6 errors in 29 ops, 20.7%); error group type=KeyError with real message; version correlation prod/2.0.2 = 3 errors/13 ops vs prod/2.0.1 = 0/29; 18 trace-joined related logs; real Python traceback stored in span meta (error.stack).
+- Harness gotcha recorded: `monitoring-run python app.py` re-execs `which("python")`; the venv must be on PATH (i.e. activated) or the re-exec leaves the venv. Same behavior as upstream opentelemetry-instrument.
+- Onboarding downloads guard (Misc.tsx): node/python tabs show a red warning when the packed tgz/whl is absent from /downloads. Build b18 green; visual check pending.
+- Re-verified on current build: memberships 40/40 (memb2 db), quotas 34/34 (quota2 db, two-process).
