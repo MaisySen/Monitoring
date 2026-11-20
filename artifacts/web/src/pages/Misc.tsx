@@ -839,6 +839,23 @@ type NowData = {
   totals: { spans: number; logs: number };
   services: { service: string; state: "ok" | "degraded" | "low" | "quiet"; note: string; ops5: number; errOps5: number; lastActiveAt: number }[];
   problems: { monitorId: number; name: string; state: string; service: string | null; auto: boolean; since: number | null; query: string }[];
+  exceptions?: ExceptionIncident[];
+  exceptionsSupported?: boolean;
+};
+
+type ExceptionIncident = {
+  fingerprint: string;
+  service: string;
+  envs: string[];
+  errorType: string;
+  messageExample: string;
+  count: number;
+  firstSeen: number;
+  lastSeen: number;
+  isNew: boolean;
+  topEndpoints: { name: string; count: number }[];
+  versionsObserved: string[];
+  coverage: { matchedTotal: number; groupCount: number; scanned: number; scanTruncated: boolean; windowDays: number };
 };
 
 // Suggested next steps are investigation aids, not diagnosis: they point at evidence the
@@ -918,6 +935,39 @@ export function Home() {
                 <div className="text-[11px] text-ink-3 mt-1 ml-1">{nextStepFor(p)}</div>
               </div>
             ))
+          )}
+          {(d?.exceptions ?? []).map((x) => (
+            <div key={x.fingerprint} className="px-4 py-2.5 border-b border-line">
+              <div className="flex items-center gap-2 flex-wrap">
+                {x.isNew && <span className="mono text-[10px] px-1.5 py-0.5 rounded bg-[#fde8e8] text-bad font-semibold">NEW</span>}
+                <span className="mono text-[11px] px-1.5 py-0.5 rounded bg-[#fde8e8] text-bad">{x.errorType || "error"}</span>
+                <Link href={`/errors/${x.fingerprint}`} className="truncate font-medium text-primary">
+                  {x.messageExample || "(no message)"}
+                </Link>
+                <Link href={`/apm/services/${encodeURIComponent(x.service)}`} className="text-xs text-primary">
+                  {x.service}
+                </Link>
+                <span className="ml-auto text-xs text-ink-3">
+                  {fmtNum(x.count)}× · first seen {fmtAgo(x.firstSeen)}
+                </span>
+              </div>
+              <div className="text-[11px] text-ink-3 mt-1 ml-1">
+                {x.envs.length ? `Environments: ${x.envs.join(", ")}. ` : ""}
+                {x.versionsObserved.length ? `Observed in versions: ${x.versionsObserved.join(", ")} (among matched spans). ` : ""}
+                {x.topEndpoints.length
+                  ? `Mostly in: ${x.topEndpoints.map((e) => `${e.name} (${e.count}×)`).join(", ")}. `
+                  : ""}
+                Next step: open the group, read a matching trace, judge whether the version concentration is a lead worth investigating -
+                not proof of cause.
+              </div>
+            </div>
+          ))}
+          {d && d.exceptionsSupported && (d.exceptions ?? []).length > 0 && (
+            <div className="px-4 py-2 text-[11px] text-ink-3">
+              Exception incidents come from error groups active in the last {d.exceptions![0].coverage.windowDays * 24}h. First-seen is
+              when Monitoring first observed the exception; versions are the versions observed among matched spans. Neither says when a
+              deploy happened or that a version caused the errors.
+            </div>
           )}
         </div>
         <div className="card">

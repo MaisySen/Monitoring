@@ -12,6 +12,7 @@ import { getSession, getSessionId, updateSession } from "../lib/auth";
 import { evaluateMonitor, validateMonitorQuery } from "../jobs/monitors";
 import { computeServiceHealth } from "../query/serviceHealth";
 import { fingerprintFor, normalizeMessage, buildVersionCorrelation } from "../query/errorGroups";
+import { computeExceptionIncidents } from "../query/incidents";
 import { startSampleData, stopSampleData, sampleRunning } from "../jobs/sample";
 import { intakeStats } from "../lib/intakeStats";
 import { getQuotas, setQuotas, parseQuotas, usageToday, bytesThisMinute, seriesCount } from "../lib/quotas";
@@ -396,6 +397,13 @@ router.get(
       )
     ).rows[0];
 
+    // Exception incidents: active error groups with endpoint/version observations from a
+    // bounded scan. PG-only (error_groups); on backends without the table, an empty list -
+    // the UI must not read that as "no exceptions".
+    let exceptions: unknown[] = [];
+    const hasGroups = (await pool.query("select to_regclass('error_groups') is not null as e")).rows[0].e;
+    if (hasGroups) exceptions = await computeExceptionIncidents(pool, orgId!, Date.now()); // requireOrg guarantees orgId
+
     res.json({
       now: Date.now(),
       receiving: Number(totals.last_span_ms ?? 0) > Date.now() - 5 * 60_000,
@@ -403,6 +411,8 @@ router.get(
       totals: { spans: Number(totals.spans), logs: Number(totals.logs) },
       services,
       problems,
+      exceptions,
+      exceptionsSupported: !!hasGroups,
     });
   }),
 );
