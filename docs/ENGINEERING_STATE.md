@@ -380,6 +380,8 @@ queue). 100 spans/s, 60s runs, fault at 20s. Evidence: bench/evidence/recovery/s
 - span_stats rollup rows now insert in the SAME transaction as the span rows (aggregateSpanStats +
   insertSpanStatsTx); a crash can no longer split rows from rollups. Verified: 4 parallel identical
   POSTs and sequential double-POST both 5 rows / 5 hits.
-- Outage e2e (45 s, spool ON): spans 11,000/11,000 with 0 duplicates end-to-end; logs lose only the
-  kill-boundary second (52/5,500) when outage > retry window; control with retry 60 s > outage:
-  zero loss both signals. Known-limitation, root cause queued (see spool-idempotency evidence md).
+- Outage e2e (45 s, spool ON): spans 11,000/11,000 and logs 5,500/5,500, 0 duplicates both signals
+  (round 4: the kill-second 'loss' was a drain-serialization bug - drained logs were stored with
+  empty service/host because ResourceImpl serializes as _rawAttributes/_memoizedAttributes;
+  slimRecord now resolves via _memoizedAttributes / first-wins _rawAttributes). See round 4 in the
+  spool-idempotency evidence md.

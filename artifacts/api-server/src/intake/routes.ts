@@ -475,6 +475,7 @@ function otlpRoute(signal: OtlpSignal) {
       } else if (signal === "logs") {
         const logs = otlpToLogs(body);
         n = logs.length;
+        if (process.env.DIAG_OTLP) logger.info({ decoded: n, resourceLogs: body?.resourceLogs?.length ?? body?.resource_logs?.length }, "otlp logs decoded");
         await writeLogs(orgId, logs);
       } else {
         const { points, hosts, commit } = otlpToMetrics(orgId, body);

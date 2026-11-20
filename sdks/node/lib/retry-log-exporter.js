@@ -106,9 +106,31 @@ function slimRecord(r) {
     body: get('body'),
     attributes: get('attributes'),
     droppedAttributesCount: get('droppedAttributesCount'),
-    resource: { attributes: (get('resource') && get('resource').attributes) || {} },
+    resource: { attributes: resourceAttributes(get('resource')) },
     instrumentationScope: get('instrumentationScope'),
   };
+}
+
+// ResourceImpl stores attributes as _rawAttributes ([k, v] pairs) behind an `attributes` getter.
+// A JSON round-trip keeps the pairs but drops the getter: without this, a drained log loses its
+// resource attributes and lands server-side with empty service/host (found in bench: a drained
+// batch returned HTTP 200 but the rows were invisible under the expected service).
+function resourceAttributes(res) {
+  if (!res || typeof res !== 'object') return {};
+  if (res.attributes && typeof res.attributes === 'object' && !Array.isArray(res.attributes)) return res.attributes;
+  // _memoizedAttributes is the resolved map (merge precedence already applied); _rawAttributes
+  // keeps the pre-merge pairs, where a merged-INTO resource wins over later defaults, so the
+  // FIRST occurrence of a key wins (last-wins would resurrect defaultResource's unknown_service).
+  if (res._memoizedAttributes && typeof res._memoizedAttributes === 'object' && !Array.isArray(res._memoizedAttributes))
+    return res._memoizedAttributes;
+  if (Array.isArray(res._rawAttributes)) {
+    const out = {};
+    for (const [k, v] of res._rawAttributes)
+      if (typeof k === 'string' && v !== null && v !== undefined && !(k in out)) out[k] = v;
+    return out;
+  }
+  if (res._attributes && typeof res._attributes === 'object') return res._attributes;
+  return {};
 }
 
 module.exports = { RetryingLogExporter };

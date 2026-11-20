@@ -104,3 +104,34 @@ server_outage_long (45 s outage, 100 spans/s x 110 s, spool ON, direct app->serv
 - First rerun attempt failed with 403 on every intake: the resilience DB's API key had been deleted
   by an earlier key-lifecycle test. Minted a fresh key (api_keys row, name 'e2e-rerun') and reran.
   Disclosed as a process failure of the first attempt, not a product defect.
+
+## Round 4: kill-second log "loss" root-caused and fixed (drained-resource serialization)
+
+The 51/52/50-record "loss" was not loss: the drained batch WAS stored - under service='' and
+host=''. Chain, each step measured:
+
+1. The batch in flight at the kill spools correctly after the retry deadline (DIAG_LOGS trace).
+2. Drain after recovery sends it; the server returns 200 and COMMITS the rows (otlpToLogs decoded
+   n=5 in a minimal repro: writer on a dead port, drainer on the live server).
+3. The rows were invisible to the bench because the drained records carried EMPTY resource
+   attributes: JSON.stringify of a live LogRecord stores resource as
+   {_rawAttributes, _asyncAttributesPending, _memoizedAttributes} (ResourceImpl internals), and the
+   first slimRecord only read resource.attributes -> {} -> server stored service='', host=''.
+4. First fix attempt (read _rawAttributes pairs) resurrected service.name="unknown_service:node":
+   _rawAttributes is PRE-merge and contains THREE service.name entries ending with the
+   defaultResource() value; the Resource getter resolves merges with first-wins precedence
+   (_memoizedAttributes shows the resolved value).
+5. Final fix: slimRecord's resourceAttributes() prefers _memoizedAttributes (resolved), falls back
+   to _rawAttributes with FIRST-occurrence-wins, then plain attributes/_attributes shapes.
+
+Verification:
+- Minimal repro after fix: drained log lands with service='mini-drain', host='modal' (was '', '').
+- Full outage e2e rerun (server_outage_long, 45 s outage, 100 spans/s x 110 s, spool ON,
+  retry 30 s default): spans 11,000/11,000 with 0 duplicates, logs 5,500/5,500 with 0 duplicates.
+  The one empty-service row in the DB window is a pre-fix leftover (seq 94000, ts before the fix).
+- The earlier "60 s retry window control" result is superseded as an explanation: with the
+  serialization fixed, the default 30 s window also delivers everything; the control was masking a
+  drain-serialization defect, not bounding a retry-window interaction.
+
+Server-side DIAG_OTLP=1 env gate added to the OTLP logs route (logs decoded count); kept as a
+temporary diagnostic alongside DIAG_LOGS.
