@@ -419,3 +419,11 @@ queue). 100 spans/s, 60s runs, fault at 20s. Evidence: bench/evidence/recovery/s
   kill) - that batch committed fully and consistently; invalid as a fault test, counted as neither
   pass nor fail. Retried with a 10x batch.
 - Lost-response proxy rerun for this change still pending (harness /tmp/resp-drop-proxy.js).
+
+### trace.* transactionality: lost-response proxy (2026-11-21 05:04, build a5f4eed)
+- 500-span batch POSTed through a proxy that destroys the client socket when the upstream
+  response arrives (client curl exit 52; server had committed). Direct retry: 200.
+  Final: 500 spans, trace.hits sum 500 - re-delivery deduped, derived points counted once. PASS.
+- Both interruption boundaries now verified for transactional trace.* points (precommit SIGKILL
+  30k batch + postcommit lost response). The round-5 disclosure "trace.* can undercount one batch
+  in the postcommit-crash window" is resolved on the PG path.
