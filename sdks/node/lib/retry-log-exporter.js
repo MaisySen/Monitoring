@@ -35,7 +35,13 @@ class RetryingLogExporter {
     if (this.spool) {
       this.startDrain = startDrainPump(this.spool, async () => {
         await this.spool.drain((records) => new Promise((resolve) => {
-          this.inner.export(records, (res) => resolve(res.code === SUCCESS));
+          let slim;
+          try {
+            slim = records.map(slimRecord);
+          } catch {
+            return resolve(false);
+          }
+          this.inner.export(slim, (res) => resolve(res.code === SUCCESS));
         }));
         return this.spool.files().length === 0;
       });
@@ -75,6 +81,25 @@ class RetryingLogExporter {
   async forceFlush() {
     return this.inner.forceFlush ? this.inner.forceFlush() : undefined;
   }
+}
+
+// A LogRecord keeps its data in underscore-prefixed fields behind getters; a JSON round-trip
+// loses the getters, so a spooled record must be rebuilt as a plain object with the field names
+// the OTLP serializer reads. Handles both live records and already-serialized spool entries.
+function slimRecord(r) {
+  const get = (k) => (r[k] !== undefined ? r[k] : r['_' + k]);
+  return {
+    hrTime: get('hrTime'),
+    hrTimeObserved: get('hrTimeObserved'),
+    spanContext: get('spanContext'),
+    severityText: get('severityText'),
+    severityNumber: get('severityNumber'),
+    body: get('body'),
+    attributes: get('attributes'),
+    droppedAttributesCount: get('droppedAttributesCount'),
+    resource: { attributes: (get('resource') && get('resource').attributes) || {} },
+    instrumentationScope: get('instrumentationScope'),
+  };
 }
 
 module.exports = { RetryingLogExporter };

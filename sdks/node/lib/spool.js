@@ -29,7 +29,15 @@ class Spool {
   }
   files() {
     try {
-      return fs.readdirSync(this.dir).filter((f) => f.startsWith(this.prefix + '-')).sort();
+      const now = Date.now();
+      return fs.readdirSync(this.dir).filter((f) => {
+        if (f.startsWith(this.prefix + '-')) return true;
+        // a .claim file whose claimant crashed becomes drainable again after 60 s
+        if (f.startsWith(this.prefix + '~') && f.endsWith('.claim')) {
+          try { return now - fs.statSync(path.join(this.dir, f)).mtimeMs > 60000; } catch { return false; }
+        }
+        return false;
+      }).sort();
     } catch {
       return [];
     }
@@ -60,15 +68,24 @@ class Spool {
     }
   }
   // Re-send spooled payloads oldest-first through send(payload) -> Promise<boolean>.
+  // Each file is claimed by an atomic rename before sending, so two processes sharing the
+  // directory (a slow-to-die previous process and its replacement) can never both send it.
   // Stops at the first failure (endpoint still down); one corrupt file is skipped, not fatal.
   async drain(send) {
     let sent = 0;
     for (const f of this.files()) {
       const p = path.join(this.dir, f);
+      const claim = path.join(this.dir, `${this.prefix}~${process.pid}~${f}.claim`);
+      try {
+        fs.renameSync(p, claim);
+      } catch {
+        continue; // claimed by another process or gone
+      }
       let payload;
       try {
-        payload = fs.readFileSync(p);
+        payload = fs.readFileSync(claim);
       } catch {
+        try { fs.unlinkSync(claim); } catch { /* gone */ }
         continue;
       }
       let ok = false;
@@ -77,8 +94,11 @@ class Spool {
       } catch {
         ok = false;
       }
-      if (!ok) return sent;
-      try { fs.unlinkSync(p); } catch { /* drained on next pass */ }
+      if (!ok) {
+        try { fs.renameSync(claim, p); } catch { /* leave claimed; reclaimed after 60 s */ }
+        return sent;
+      }
+      try { fs.unlinkSync(claim); } catch { /* drained on next pass */ }
       sent++;
     }
     if (sent > 0) this.log(`[monitoring] spool drained ${sent} ${this.prefix} batch(es)`);

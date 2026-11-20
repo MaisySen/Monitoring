@@ -1,0 +1,30 @@
+[
+  {
+    "scenario": "server_outage_long",
+    "service": "resilience-so-server_outage_long",
+    "rate_spans_per_s": 100,
+    "seconds": 100,
+    "fault_started_s": 20.005,
+    "fault": {
+      "cleared": 1795192864966,
+      "down_s": 45,
+      "restarted": true
+    },
+    "sent": {
+      "spans": 10000,
+      "logs": 5000
+    },
+    "stored": {
+      "spans_rows": 10000,
+      "spans_unique": 10000,
+      "logs_rows": 4899,
+      "logs_unique": 4899
+    },
+    "spans_missing": 0,
+    "spans_duplicates": 0,
+    "logs_missing": 101,
+    "logs_duplicates": 0,
+    "first_span_after_recovery_s": 0.019,
+    "stderr_tail": "[monitoring] spool drained 1 spans batch(es)\n"
+  }
+]

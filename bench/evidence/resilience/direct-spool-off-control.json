@@ -1,0 +1,30 @@
+[
+  {
+    "scenario": "server_outage_long",
+    "service": "resilience-so-server_outage_long",
+    "rate_spans_per_s": 100,
+    "seconds": 60,
+    "fault_started_s": 20.008,
+    "fault": {
+      "cleared": 1795192388993,
+      "down_s": 45,
+      "restarted": true
+    },
+    "sent": {
+      "spans": 6000,
+      "logs": 3000
+    },
+    "stored": {
+      "spans_rows": 1891,
+      "spans_unique": 1891,
+      "logs_rows": 969,
+      "logs_unique": 969
+    },
+    "spans_missing": 4109,
+    "spans_duplicates": 0,
+    "logs_missing": 2031,
+    "logs_duplicates": 0,
+    "first_span_after_recovery_s": null,
+    "stderr_tail": ""
+  }
+]
