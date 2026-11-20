@@ -77,3 +77,30 @@ re-delivery. Rows stay correct (no duplicates); per-minute rollups can undercoun
 that crash window. Fix (transactional rollup) queued.
 
 ClickHouse path and logs/metrics differences preserved and documented as before.
+
+## Round 3: outage e2e against idempotent intake + transactional rollups (build 09697a7)
+
+server_outage_long (45 s outage, 100 spans/s x 110 s, spool ON, direct app->server):
+
+| run | retry window | spans | span dupes | logs | log dupes |
+| --- | --- | --- | --- | --- | --- |
+| e2e3 | 30 s (default) | 11,000/11,000 | 0 | 5,449/5,500 | 0 |
+| e2e4 (diag) | 30 s (default) | 11,000/11,000 | 0 | 5,448/5,500 | 0 |
+| e2e5 (control) | 60 s (> outage) | 11,000/11,000 | 0 | 5,500/5,500 | 0 |
+
+- Spans: zero loss AND zero duplicates through a real 45 s outage with spool drain: rows == unique.
+  The idempotent intake holds end-to-end, including the drain-after-restart path.
+- Logs, residual window: exactly the records emitted in the kill-boundary second (seq 1930-2032 in
+  e2e4, contiguous, ~1 s, 0.9%) never arrive when the outage (45 s) outlasts the retry window (30 s).
+  Loss is record-granular, not batch-granular, which rules out a whole-batch spool miss; the diag
+  log shows the OTel BatchLogRecordProcessor's exportTimeoutMillis (30 s, same value as our retry
+  window) firing "Timeout" once. Control run with the retry window longer than the outage loses
+  nothing, so the defect sits in the retry-deadline -> spool / processor-timeout interaction at the
+  kill boundary, not in the spool itself, not server-side. Root cause not yet isolated (queued).
+  Mitigation today: set MONITORING_EXPORT_RETRY_SECONDS above the longest outage to absorb; spans
+  are unaffected either way.
+- Harness change: server-only.js gains GEN_DEBUG_DIAG/GEN_ERR_FILE capture (preload diag-setup.js,
+  full gen stderr to a file) - used for the e2e4/e2e5 evidence above.
+- First rerun attempt failed with 403 on every intake: the resilience DB's API key had been deleted
+  by an earlier key-lifecycle test. Minted a fresh key (api_keys row, name 'e2e-rerun') and reran.
+  Disclosed as a process failure of the first attempt, not a product defect.

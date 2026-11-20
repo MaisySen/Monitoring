@@ -78,7 +78,11 @@ async function runScenario(name) {
   // gen.js runs from the directory holding GEN_NODE_MODULES so its bare requires (winston,
   // @monitoring/trace) resolve there; copy gen.js next to GEN_NODE_MODULES before running.
   const genDir = path.dirname(GEN_NODE_MODULES);
-  const gen = spawn('node', ['-r', path.join(GEN_NODE_MODULES, '@monitoring/trace/init'), path.join(genDir, 'gen.js')], {
+  const preloads = [];
+  if (process.env.GEN_DEBUG_DIAG) preloads.push('-r', path.join(__dirname, 'diag-setup.js'));
+  preloads.push('-r', path.join(GEN_NODE_MODULES, '@monitoring/trace/init'));
+  const genErrFile = process.env.GEN_ERR_FILE || null;
+  const gen = spawn('node', [...preloads, path.join(genDir, 'gen.js')], {
     cwd: path.dirname(GEN_NODE_MODULES),
     env: {
       ...process.env, RATE: String(RATE), SECONDS: String(SECONDS),
@@ -89,7 +93,10 @@ async function runScenario(name) {
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   let out = '', err = '';
-  gen.stderr.on('data', (c) => (err += c));
+  gen.stderr.on('data', (c) => {
+    err += c;
+    if (genErrFile) require('fs').appendFileSync(genErrFile, c);
+  });
   gen.on('exit', (code, sig) => process.stderr.write(`  ${name}: generator exited code=${code} sig=${sig}\n`));
   process.stderr.write(`  ${name}: generator pid=${gen.pid}\n`);
   // Resolve when the generator prints its {"spans":..,"logs":..} summary line, then stop the child.
