@@ -687,7 +687,7 @@ export function OrgSettings() {
 
 export function AgentSetup() {
   const org = useQuery({ queryKey: ["org"], queryFn: () => api<any>("/ui/org") });
-  const key = (org.data?.keys ?? []).find((k: any) => k.kind === "api")?.key ?? "<YOUR_API_KEY>";
+  const key = (org.data?.keys ?? []).find((k: any) => k.kind === "api")?.key ?? "PASTE-YOUR-API-KEY";
   const url = org.data?.public_url ?? location.origin;
   const [tab, setTab] = useState("linux");
   const yaml = `api_key: ${key}
