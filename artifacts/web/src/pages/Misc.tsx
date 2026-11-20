@@ -1133,6 +1133,7 @@ interface ErrorGroupDetailData {
     lastSeen: number;
   };
   spans: { traceId: string; spanId: string; startMs: number; durationNs: number; errorType: string; errorMessage: string }[];
+  relatedLogs: { traceId: string; ts: number; status: string; service: string; message: string }[];
   scanned: number;
   scanTruncated: boolean;
   versionCorrelation: {
@@ -1225,6 +1226,27 @@ export function ErrorGroupDetail() {
               Matched by recomputing each span's fingerprint from its stored error details. Scanned {fmtNum(d.data.scanned)} recent error
               spans{d.data.scanTruncated ? " (scan limit reached - older matches may not be listed)" : ""}.
             </div>
+          )}
+        </div>
+        <div className="card">
+          <div className="px-4 py-2 border-b border-line font-semibold">Related logs</div>
+          {!d.data ? null : d.data.relatedLogs.length === 0 ? (
+            <div className="px-4 py-4 text-ink-3 text-xs">
+              No logs share a trace id with these error spans. That means none were ingested with these trace ids - not that the app logged
+              nothing (console output is not shipped; Winston, Pino and Bunyan are).
+            </div>
+          ) : (
+            d.data.relatedLogs.map((l, i) => (
+              <Link key={i} href={`/apm/trace/${l.traceId}`} className="flex items-center gap-3 px-4 py-2 border-b border-line hover:bg-[#eef2fc]">
+                <span className={"w-2 h-2 rounded-full shrink-0 " + (l.status === "error" ? "bg-bad" : "bg-ink-3")} />
+                <span className="text-[12px] text-ink-2 truncate flex-1">{l.message}</span>
+                <span className="mono text-[11px] text-ink-3 shrink-0">{l.traceId.slice(0, 12)}…</span>
+                <span className="text-xs text-ink-3 shrink-0">{fmtAgo(l.ts)}</span>
+              </Link>
+            ))
+          )}
+          {d.data && d.data.relatedLogs.length > 0 && (
+            <div className="px-4 py-2 text-[11px] text-ink-3">Logs sharing a trace id with the matching error spans above.</div>
           )}
         </div>
       </div>

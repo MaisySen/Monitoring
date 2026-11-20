@@ -497,7 +497,26 @@ router.get(
         [req.orgId, g.service, sinceMs],
       )
     ).rows;
+    // Logs sharing a trace id with matched error spans. Absence means no logs were ingested
+    // with those trace ids, not that the app logged nothing.
+    const traceIds = [...new Set(matched.map((s) => s.traceId))].slice(0, 10);
+    const relatedLogs = traceIds.length
+      ? (
+          await pool.query(
+            `select trace_id, ts, status, service, message from logs
+             where org_id=$1 and trace_id = any($2) order by ts desc limit 100`,
+            [req.orgId, traceIds],
+          )
+        ).rows.map((l: any) => ({
+          traceId: l.trace_id,
+          ts: Number(l.ts),
+          status: l.status,
+          service: l.service,
+          message: typeof l.message === "string" && l.message.length > 500 ? l.message.slice(0, 500) + "…[truncated]" : l.message,
+        }))
+      : [];
     res.json({
+      relatedLogs,
       versionCorrelation: buildVersionCorrelation(
         corrMatches,
         trafficRows.map((r: any) => ({ env: r.env ?? "", version: r.v ?? "", operations: Number(r.c) })),

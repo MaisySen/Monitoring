@@ -550,3 +550,26 @@ explicit "Monitoring cannot see why data stopped - silence can mean idle, crashe
 disconnected". Problem rows restructured (monitor link on the name, no nested-link whole-row).
 Visually verified with a live firing error monitor + a silent service in one screen.
 CI: 43f64b9 success (correlation comparability), bf9caf1 success.
+
+## 2026-11-21 07:57 AEDT - REAL end-to-end onboarding journey verified (this commit)
+
+Parent direction: prove the published onboarding path with a fresh app, not fixtures.
+- GAP FOUND + FIXED: the published snippets referenced /downloads/monitoring-trace-0.1.0.tgz
+  and monitoring_trace-0.1.0-py3-none-any.whl, but the server's downloads dir held only the
+  agent binary - both URLs 404'd. Added scripts/pack-sdks.mjs (node tgz required; python wheel
+  needs `pip install build`, loud warning when skipped, never silent) and wired it into
+  build:selfhost as pack:sdks.
+- Fresh org + fresh Node app at /tmp/e2e-app: `npm install http://127.0.0.1:4730/downloads/
+  monitoring-trace-0.1.0.tgz` (exact published instruction), run with the published env vars
+  + `node -r @monitoring/trace/init app.js`. App: plain http server, /ok and /fail (real
+  recordException + winston error log, per the SDK README).
+- Result: 55 real spans, service correctly "degraded" (13 errors in 55 operations, 23.6%),
+  [Default] Errors in shop-api Alert; error group TypeError "user <n> not found" count=13
+  (8+5 across two bursts, env prod, version 1.4.0), matched 13/13 with full coverage;
+  version correlation prod/1.4.0: 13 errors / 55 operations; 5 winston logs joined by trace
+  id (console.* is documented as not shipped - SDK README is honest).
+- Trace view on a failing request shows the real stack pointing at app.js:10.
+- Error-group detail now also returns relatedLogs (logs sharing a trace id with matched
+  error spans, capped 10 traces/100 rows) with a "none" state that says none were ingested
+  with those trace ids, not that nothing was logged.
+Unit: 76/76. CI greens through 43f64b9.
