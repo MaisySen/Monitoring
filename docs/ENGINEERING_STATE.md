@@ -394,3 +394,18 @@ queue). 100 spans/s, 60s runs, fault at 20s. Evidence: bench/evidence/recovery/s
   correlation, zero-instrumentation uptime checks, Multies-native alert delivery (P2, bridge-held).
   Dashboard builder/metrics explorer/host map demoted to Advanced, not deleted.
 - UI implementation pauses until the plan gets a user/parent reaction. Backend/reliability work unaffected.
+
+## 2026-11-21 05:03 - trace.* derived points now transactional with span rows
+- writeSpans (PG path): trace.<op>.hits/errors/duration points for fresh spans insert in the SAME
+  intake transaction as span rows + span_stats (deriveTracePoints + insertTracePointsTx). Series rows
+  and the points-quota charge resolve/charge before the tx (charge-on-attempt, matching span
+  admission; a partially-duplicated batch can over-admit the dupe-derived points never inserted -
+  disclosed). ClickHouse path unchanged (no idempotent span store there; documented limitation).
+  The postcommit-crash undercount window for trace.* is CLOSED; host_services links stay
+  self-healing outside the tx.
+- Verified (fresh DB, prod build): double POST of one 400-span batch (40 errors) ->
+  spans 400/errors 40, trace.hits 400 (not 800), trace.errors 40, trace.duration avg 1.0s.
+  Note: OTLP server spans land under the operation name "server.request" (decoder naming), so the
+  series are trace.server.request.* — expected, not a misroute.
+- Pending verification next run: precommit SIGKILL -> 0 spans AND 0 trace points, retry -> equal;
+  lost-response proxy rerun. Harness: /tmp/trace-tx-verify.js, /tmp/resp-drop-proxy.js.

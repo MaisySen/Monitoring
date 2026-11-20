@@ -550,6 +550,33 @@ export async function writeSpans(orgId: number, spans: SpanIn[]) {
     // rows are inserted in the SAME transaction (append-only; compacted later), so a crash
     // cannot split committed span rows from their span_stats contribution.
     await ensureSpanStats();
+    // trace.* derived points ride in the SAME transaction as the span rows + span_stats, so a
+    // crash cannot split committed spans from their derived trace metrics either, and a
+    // lost-response retry is a pure re-delivery that inserts nothing. Series rows and the
+    // points-quota charge are resolved/charged BEFORE the transaction (charge-on-attempt: a
+    // rolled-back batch still charges, matching span admission). Which spans are fresh is only
+    // known inside the transaction (RETURNING), so fresh-only filtering happens there.
+    const traceCandidates = deriveTracePoints(spans);
+    let traceIdByKey = new Map<string, number>();
+    let traceAdmitted = false;
+    if (traceCandidates.length) {
+      try {
+        const quotas = await getQuotas(orgId);
+        const pointCount = traceCandidates.reduce((n, s) => n + (s.points?.length ?? 0), 0);
+        traceAdmitted = await admitDaily(orgId, "points", pointCount, quotas.maxPointsPerDay);
+        if (!traceAdmitted) logger.warn({ orgId, pointCount }, "trace metric derivation skipped: points quota exceeded");
+        else {
+          const ids = await seriesIds(orgId, traceCandidates, Math.floor(Date.now() / 1000), quotas.maxSeries);
+          for (let i = 0; i < traceCandidates.length; i++) {
+            const id = ids[i];
+            if (id !== undefined) traceIdByKey.set(seriesKey(orgId, traceCandidates[i]), id);
+          }
+        }
+      } catch (e) {
+        logger.warn({ err: e }, "trace metric derivation preparation failed");
+      }
+    }
+    let traceUsedIds: number[] = [];
     const inserted = new Set<string>();
     await inTransaction(async (c) => {
       for (const [q, v] of stmts) {
@@ -557,19 +584,53 @@ export async function writeSpans(orgId: number, spans: SpanIn[]) {
         for (const row of r.rows) inserted.add(row.trace_id + "\0" + row.span_id);
       }
       const freshSpans = spans.filter((s) => inserted.has(s.traceId + "\0" + s.spanId));
-      if (freshSpans.length) await insertSpanStatsTx(c, orgId, aggregateSpanStats(freshSpans));
+      if (freshSpans.length) {
+        await insertSpanStatsTx(c, orgId, aggregateSpanStats(freshSpans));
+        if (traceAdmitted && traceIdByKey.size)
+          traceUsedIds = await insertTracePointsTx(c, orgId, deriveTracePoints(freshSpans), traceIdByKey);
+      }
       fresh = freshSpans;
     });
-    if (!fresh.length) return; // pure re-delivery: rows and rollups already counted
+    if (!fresh.length) return; // pure re-delivery: rows, rollups and trace points already counted
     startStatsTimer(); // keeps minute compaction running (rows are append-only)
+    // last_seen refresh for the trace series used above (best-effort; self-heals on later batches)
+    if (traceUsedIds.length) {
+      const now = Math.floor(Date.now() / 1000);
+      const touch = [...new Set(traceUsedIds)].filter((id) => now - (lastSeenTouched.get(id) ?? 0) > 300);
+      if (touch.length) {
+        for (const id of touch) lastSeenTouched.set(id, now);
+        pool.query("update metric_series set last_seen=$1 where id = any($2::int[])", [now, touch]).catch((e) => {
+          for (const id of touch) lastSeenTouched.delete(id);
+          logger.warn({ err: e }, "trace series last_seen refresh failed");
+        });
+      }
+    }
   }
   const stored = useClickHouse ? spans : fresh;
   await recordHostServices(orgId, stored);
   // Per-minute APM rollups for the PostgreSQL path are inserted in the intake transaction above.
   // With ClickHouse a materialized view on spans maintains them (lib/ch.ts).
-  // Derive trace metrics (trace.<operation>.hits/errors/duration) from top-level spans
-  const agg = new Map<string, { metric: string; tags: string[]; host: string; ts: number; hits: number; errors: number; dur: number }>();
-  for (const s of stored) {
+  // trace.* metrics on the PostgreSQL path were inserted in the intake transaction above. The
+  // ClickHouse path has no idempotent span store, so it derives from the whole batch after the
+  // fact (duplicates on re-delivery are a documented ClickHouse limitation).
+  if (useClickHouse) {
+    try {
+      await writeMetrics(orgId, deriveTracePoints(stored));
+    } catch (e) {
+      logger.warn({ err: e }, "trace metric derivation failed");
+    }
+  }
+}
+
+/** Series-map key: must match the keying inside seriesIds/writeMetrics exactly. */
+function seriesKey(orgId: number, p: PointIn): string {
+  return `${orgId}|${p.metric}|${p.host}|${normTags(p.tags).join(",")}`;
+}
+
+/** Derives trace.<operation>.hits/errors/duration points from top-level spans. */
+function deriveTracePoints(spans: SpanIn[]): PointIn[] {
+  const agg = new Map<string, { metric: string; tags: string[]; ts: number; hits: number; errors: number; dur: number }>();
+  for (const s of spans) {
     if (!s.isTopLevel) continue;
     const ts = Math.floor(s.start / 1e9 / 10) * 10;
     const tags = [`service:${s.service}`, `resource_name:${s.resource}`, `env:${s.env || "none"}`];
@@ -577,20 +638,42 @@ export async function writeSpans(orgId: number, spans: SpanIn[]) {
     // thousands of series at scale). Host → service links are kept in host_services instead.
     const k = `${s.name}|${tags.join(",")}|${ts}`;
     let a = agg.get(k);
-    if (!a) agg.set(k, (a = { metric: s.name, tags, host: "", ts, hits: 0, errors: 0, dur: 0 }));
+    if (!a) agg.set(k, (a = { metric: s.name, tags, ts, hits: 0, errors: 0, dur: 0 }));
     a.hits++;
     a.errors += s.error ? 1 : 0;
     a.dur += s.duration / 1e9;
   }
   const out: PointIn[] = [];
   for (const a of agg.values()) {
-    out.push({ metric: `trace.${a.metric}.hits`, host: a.host, tags: a.tags, type: "count", points: [[a.ts, a.hits]] });
-    out.push({ metric: `trace.${a.metric}.errors`, host: a.host, tags: a.tags, type: "count", points: [[a.ts, a.errors]] });
-    out.push({ metric: `trace.${a.metric}.duration`, host: a.host, tags: a.tags, type: "gauge", points: [[a.ts, a.dur / a.hits]] });
+    out.push({ metric: `trace.${a.metric}.hits`, host: "", tags: a.tags, type: "count", points: [[a.ts, a.hits]] });
+    out.push({ metric: `trace.${a.metric}.errors`, host: "", tags: a.tags, type: "count", points: [[a.ts, a.errors]] });
+    out.push({ metric: `trace.${a.metric}.duration`, host: "", tags: a.tags, type: "gauge", points: [[a.ts, a.dur / a.hits]] });
   }
-  try {
-    await writeMetrics(orgId, out);
-  } catch (e) {
-    logger.warn({ err: e }, "trace metric derivation failed");
+  return out;
+}
+
+/** Inserts metric points for pre-resolved series inside an existing transaction; returns the series ids used. */
+async function insertTracePointsTx(c: DbClient, orgId: number, points: PointIn[], idByKey: Map<string, number>): Promise<number[]> {
+  const vals: unknown[] = [];
+  const rows: string[] = [];
+  const used = new Set<number>();
+  const flush = async () => {
+    if (!rows.length) return;
+    await c.query(`insert into metric_points (series_id, ts, value, weight) values ${rows.join(",")}`, vals.slice());
+    rows.length = 0;
+    vals.length = 0;
+  };
+  for (const p of points) {
+    const id = idByKey.get(seriesKey(orgId, p));
+    if (id === undefined) continue;
+    used.add(id);
+    for (const [ts, v] of p.points) {
+      if (!Number.isFinite(v) || !Number.isFinite(ts)) continue;
+      vals.push(id, Math.floor(ts), v, null);
+      rows.push(`($${vals.length - 3},$${vals.length - 2},$${vals.length - 1},$${vals.length})`);
+      if (rows.length >= 2000) await flush();
+    }
   }
+  await flush();
+  return [...used];
 }
