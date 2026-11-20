@@ -10,6 +10,8 @@ import { verifyMultiesKey, hashBindingKey } from "../lib/multies";
 import { newKey, invalidateKey, listMemberships, addMembership, countOrgAdmins } from "../lib/org";
 import { getSession, getSessionId, updateSession } from "../lib/auth";
 import { evaluateMonitor, validateMonitorQuery } from "../jobs/monitors";
+import { computeServiceHealth } from "../query/serviceHealth";
+import { fingerprintFor, normalizeMessage } from "../query/errorGroups";
 import { startSampleData, stopSampleData, sampleRunning } from "../jobs/sample";
 import { intakeStats } from "../lib/intakeStats";
 import { getQuotas, setQuotas, parseQuotas, usageToday, bytesThisMinute, seriesCount } from "../lib/quotas";
@@ -367,32 +369,7 @@ router.get(
           )
         ).rows
       : [];
-    const services = stats.map((r: any) => {
-      const ops5 = Number(r.ops5);
-      const errOps5 = Number(r.err_ops5);
-      const opsPrev = Number(r.ops_prev);
-      const errOpsPrev = Number(r.err_ops_prev);
-      const lastActiveS = Number(r.last_bucket) + 60;
-      const quietMin = Math.floor((nowS - lastActiveS) / 60);
-      let state = "ok";
-      let note = `No errors observed in ${ops5} operations in the last 5 minutes`;
-      if (quietMin >= 10) {
-        state = "quiet";
-        note = `No data for ${quietMin} minutes - the service may be idle or stopped; silence alone is not proof of failure`;
-      } else if (ops5 < 20) {
-        state = "low";
-        note = `Only ${ops5} operations in the last 5 minutes - too little traffic to judge health`;
-      } else if (errOps5 > 0) {
-        const rate = errOps5 / ops5;
-        const baseRate = opsPrev >= 100 ? errOpsPrev / opsPrev : null;
-        note = `${errOps5} errors in ${ops5} operations (${(rate * 100).toFixed(1)}%) in the last 5 minutes`;
-        if (rate >= 0.02 && (baseRate === null ? errOps5 >= 5 : rate >= 3 * baseRate)) {
-          state = "degraded";
-          if (baseRate !== null) note += ` - previous-hour baseline ${(baseRate * 100).toFixed(2)}%`;
-        }
-      }
-      return { service: r.service, state, note, ops5, errOps5, lastActiveAt: lastActiveS * 1000 };
-    });
+    const services = computeServiceHealth(stats, nowS);
 
     const problems = (
       await pool.query(
@@ -445,7 +422,7 @@ router.get(
     }
     const rows = (
       await pool.query(
-        `select fingerprint, service, env, error_type, message_example, first_seen, last_seen, count
+        `select fingerprint, service, envs, error_type, message_example, first_seen, last_seen, count
          from error_groups where org_id=$1 and ($2='' or service=$2)
          order by last_seen desc limit 200`,
         [req.orgId, service],
@@ -456,13 +433,70 @@ router.get(
       groups: rows.map((g: any) => ({
         fingerprint: g.fingerprint,
         service: g.service,
-        env: g.env,
+        envs: g.envs ?? [],
         errorType: g.error_type,
         messageExample: g.message_example,
         firstSeen: Number(g.first_seen),
         lastSeen: Number(g.last_seen),
         count: Number(g.count),
       })),
+    });
+  }),
+);
+
+// Recent spans matching ONE error group, so a group's evidence link reaches that group's own
+// traces, not every error in the service. Matching recomputes the fingerprint from stored span
+// meta over a bounded recent scan; scanned is reported so a truncated scan is never silent.
+router.get(
+  "/ui/errors/:fingerprint/spans",
+  h(async (req, res) => {
+    const fp = String(req.params.fingerprint);
+    const g = (
+      await pool.query("select service, error_type, message_example, envs, count, first_seen, last_seen from error_groups where org_id=$1 and fingerprint=$2", [
+        req.orgId,
+        fp,
+      ])
+    ).rows[0];
+    if (!g) throw new HttpError(404, "error group not found");
+    const SCAN_LIMIT = 5000;
+    const sinceMs = Date.now() - 7 * 24 * 3600_000;
+    const cand = (
+      await pool.query(
+        `select trace_id, span_id, start_ms, duration, meta from spans
+         where org_id=$1 and service=$2 and error=1 and start_ms >= $3
+         order by start_ms desc limit ${SCAN_LIMIT}`,
+        [req.orgId, g.service, sinceMs],
+      )
+    ).rows;
+    const matched = [];
+    for (const s of cand) {
+      const meta = (s.meta ?? {}) as Record<string, string>;
+      const sfp = fingerprintFor(g.service, (meta["error.type"] ?? "").slice(0, 200), normalizeMessage(meta["error.message"] ?? ""));
+      if (sfp !== fp) continue;
+      matched.push({
+        traceId: s.trace_id,
+        spanId: s.span_id,
+        startMs: Number(s.start_ms),
+        durationNs: Number(s.duration),
+        errorType: meta["error.type"] ?? "",
+        errorMessage: meta["error.message"] ?? "",
+      });
+      if (matched.length >= 50) break;
+    }
+    res.json({
+      group: {
+        fingerprint: fp,
+        service: g.service,
+        envs: g.envs ?? [],
+        errorType: g.error_type,
+        messageExample: g.message_example,
+        count: Number(g.count),
+        firstSeen: Number(g.first_seen),
+        lastSeen: Number(g.last_seen),
+      },
+      spans: matched,
+      scanned: cand.length,
+      scanTruncated: cand.length >= SCAN_LIMIT,
     });
   }),
 );

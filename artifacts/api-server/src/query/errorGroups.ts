@@ -9,7 +9,8 @@ import { createHash } from "node:crypto";
 //
 // Deliberately not part of the fingerprint: stack frames (language-specific, brittle across
 // agent versions) and env (an env tag change starting a new group is more honest than
-// merging staging and prod errors silently).
+// merging staging and prod errors silently). Because env is excluded, one group can span
+// environments: the row tracks every env seen (envs array), never a single implied env.
 
 export interface ErrorSpanLike {
   service: string;
@@ -22,7 +23,7 @@ export interface ErrorSpanLike {
 export interface ErrorGroupAgg {
   fingerprint: string;
   service: string;
-  env: string;
+  envs: string[];
   errorType: string;
   messageExample: string;
   firstSeenMs: number;
@@ -66,11 +67,12 @@ export function aggregateErrorGroups(spans: ErrorSpanLike[]): ErrorGroupAgg[] {
       g.count += 1;
       if (ms < g.firstSeenMs) g.firstSeenMs = ms;
       if (ms > g.lastSeenMs) g.lastSeenMs = ms;
+      if (s.env && !g.envs.includes(s.env)) g.envs.push(s.env);
     } else {
       groups.set(fp, {
         fingerprint: fp,
         service: s.service || "unnamed-service",
-        env: s.env || "",
+        envs: s.env ? [s.env] : [],
         errorType: type,
         messageExample: (rawMsg || "(no error.message)").slice(0, MAX_EXAMPLE),
         firstSeenMs: ms,
@@ -91,16 +93,17 @@ export async function upsertErrorGroupsTx(c: { query: (q: string, v?: any[]) => 
   const rows: string[] = [];
   for (const g of groups) {
     const b = vals.length;
-    vals.push(orgId, g.fingerprint, g.service, g.env, g.errorType, g.messageExample, g.firstSeenMs, g.lastSeenMs, g.count);
+    vals.push(orgId, g.fingerprint, g.service, g.envs, g.errorType, g.messageExample, g.firstSeenMs, g.lastSeenMs, g.count);
     rows.push(`(${Array.from({ length: 9 }, (_, j) => `$${b + j + 1}`).join(",")})`);
   }
   await c.query(
-    `insert into error_groups (org_id, fingerprint, service, env, error_type, message_example, first_seen, last_seen, count)
+    `insert into error_groups (org_id, fingerprint, service, envs, error_type, message_example, first_seen, last_seen, count)
      values ${rows.join(",")}
      on conflict (org_id, fingerprint) do update set
        last_seen = greatest(error_groups.last_seen, excluded.last_seen),
        first_seen = least(error_groups.first_seen, excluded.first_seen),
-       count = error_groups.count + excluded.count`,
+       count = error_groups.count + excluded.count,
+       envs = (select array(select distinct e from unnest(error_groups.envs || excluded.envs) as e order by e limit 10))`,
     vals,
   );
 }

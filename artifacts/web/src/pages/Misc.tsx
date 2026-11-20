@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, useSearch } from "wouter";
+import { Link, useSearch, useParams } from "wouter";
 import { Search, Plus, Trash2, Copy, Eye, EyeOff, LayoutDashboard, Server, Bell, ScrollText, Activity, LineChart } from "lucide-react";
 import { api } from "@/lib/api";
 import { PageHeader, ICONS } from "@/components/Layout";
@@ -1035,7 +1035,7 @@ interface ErrorGroupsData {
   groups: {
     fingerprint: string;
     service: string;
-    env: string;
+    envs: string[];
     errorType: string;
     messageExample: string;
     firstSeen: number;
@@ -1080,15 +1080,15 @@ export function Errors() {
                     <span className="mono text-[11px] px-1.5 py-0.5 rounded bg-panel text-ink-2">error</span>
                   )}
                   <span className="font-medium text-[13px]">{g.service}</span>
-                  {g.env && <span className="text-xs text-ink-3">{g.env}</span>}
+                  <span className="text-xs text-ink-3">{g.envs.length ? g.envs.join(", ") : "no env tag"}</span>
                   <span className="ml-auto text-xs text-ink-3">
                     {fmtNum(g.count)}× · first {fmtAgo(g.firstSeen)} · last {fmtAgo(g.lastSeen)}
                   </span>
                 </div>
                 <div className="mono text-[12px] text-ink-2 mt-1 break-all">{g.messageExample}</div>
                 <div className="text-xs mt-1">
-                  <Link className="text-primary" href={`/apm/traces?query=${encodeURIComponent(`service:${g.service} status:error`)}`}>
-                    Error traces for {g.service} →
+                  <Link className="text-primary" href={`/errors/${g.fingerprint}`}>
+                    Matching error traces →
                   </Link>
                 </div>
               </div>
@@ -1096,8 +1096,72 @@ export function Errors() {
           )}
         </div>
         <div className="text-[11px] text-ink-3">
-          Grouped at intake by error type and message shape (numbers and ids are normalized). Counts come from stored error spans;
-          re-delivered data is not double-counted.
+          Grouped at intake by error type and message shape (numbers and ids are normalized). Environment does not split a group, so one
+          group can span environments; every observed environment is listed. Counts come from stored error spans; re-delivered data is not
+          double-counted.
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+interface ErrorGroupDetailData {
+  group: {
+    fingerprint: string;
+    service: string;
+    envs: string[];
+    errorType: string;
+    messageExample: string;
+    count: number;
+    firstSeen: number;
+    lastSeen: number;
+  };
+  spans: { traceId: string; spanId: string; startMs: number; durationNs: number; errorType: string; errorMessage: string }[];
+  scanned: number;
+  scanTruncated: boolean;
+}
+
+export function ErrorGroupDetail() {
+  const { fingerprint } = useParams<{ fingerprint: string }>();
+  const d = useQuery({ queryKey: ["error-group", fingerprint], queryFn: () => api<ErrorGroupDetailData>(`/ui/errors/${fingerprint}/spans`) });
+  const g = d.data?.group;
+  return (
+    <div>
+      <PageHeader title={g ? `${g.errorType || "Error"} in ${g.service}` : "Error group"} sub={g ? g.messageExample : ""} />
+      <div className="p-6 space-y-4 max-w-4xl">
+        <div className="text-[13px] text-ink-2">
+          <Link className="text-primary" href="/errors">← All error groups</Link>
+        </div>
+        {g && (
+          <div className="card p-4 text-[13px] space-y-1">
+            <div>
+              <span className="font-semibold">{fmtNum(g.count)} occurrences</span> · first {fmtAgo(g.firstSeen)} · last {fmtAgo(g.lastSeen)}
+            </div>
+            <div className="text-ink-2">Environments observed in this group: {g.envs.length ? g.envs.join(", ") : "no env tag"}</div>
+          </div>
+        )}
+        <div className="card">
+          <div className="px-4 py-2 border-b border-line font-semibold">Matching error traces</div>
+          {!d.data ? null : d.data.spans.length === 0 ? (
+            <div className="px-4 py-4 text-ink-3 text-xs">
+              No matching spans found in the recent scan window (last 7 days). Older occurrences may have aged out of storage.
+            </div>
+          ) : (
+            d.data.spans.map((s) => (
+              <Link key={s.traceId + s.spanId} href={`/apm/trace/${s.traceId}`} className="flex items-center gap-3 px-4 py-2 border-b border-line hover:bg-[#eef2fc]">
+                <span className="mono text-[12px] text-primary">{s.traceId.slice(0, 16)}…</span>
+                <span className="mono text-[12px] text-ink-2 truncate flex-1">{s.errorMessage || s.errorType || "error"}</span>
+                <span className="text-xs text-ink-3 shrink-0">{fmtAgo(s.startMs)}</span>
+              </Link>
+            ))
+          )}
+          {d.data && (
+            <div className="px-4 py-2 text-[11px] text-ink-3">
+              Matched by recomputing each span's fingerprint from its stored error details. Scanned {fmtNum(d.data.scanned)} recent error
+              spans{d.data.scanTruncated ? " (scan limit reached - older matches may not be listed)" : ""}.
+            </div>
+          )}
         </div>
       </div>
     </div>

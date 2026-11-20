@@ -187,7 +187,7 @@ CREATE TABLE IF NOT EXISTS error_groups (
   org_id integer NOT NULL,
   fingerprint text NOT NULL,
   service text NOT NULL,
-  env text NOT NULL DEFAULT '',
+  envs text[] NOT NULL DEFAULT '{}',
   error_type text NOT NULL DEFAULT '',
   message_example text NOT NULL DEFAULT '',
   first_seen bigint NOT NULL,
@@ -196,6 +196,18 @@ CREATE TABLE IF NOT EXISTS error_groups (
   PRIMARY KEY (org_id, fingerprint)
 );
 CREATE INDEX IF NOT EXISTS error_groups_org_lastseen ON error_groups(org_id, last_seen);
+`,
+  // 12: env was a single first-seen label on error_groups, which implied a group contained only
+  // that environment even though env is excluded from the fingerprint. Replace it with the
+  // array of every env observed for the group (bounded at 10 distinct values).
+  `
+ALTER TABLE error_groups ADD COLUMN IF NOT EXISTS envs text[] NOT NULL DEFAULT '{}';
+DO $$ BEGIN
+  IF EXISTS (select 1 from information_schema.columns where table_name='error_groups' and column_name='env') THEN
+    UPDATE error_groups SET envs = ARRAY[env] WHERE envs = '{}' AND env <> '';
+    ALTER TABLE error_groups DROP COLUMN env;
+  END IF;
+END $$;
 `,
 ];
 

@@ -57,6 +57,18 @@ test("errors without type/message still group generically per service", () => {
   assert.equal(groups.find((g) => g.service === "billing")!.messageExample, "(no error.message)");
 });
 
+test("one group can span environments and tracks every env seen", () => {
+  const groups = aggregateErrorGroups([
+    span({ env: "prod", meta: { "error.type": "TypeError", "error.message": "user 1 not found" } }),
+    span({ env: "staging", meta: { "error.type": "TypeError", "error.message": "user 2 not found" } }),
+    span({ env: "prod", meta: { "error.type": "TypeError", "error.message": "user 3 not found" } }),
+    span({ env: "", meta: { "error.type": "TypeError", "error.message": "user 4 not found" } }),
+  ]);
+  assert.equal(groups.length, 1); // env does not split the fingerprint
+  assert.deepEqual([...groups[0].envs].sort(), ["prod", "staging"]); // empty env adds nothing
+  assert.equal(groups[0].count, 4);
+});
+
 test("message example is truncated and fingerprint separates messages only by shape", () => {
   const long = "x".repeat(1000) + " 42";
   const groups = aggregateErrorGroups([span({ meta: { "error.type": "E", "error.message": long } })]);

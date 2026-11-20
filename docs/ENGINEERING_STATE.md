@@ -487,3 +487,21 @@ queue). 100 spans/s, 60s runs, fault at 20s. Evidence: bench/evidence/recovery/s
   retry) did NOT double-count (still 7/3). env=prod captured from OTLP resource attrs.
   Bonus: the journey closes - err-svc's `[Default] Errors in err-svc` monitor went Alert.
 - Unit: 68/68 pass (5 new error-groups tests incl. normalization, stability, generic grouping).
+
+## 2026-11-21 07:02 AEDT - Parent correctness review fixes (this commit)
+
+Three product-correctness gaps from parent review, fixed and live-verified:
+1. LOW TRAFFIC MUST NOT SUPPRESS ERRORS: service-health computation extracted to
+   query/serviceHealth.ts (pure, unit-tested). Low-traffic services with observed errors now
+   read "<n> errors in <m> operations in the last 5 minutes - too little traffic to judge
+   overall health" (errors AND uncertainty, not one or the other).
+2. PER-GROUP EVIDENCE: GET /api/ui/errors/:fingerprint/spans returns spans matching ONE group
+   (fingerprint recomputed from stored span meta over a bounded 5000-span/7-day scan;
+   scanned/scanTruncated reported). /errors/:fingerprint detail page lists matching traces
+   with per-trace links. Live negative control: TypeError group returned exactly its 9 spans,
+   zero of the 3 KeyError spans.
+3. ENV SCOPE HONESTY: migration 12 replaces single env label with envs text[] (union-merge at
+   upsert, bounded 10; conditional DO block handles both fresh and migrated databases). Live
+   verify: same error shape sent from prod and staging merged into one group count=9 with
+   envs=["prod","staging"] displayed; UI footnote states env does not split groups.
+Unit: 74/74 (6 new: env merge, low-traffic-with-errors, quiet wording, degraded thresholds).
