@@ -1,0 +1,66 @@
+{
+ "date": "2026-11-21",
+ "run": "okoz5",
+ "topology": "direct",
+ "sdk": "fixed (e4ef049: RetryingLogExporter + 65536 log queue)",
+ "comparison_prefix_sdk": "bench/evidence/recovery/app-direct-2026-11-20.json",
+ "scenarios": [
+  {
+   "scenario": "backend_outage",
+   "lang": "node",
+   "topology": "direct",
+   "service": "recovery-node-backend-outage-okoz5",
+   "resource_env": "resilience",
+   "resource_host": "modal",
+   "rate_spans_per_s": 200,
+   "seconds": 90,
+   "fault_started_s": 30.006,
+   "fault_duration_s": 60,
+   "sent": {
+    "spans": 18000,
+    "logs": 9000
+   },
+   "spans_rows": 17384,
+   "spans_unique": 17384,
+   "logs_rows": 8900,
+   "logs_unique": 8900,
+   "spans_missing": 616,
+   "spans_duplicates": 0,
+   "logs_missing": 100,
+   "logs_duplicates": 0,
+   "seconds_to_fresh_data_after_recovery": 4.141,
+   "seconds_to_fully_drained_after_end": 0.119
+  },
+  {
+   "scenario": "long_outage",
+   "lang": "node",
+   "topology": "direct",
+   "service": "recovery-node-long-outage-okoz5",
+   "resource_env": "resilience",
+   "resource_host": "modal",
+   "rate_spans_per_s": 600,
+   "seconds": 300,
+   "fault_started_s": 20.002,
+   "fault_duration_s": 240,
+   "sent": {
+    "spans": 180000,
+    "logs": 90000
+   },
+   "spans_rows": 59887,
+   "spans_unique": 59887,
+   "logs_rows": 83511,
+   "logs_unique": 83511,
+   "spans_missing": 120113,
+   "spans_duplicates": 0,
+   "logs_missing": 6489,
+   "logs_duplicates": 0,
+   "seconds_to_fresh_data_after_recovery": 3.642,
+   "seconds_to_fully_drained_after_end": 0.196
+  }
+ ],
+ "findings": [
+  "backend_outage 60s: logs lost 3888 -> 100 (-97.4%); spans lost 617 -> 616 (unchanged). Residual 100 logs + 616 spans = batches older than MONITORING_EXPORT_RETRY_SECONDS=30s when the 60s outage exceeded the retry budget.",
+  "long_outage 240s @600spans/s: logs stored 19,931 -> 83,511/90,000 (loss -90.7%); spans stored 56,078 -> 59,887/180,000 (in-memory span queue capacity bound, ~120k spans is 240s x ~500 spans/s over the queue).",
+  "0 duplicates in both scenarios. Direct-mode residual loss is bounded by retry budget and in-memory queue size; the agent topology (disk queue) is the zero-loss path, proven in agent-2026-11-21.json."
+ ]
+}

@@ -74,10 +74,13 @@ anything without one is listed under Not yet verified. Dates are 2026-11-20 (Syd
   - backend_outage 60s with pre-fix SDK: 617/18,000 spans and 3,888/9,000 logs lost, entirely
     app-side vs a dead server: the stock OTLP log exporter drops a batch on the first transport
     error; the patched span exporter's 30s retry covers all but the kill window. Fixed in
-    sdks/node/lib/retry-log-exporter.js + larger log queue (commit e4ef049); the direct-topology
-    validation rerun with the fix is still pending;
+    sdks/node/lib/retry-log-exporter.js + larger log queue (commit e4ef049); validated direct-topology
+    2026-11-21 (direct-fixed-2026-11-21.json): same fault loses 100 logs (was 3,888) and 616 spans
+    (was 617), residual = batches older than the 30s export retry budget during a 60s outage;
   - long_outage 240s at 600 spans/s with pre-fix SDK: bounded loss (56,078/180,000 spans,
-    19,931/90,000 logs stored, 0 duplicates) dominated by app-side buffering limits.
+    19,931/90,000 logs stored, 0 duplicates) dominated by app-side buffering limits. With the fixed
+    SDK: 59,887/180,000 spans (span in-memory queue capacity bound) and 83,511/90,000 logs stored
+    (log loss -90.7%), 0 duplicates; residual loss is the tradeoff of agentless direct mode.
 - **SSO revocation timing**: bounded by the 12h absolute session TTL plus issuance-time ordering; this is
   an explicit exposure limit, not prompt revocation. A fresh callback from an old provider login renewing
   stale claims is covered by iat-ordering + fail-closed ties, but identity-provider-specific behaviors
