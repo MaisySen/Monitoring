@@ -90,10 +90,14 @@ provider-independent and is built and tested locally against stub identity provi
   revoked grant is never retained, even when it leaves the organization without an
   admin. Recovery then requires a separately authorized local grant, not stale SSO
   privilege.
-- Claim syncs apply strictly in authentication order (`auth_time`, else `iat`): a
-  callback carrying claims older than the most recently applied sync creates its
-  session but never re-applies stale grants, so an out-of-order completion cannot
-  restore revoked authority.
+- Claim syncs apply strictly in claim-issuance order (id_token `iat`; `auth_time`
+  dates the provider login, not the claims, and is never used for ordering). A
+  callback carrying strictly older claims creates its session but never re-applies
+  them; an equal-`iat` tie fails closed, applying removals and downgrades but never
+  grants or upgrades, so a timestamp collision cannot restore revoked authority.
+- Provider contract requirement: the provider MUST resolve workspace claims at
+  token-exchange time, so every fresh login re-reads current membership even on a
+  long-lived provider session. This is a requirement on B2's future Multies half.
 - Freshness bound: provider changes apply at the user's next SSO login (there is no
   push revocation channel). To keep that bound finite, SSO sessions expire after
   `MONITORING_OIDC_SESSION_TTL_HOURS` (default 12h) and expiry fails closed: the user

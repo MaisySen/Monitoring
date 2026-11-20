@@ -168,7 +168,8 @@ export function openPkce(sealed: string, secret: string): PkceState | null {
 
 export interface OidcIdentity {
   sub: string;
-  /** Authentication clock for sync ordering: auth_time when present, else iat (seconds). */
+  /** Claim-issuance clock (id_token iat, seconds): syncs apply strictly in claim-freshness order.
+   *  auth_time is deliberately NOT used: it dates the provider login, not when claims were issued. */
   syncClock: number;
   email: string;
   emailVerified: boolean;
@@ -215,6 +216,6 @@ export async function exchangeCode(
           role: o.role === "admin" || o.role === "owner" ? "admin" : "member",
         }))
     : [];
-  const syncClock = typeof p.auth_time === "number" ? p.auth_time : (p.iat as number);
+  const syncClock = p.iat as number;
   return { sub: String(p.sub), email, emailVerified: p.email_verified !== false, name: typeof p.name === "string" ? p.name : null, orgs, syncClock };
 }

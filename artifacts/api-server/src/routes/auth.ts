@@ -307,19 +307,25 @@ router.get("/auth/oidc/callback", async (req, res) => {
 
     // Syncs apply strictly in authentication order (auth_time, else iat): a callback carrying claims
     // older than the most recently applied sync can create a session but can never re-apply stale grants.
-    const staleSync = ident?.lastSyncAt != null && id.syncClock <= ident.lastSyncAt;
-    if (staleSync) logger.info({ userId: user.id, issuer: cfg.issuer }, "skipped stale SSO claim sync");
+    // Claim syncs apply strictly in claim-issuance order (id_token iat). Strictly older claims never
+    // re-apply. An equal-iat tie fails closed: removals and downgrades apply, grants and upgrades do not -
+    // a timestamp collision must never restore revoked authority.
+    const lastSync = ident?.lastSyncAt ?? null;
+    const skipSync = lastSync != null && id.syncClock < lastSync;
+    const tieOnly = lastSync != null && id.syncClock === lastSync;
+    if (skipSync) logger.info({ userId: user.id, issuer: cfg.issuer }, "skipped stale SSO claim sync");
 
     // Resolve claimed workspaces through immutable (issuer, external org id) bindings; display names are
     // never lookup keys, so a same-named workspace from any issuer cannot land in the wrong organization.
     const roleByOrgId = new Map<number, string>();
-    if (!staleSync) {
+    if (!skipSync) {
     for (const o of id.orgs) {
       let [binding] = await db
         .select()
         .from(ssoOrgBindingsTable)
         .where(sql`${ssoOrgBindingsTable.issuer} = ${cfg.issuer} and ${ssoOrgBindingsTable.externalId} = ${o.id}`);
       if (!binding) {
+        if (tieOnly) continue; // a brand-new workspace claim on a tied timestamp grants nothing
         const [org] = await db.insert(orgsTable).values({ name: o.name.slice(0, 150) }).returning();
         [binding] = await db.insert(ssoOrgBindingsTable).values({ issuer: cfg.issuer, externalId: o.id, orgId: org.id, name: o.name.slice(0, 150) }).returning();
       }
@@ -328,7 +334,7 @@ router.get("/auth/oidc/callback", async (req, res) => {
         .select()
         .from(orgMembershipsTable)
         .where(sql`${orgMembershipsTable.userId} = ${user.id} and ${orgMembershipsTable.orgId} = ${binding.orgId}`);
-      if (!mem)
+      if (!mem && !tieOnly)
         await db.insert(orgMembershipsTable).values({ userId: user.id, orgId: binding.orgId, role: o.role, source: "sso", ssoIssuer: cfg.issuer });
     }
 
@@ -344,6 +350,8 @@ router.get("/auth/oidc/callback", async (req, res) => {
     for (const m of ssoRows) {
       const claimedRole = roleByOrgId.get(m.orgId);
       if (claimedRole !== undefined && m.role === claimedRole) continue;
+      const restrictive = claimedRole === undefined || (m.role === "admin" && claimedRole !== "admin");
+      if (tieOnly && !restrictive) continue; // a tie never restores or extends grants
       if (claimedRole === undefined) {
         await db.delete(orgMembershipsTable).where(sql`${orgMembershipsTable.userId} = ${user.id} and ${orgMembershipsTable.orgId} = ${m.orgId}`);
       } else {
@@ -352,10 +360,11 @@ router.get("/auth/oidc/callback", async (req, res) => {
       if ((await countOrgAdmins(m.orgId)) === 0)
         logger.warn({ userId: user.id, orgId: m.orgId, claimedRole: claimedRole ?? null }, "SSO sync left an organization with no admin; recovery needs an authorized local grant");
     }
-      await db
-        .update(ssoIdentitiesTable)
-        .set({ lastSyncAt: id.syncClock })
-        .where(sql`${ssoIdentitiesTable.issuer} = ${cfg.issuer} and ${ssoIdentitiesTable.sub} = ${id.sub}`);
+      if (!tieOnly)
+        await db
+          .update(ssoIdentitiesTable)
+          .set({ lastSyncAt: id.syncClock })
+          .where(sql`${ssoIdentitiesTable.issuer} = ${cfg.issuer} and ${ssoIdentitiesTable.sub} = ${id.sub}`);
     }
 
     await clearSession(res, getSessionId(req));

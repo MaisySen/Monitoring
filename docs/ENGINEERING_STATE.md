@@ -91,3 +91,15 @@ Working copy of the Monitoring feature build. Local only: not published anywhere
   logins with constant auth_time still sync; out-of-order completion returns current claims; equal-iat tie
   never restores grants; org switch does not extend SSO expiry. NOT YET DONE - code still uses
   auth_time-preferred syncClock and lacks tie handling; oidc.js 32/32 reflects the old model.
+
+## 2026-11-20 18:45 - iat-only ordering + fail-closed ties + exchange-time claims
+- syncClock is now id_token iat only; auth_time is never used for ordering (it dates the provider login).
+- Equal-iat ties fail closed: removals/downgrades apply, inserts/upgrades skipped; strictly-older claims
+  skip the whole sync (session still created); newer claims apply fully and advance last_sync_at.
+- Stub IdP now resolves claims at token-exchange time (the documented provider contract for B2) and holds
+  a constant auth_time, with a force-iat hook.
+- oidc.js 38/38, adding: exchange-time claim resolution (late completion returns current claims), constant
+  auth_time still syncs revocations, four tie cases (downgrade applies, upgrade never restores, removal
+  applies, re-grant never happens), strictly-older skip, org switch preserves absolute SSO expiry.
+- Test lessons: forced iat must stay within the 60s future skew; ties are deterministic only via forced iat.
+- Regression: unit 63/63, memberships 40/40.

@@ -76,7 +76,10 @@ function makeIdp() {
   jwk.alg = 'RS256';
   jwk.use = 'sig';
   const codes = new Map();
-  const state = { currentUser: null, tamper: null, pkceVerified: false, clock: Math.floor(Date.now() / 1000) };
+  // providerAuthTime stays constant for the whole IdP session (long-lived provider login); claims are
+  // resolved at token-exchange time, which is the provider contract Monitoring requires. forceIat lets
+  // tests pin id_token iat to exercise ordering ties.
+  const state = { currentUser: null, tamper: null, pkceVerified: false, providerAuthTime: Math.floor(Date.now() / 1000), forceIat: null };
   const sign = (claims, key = privateKey) => {
     const h = Buffer.from(JSON.stringify({ alg: 'RS256', typ: 'JWT', kid: 'stub-1' })).toString('base64url');
     const p = Buffer.from(JSON.stringify(claims)).toString('base64url');
@@ -99,7 +102,7 @@ function makeIdp() {
       if (!q.get('redirect_uri') || !q.get('state') || !q.get('nonce') || !q.get('code_challenge') || q.get('code_challenge_method') !== 'S256')
         return send(400, { error: 'bad request shape' });
       const code = 'code-' + crypto.randomBytes(8).toString('hex');
-      codes.set(code, { challenge: q.get('code_challenge'), nonce: q.get('nonce'), user: state.currentUser, authTime: ++state.clock });
+      codes.set(code, { challenge: q.get('code_challenge'), nonce: q.get('nonce') });
       const back = new URL(q.get('redirect_uri'));
       back.searchParams.set('code', code);
       back.searchParams.set('state', q.get('state'));
@@ -120,11 +123,12 @@ function makeIdp() {
         if (s256(p.get('code_verifier') || '') !== rec.challenge) return send(400, { error: 'bad verifier' });
         state.pkceVerified = true;
         const now = Math.floor(Date.now() / 1000);
-        const user = rec.user;
+        const user = state.currentUser; // claims are current at exchange time, not frozen at authorize
+        if (!user) return send(400, { error: 'no user' });
         const claims = {
-          iss: base, sub: user.sub, aud: CLIENT_ID, exp: now + 300, iat: now, nonce: rec.nonce,
+          iss: base, sub: user.sub, aud: CLIENT_ID, exp: now + 300, iat: state.forceIat ?? now, nonce: rec.nonce,
           email: user.email, email_verified: user.email_verified, name: user.name, orgs: user.orgs,
-          auth_time: rec.authTime,
+          auth_time: state.providerAuthTime,
         };
         if (state.tamper === 'iss') claims.iss = 'https://evil.example.com';
         if (state.tamper === 'aud') claims.aud = 'someone-else';
@@ -284,23 +288,85 @@ async function main() {
   const recovered = meOld?.orgs?.find((o) => o.orgId === Number(frankOrgId));
   check('authorized local grant restores admin on the existing session', 'admin:local', `${recovered?.role}:${psql(`select source from org_memberships where org_id=${frankOrgId} and user_id=(select id from users where email='${frank.email}')`)}`, recovered?.role === 'admin');
 
-  // 10e. stale callback cannot restore revoked authority: claim syncs apply strictly in authentication
-  // order (auth_time), so the older flow's grants never re-apply after the newer revocation
-  idp1.state.currentUser = { ...carol, orgs: [{ id: 'w1', name: ORG, role: 'owner' }] };
-  const flowOld = await runFlow(idp1); // authorized while carol was admin
-  idp1.state.currentUser = { ...carol, orgs: [] };
-  const flowNew = await runFlow(idp1);
-  await finishFlow(flowNew); // revocation applies first and records the newer auth_time
-  r = await finishFlow(flowOld); // stale sync must be skipped
-  const staleRole = psql(`select coalesce((select m.role from org_memberships m join users u on u.id=m.user_id where u.email='${carol.email}' and m.org_id=${carolOrgId}), 'none')`);
-  check('stale callback cannot restore revoked authority', 'none', staleRole, r.status === 302 && staleRole === 'none');
-
-  // 10f. a newer flow still applies (forward order keeps working)
+  // 10e. claims are resolved at token-exchange time (provider contract): a flow STARTED while carol was
+  // admin but COMPLETED after the provider revoked returns the current (revoked) claims, not stale ones
+  const sleep = (ms) => new Promise((r2) => setTimeout(r2, ms));
+  await sleep(1100); // iat has 1s resolution; make the re-grant strictly newer
   idp1.state.currentUser = { ...carol, orgs: [{ id: 'w1', name: ORG, role: 'owner' }] };
   flow = await runFlow(idp1);
+  await finishFlow(flow); // carol is admin again
+  const flowLate = await runFlow(idp1); // started while the provider still granted admin
+  idp1.state.currentUser = { ...carol, orgs: [] }; // provider revokes before the code is exchanged
+  await sleep(1100);
+  r = await finishFlow(flowLate);
+  const lateRole = psql(`select coalesce((select m.role from org_memberships m join users u on u.id=m.user_id where u.email='${carol.email}' and m.org_id=${carolOrgId}), 'none')`);
+  check('out-of-order completion returns current claims, not authorize-time ones', 'none', lateRole, r.status === 302 && lateRole === 'none');
+
+  // 10f. repeated logins on a long-lived provider session (constant auth_time) still sync: ordering uses
+  // claim issuance (iat), never the provider-login time
+  await sleep(1100); // make the re-grant strictly newer than the revocation above
+  idp1.state.currentUser = { ...carol, orgs: [{ id: 'w1', name: ORG, role: 'owner' }] };
+  flow = await runFlow(idp1);
+  await finishFlow(flow);
+  idp1.state.currentUser = { ...carol, orgs: [{ id: 'w1', name: ORG, role: 'member' }] };
+  flow = await runFlow(idp1);
+  await finishFlow(flow);
+  const constAuthRole = psql(`select m.role from org_memberships m join users u on u.id=m.user_id where u.email='${carol.email}' and m.org_id=${carolOrgId}`);
+  check('revocation syncs despite constant provider auth_time', 'member', constAuthRole, constAuthRole === 'member');
+
+  // 10g. equal-iat ties fail closed: downgrades/removals apply, grants/upgrades never do
+  const T = Math.floor(Date.now() / 1000) + 30; // inside the 60s future-iat skew but newer than any wall-clock sync above
+  idp1.state.forceIat = T;
+  idp1.state.currentUser = { ...carol, orgs: [{ id: 'w1', name: ORG, role: 'owner' }] };
+  flow = await runFlow(idp1);
+  await finishFlow(flow); // admin, lastSync=T (newer than the wall-clock syncs above)
+  idp1.state.currentUser = { ...carol, orgs: [{ id: 'w1', name: ORG, role: 'member' }] };
+  flow = await runFlow(idp1);
+  await finishFlow(flow);
+  const tieDown = psql(`select m.role from org_memberships m join users u on u.id=m.user_id where u.email='${carol.email}' and m.org_id=${carolOrgId}`);
+  check('tie applies a downgrade', 'member', tieDown, tieDown === 'member');
+  idp1.state.currentUser = { ...carol, orgs: [{ id: 'w1', name: ORG, role: 'owner' }] };
+  flow = await runFlow(idp1);
+  await finishFlow(flow);
+  const tieUp = psql(`select m.role from org_memberships m join users u on u.id=m.user_id where u.email='${carol.email}' and m.org_id=${carolOrgId}`);
+  check('tie never restores an upgrade', 'member', tieUp, tieUp === 'member');
+  idp1.state.currentUser = { ...carol, orgs: [] };
+  flow = await runFlow(idp1);
+  await finishFlow(flow);
+  const tieDel = psql(`select count(*) from org_memberships m join users u on u.id=m.user_id where u.email='${carol.email}' and m.org_id=${carolOrgId}`);
+  check('tie applies a removal', '0', tieDel, tieDel === '0');
+  idp1.state.currentUser = { ...carol, orgs: [{ id: 'w1', name: ORG, role: 'owner' }] };
+  flow = await runFlow(idp1);
+  await finishFlow(flow);
+  const tieGrant = psql(`select count(*) from org_memberships m join users u on u.id=m.user_id where u.email='${carol.email}' and m.org_id=${carolOrgId}`);
+  check('tie never re-grants', '0', tieGrant, tieGrant === '0');
+
+  // 10h. strictly-older claims never re-apply
+  idp1.state.forceIat = T + 1;
+  flow = await runFlow(idp1);
+  await finishFlow(flow); // admin again at T+1
+  idp1.state.forceIat = T + 2;
+  idp1.state.currentUser = { ...carol, orgs: [] };
+  flow = await runFlow(idp1);
+  await finishFlow(flow); // revoked at T+2
+  idp1.state.forceIat = T + 1;
+  idp1.state.currentUser = { ...carol, orgs: [{ id: 'w1', name: ORG, role: 'owner' }] };
+  flow = await runFlow(idp1);
+  await finishFlow(flow); // older claims attempt a re-grant
+  const olderRole = psql(`select count(*) from org_memberships m join users u on u.id=m.user_id where u.email='${carol.email}' and m.org_id=${carolOrgId}`);
+  check('strictly-older claims never re-apply', '0', olderRole, olderRole === '0');
+
+  // 10i. org switch does not extend the SSO session's absolute expiry
+  idp1.state.forceIat = T + 3; // strictly newer than the T+2 revocation above
+  flow = await runFlow(idp1);
   r = await finishFlow(flow);
-  const freshRole = psql(`select m.role from org_memberships m join users u on u.id=m.user_id where u.email='${carol.email}' and m.org_id=${carolOrgId}`);
-  check('newer claims still apply after a stale skip', 'admin', freshRole, r.status === 302 && freshRole === 'admin');
+  const swCookie = cookieOf(r, 'sid'); // signed form, as the browser would send
+  const swSid = (decodeURIComponent(swCookie).match(/[0-9a-f]{64}/) || [])[0];
+  const expBefore = psql(`select expire from sessions where sid='${swSid}'`);
+  const sw = await req(APP, 'POST', '/api/ui/org/select', { orgId: Number(carolOrgId) }, { cookie: swCookie });
+  const expAfter = psql(`select expire from sessions where sid='${swSid}'`);
+  check('org switch keeps the absolute SSO expiry', expBefore, expAfter, sw.status === 200 && expBefore === expAfter);
+  idp1.state.forceIat = null;
 
   // 10g. SSO sessions carry the bounded TTL (2h in this test server) and expiry fails closed
   const carolSid = (decodeURIComponent(cookieOf(r, 'sid')).match(/[0-9a-f]{64}/) || [])[0];
