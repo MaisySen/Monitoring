@@ -50,7 +50,7 @@ async function tick(): Promise<void> {
   // org with many failing/slow targets cannot starve the others; CLAIM_LIMIT bounds the tick.
   const cand = (
     await pool.query(
-      `select id from (select id, row_number() over (partition by org_id order by next_run_at) rn
+      `select id from (select id, next_run_at, row_number() over (partition by org_id order by next_run_at) rn
          from uptime_checks where enabled and next_run_at <= $1) t
        where rn <= $2 order by next_run_at, id limit $3`,
       [now, MAX_CHECKS_CLAIMED_PER_ORG_PER_TICK, CLAIM_LIMIT],

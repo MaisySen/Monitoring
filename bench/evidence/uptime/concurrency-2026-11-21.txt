@@ -1,0 +1,20 @@
+   "pass": true,
+   "detail": "10 checks, one result each"
+  },
+  {
+   "name": "fairness: small org's 2 checks probed despite big org's 8 due",
+   "pass": true,
+   "detail": "2/2 probed"
+  },
+  {
+   "name": "fairness: big org capped at 5 in round 1, remainder probed in round 2",
+   "pass": true,
+   "detail": "8/8 probed after two rounds"
+  },
+  {
+   "name": "fairness: small org's first results landed in the first probe round",
+   "pass": true,
+   "detail": "small first results at +8325,8325ms"
+  }
+ ]
+}
