@@ -243,3 +243,15 @@ queue). 100 spans/s, 60s runs, fault at 20s. Evidence: bench/evidence/recovery/s
   Confirmed the failure mode fires (caught the race), then the fixed script passes with real rows.
 - Commit 65f27d7. Full app->agent->server->Postgres recovery bench (all 5 scenarios) launched against
   the same artifact binary under its own restart loop; results pending in /tmp/recovery-agent.json.
+
+## 2026-11-20 22:35 B1 Multies bridge - Monitoring half built + tested (11/11)
+- Migration 10 (multies_bindings), lib/multies.ts (verify via Multies v1 GET /api/v1/domains through the
+  SSRF-checked HTTP path), routes POST/GET/DELETE /api/ui/org/multies-binding (admin write, member read).
+- Contract honesty: the v1 API has no whoami; key validity is proven, workspace label is self-declared.
+  Raw key never stored (sha256 + last-4 hint). Binding is never a sign-in path.
+- bench/security/multies-bridge.js 11/11 against a stub Multies API, two server profiles (allow-private
+  on/off): format refusal before network, rejected key not bound, member 403, hash-only storage,
+  redacted reads, re-bind replace, unbind, private URL refused without the env flag.
+- Harness learning: login returns clearing+new sid cookies; bench cookie jars must be last-wins.
+- Live verification against a real Multies instance remains the external dependency for B1; B2 unchanged
+  (Multies write authority needed).

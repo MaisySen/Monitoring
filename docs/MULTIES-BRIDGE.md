@@ -125,8 +125,13 @@ Only after B2. Not designed further here; it depends on Multies front-end work.
 
 ## Status
 
-- B1: designed; not yet implemented (needs a live Multies deployment to verify against —
-  external dependency).
+- B1: Monitoring half implemented and tested against a stub Multies v1 API
+  (bench/security/multies-bridge.js, 11/11): bind verifies the key against GET /api/v1/domains,
+  stores only its sha256 hash, redacts it in reads, is admin-only to write, replaces on re-bind,
+  unbinds, and refuses private/local Multies URLs unless MONITORING_ALLOW_PRIVATE_WEBHOOKS is set.
+  The Multies API proves key validity but exposes no workspace identity endpoint, so the stored
+  workspace label is self-declared by the admin and presented that way. Live verification against a
+  real Multies deployment remains an external dependency.
 - B2 Monitoring half: implemented and tested locally (OIDC sign-in); Multies half blocked
   on Multies write authority.
 - B3: not started.

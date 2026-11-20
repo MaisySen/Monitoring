@@ -6,6 +6,7 @@ import { getOrigin } from "../lib/config";
 import { and, eq } from "drizzle-orm";
 import { requireOrg, requireAdmin, requireAdminOrKeys } from "../middlewares/authMiddleware";
 import { checkWebhookUrl, checkWebhookHeaders } from "../lib/safeHttp";
+import { verifyMultiesKey, hashBindingKey } from "../lib/multies";
 import { newKey, invalidateKey, listMemberships, addMembership, countOrgAdmins } from "../lib/org";
 import { getSession, getSessionId, updateSession } from "../lib/auth";
 import { evaluateMonitor, validateMonitorQuery } from "../jobs/monitors";
@@ -450,6 +451,51 @@ router.post(
       })
       .returning();
     res.json({ id: k.id, name: k.name, kind: k.kind, key: k.key });
+  }),
+);
+// B1 Multies bridge (docs/MULTIES-BRIDGE.md): bind this organization to a Multies workspace by verifying a
+// workspace API key against the Multies v1 API. Org-level only; never a sign-in path. The raw key is verified
+// once and discarded - only its hash is stored.
+router.post(
+  "/ui/org/multies-binding",
+  requireAdmin,
+  h(async (req, res) => {
+    const baseUrl = String(req.body?.base_url || "").replace(/\/+$/, "");
+    const label = String(req.body?.workspace_label || "").trim();
+    const key = String(req.body?.api_key || "");
+    if (!/^https?:\/\//.test(baseUrl)) throw new HttpError(400, "base_url must start with http(s)://");
+    if (!label || label.length > 200) throw new HttpError(400, "workspace_label is required");
+    if (!/^mm_live_[A-Za-z0-9_=-]{8,}$/.test(key)) throw new HttpError(400, "api_key must be a Multies workspace key (mm_live_…)");
+    await verifyMultiesKey(baseUrl, key);
+    await pool.query(
+      `INSERT INTO multies_bindings (org_id, workspace_label, base_url, key_hash, key_hint, bound_by)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       ON CONFLICT (org_id) DO UPDATE SET workspace_label = $2, base_url = $3, key_hash = $4, key_hint = $5, bound_by = $6, created_at = now()`,
+      [req.orgId!, label, baseUrl, hashBindingKey(key), key.slice(-4), req.authUser?.id ?? null],
+    );
+    res.json({ ok: true, workspace_label: label, base_url: baseUrl });
+  }),
+);
+router.get(
+  "/ui/org/multies-binding",
+  requireOrg,
+  h(async (req, res) => {
+    const { rows } = await pool.query("SELECT workspace_label, base_url, key_hint, created_at FROM multies_bindings WHERE org_id = $1", [req.orgId!]);
+    const b = rows[0];
+    res.json({
+      bound: !!b,
+      ...(b
+        ? { workspace_label: b.workspace_label, base_url: b.base_url, key_hint: `mm_live_…${b.key_hint}`, created_at: b.created_at }
+        : {}),
+    });
+  }),
+);
+router.delete(
+  "/ui/org/multies-binding",
+  requireAdmin,
+  h(async (req, res) => {
+    await pool.query("DELETE FROM multies_bindings WHERE org_id = $1", [req.orgId!]);
+    res.json({ ok: true });
   }),
 );
 router.delete(

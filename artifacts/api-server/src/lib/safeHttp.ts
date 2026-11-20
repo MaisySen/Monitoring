@@ -128,6 +128,36 @@ export function checkWebhookHeaders(h: unknown): Record<string, string> | null {
 }
 
 /**
+ * GETs a URL with the same destination validation as outbound webhooks (private/local addresses refused by default,
+ * redirects not followed). Used for verifying third-party API credentials, e.g. the Multies bridge probe.
+ * The body is capped; a trickling or oversized response fails rather than holding the connection.
+ */
+export function getChecked(raw: string, headers: Record<string, string>, idleMs = 8_000, totalMs = 10_000): Promise<{ status: number; body: string }> {
+  const u = checkWebhookUrl(raw);
+  const mod = u.protocol === "https:" ? https : http;
+  const safeHeaders: Record<string, string> = {};
+  for (const [k, v] of Object.entries(headers)) if (!RESERVED_HEADERS.has(k.toLowerCase())) safeHeaders[k] = String(v);
+  return new Promise((resolve, reject) => {
+    const req = mod.request(u, { method: "GET", headers: safeHeaders, lookup: safeLookup, timeout: idleMs }, (res) => {
+      let body = "";
+      res.setEncoding("utf8");
+      res.on("data", (c) => {
+        body += c;
+        if (body.length > 65_536) req.destroy(Object.assign(new Error("response too large"), { code: "ETOOLARGE" }));
+      });
+      res.on("end", () => resolve({ status: res.statusCode ?? 0, body }));
+      res.on("error", reject);
+      res.on("aborted", () => reject(Object.assign(new Error("response aborted"), { code: "ECONNRESET" })));
+    });
+    const deadline = setTimeout(() => req.destroy(Object.assign(new Error("timeout"), { code: "ETIMEDOUT" })), totalMs);
+    req.on("close", () => clearTimeout(deadline));
+    req.on("timeout", () => req.destroy(Object.assign(new Error("timeout"), { code: "ETIMEDOUT" })));
+    req.on("error", reject);
+    req.end();
+  });
+}
+
+/**
  * POSTs to a webhook. idleMs limits inactivity; totalMs limits the whole delivery, so a receiver that trickles bytes
  * cannot keep it open.
  */
