@@ -1,7 +1,7 @@
 dist:
-  module: datacat.local/agent
-  name: datacat-agent
-  description: DataCat host telemetry agent
+  module: monitoring.local/agent
+  name: monitoring-agent
+  description: Monitoring host telemetry agent
   version: 0.1.0
   output_path: ./_build
   build_tags: grpcnotrace

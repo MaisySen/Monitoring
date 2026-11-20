@@ -100,10 +100,10 @@ def python_load(port):
 
 def trial(runtime, mode, sink_port):
     env = {key: value for key, value in os.environ.items()
-           if not key.startswith(("DATACAT_", "OTEL_", "DD_")) and key not in ("NODE_OPTIONS", "PYTHONPATH")}
+           if not key.startswith(("MONITORING_", "OTEL_", "DD_")) and key not in ("NODE_OPTIONS", "PYTHONPATH")}
     port = 18181 if runtime == "node" else 18182
-    env.update(PORT=str(port), BENCH_MODE=mode, DATACAT_SERVICE=f"benchmark-{runtime}",
-               DATACAT_AGENT_URL=f"http://127.0.0.1:{sink_port}",
+    env.update(PORT=str(port), BENCH_MODE=mode, MONITORING_SERVICE=f"benchmark-{runtime}",
+               MONITORING_AGENT_URL=f"http://127.0.0.1:{sink_port}",
                DD_TRACE_AGENT_URL=f"http://127.0.0.1:{sink_port}",
                DD_SERVICE=f"benchmark-{runtime}", DD_INSTRUMENTATION_TELEMETRY_ENABLED="false",
                DD_REMOTE_CONFIGURATION_ENABLED="false", BENCH_SECONDS=str(DURATION),
@@ -112,13 +112,13 @@ def trial(runtime, mode, sink_port):
     env.update({key[len("BENCHENV_"):]: value for key, value in os.environ.items() if key.startswith("BENCHENV_")})
     if runtime == "node":
         command = ["node"]
-        if mode == "datacat":
+        if mode == "monitoring":
             command += ["-r", str(ROOT / "node/init.js")]
         command += [str(HERE / "express.js")]
     else:
         python = str(ROOT / "python/.venv/bin/python")
-        if mode == "datacat":
-            command = [str(ROOT / "python/.venv/bin/datacat-run"), python]
+        if mode == "monitoring":
+            command = [str(ROOT / "python/.venv/bin/monitoring-run"), python]
         else:
             command = [python]
         command += [str(HERE / "flask_app.py")]
@@ -187,7 +187,7 @@ def main():
     worker.start()
     try:
         runtimes = os.environ.get("BENCH_RUNTIMES", "node,python").split(",")
-        modes = os.environ.get("BENCH_MODES", "baseline,datacat").split(",")
+        modes = os.environ.get("BENCH_MODES", "baseline,monitoring").split(",")
         # BENCH_TRIALS>1 interleaves modes round-robin so drift (thermal, noisy neighbours) hits all modes equally
         for _ in range(int(os.environ.get("BENCH_TRIALS", "1"))):
             for runtime in runtimes:

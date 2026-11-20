@@ -1,4 +1,4 @@
-// Structured logger. @datacat/trace injects trace_id/span_id and ships every record to DataCat over OTLP,
+// Structured logger. @monitoring/trace injects trace_id/span_id and ships every record to Monitoring over OTLP,
 // so nothing tails this file; it is kept only for local debugging.
 const winston = require('winston');
 module.exports = (svc) => winston.createLogger({

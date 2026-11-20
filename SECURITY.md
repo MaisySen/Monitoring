@@ -13,7 +13,7 @@ SLA; deployments should track the latest release and their dependency advisories
 - Complete initial admin setup on a private interface before public exposure.
 - Use TLS, a stable `PUBLIC_URL`, a random `SESSION_SECRET` (at least 32 characters),
   network firewall rules and a trusted reverse proxy. Proxy headers (`X-Forwarded-*`) are
-  ignored unless `DATACAT_TRUST_PROXY` is set; set it only when DataCat is reachable solely through that proxy.
+  ignored unless `MONITORING_TRUST_PROXY` is set; set it only when Monitoring is reachable solely through that proxy.
 - Keep PostgreSQL private and patched. Encrypt disks/backups and restrict DB access.
 - Treat API keys, single-use invite links, session tokens and webhook credentials as
   secrets. Revoke keys/invites if shared accidentally. Do not log sensitive payloads.
@@ -34,4 +34,4 @@ SLA; deployments should track the latest release and their dependency advisories
 
 CI scans the full history for secrets with gitleaks. Never commit `.env`, database
 dumps, generated binaries, local benchmark output or private endpoint URLs. Third-party libraries retain their own
-licenses; review dependencies and provenance separately from DataCat's license.
+licenses; review dependencies and provenance separately from Monitoring's license.

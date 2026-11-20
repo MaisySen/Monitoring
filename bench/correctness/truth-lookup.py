@@ -1,11 +1,11 @@
-# Known-behaviour Python service: one SQLite query and one log line per request (datacat-run, through the DataCat Agent).
+# Known-behaviour Python service: one SQLite query and one log line per request (monitoring-run, through the Monitoring Agent).
 import logging, os, sqlite3
 from flask import Flask, jsonify, request
 from opentelemetry import trace
 logging.basicConfig(level=logging.INFO, filename=os.path.join(os.environ.get("TRUTH_LOG_DIR", "/tmp"), "truth-lookup.log"))
 logging.getLogger("werkzeug").setLevel(logging.WARNING)
 log = logging.getLogger("truth-lookup")
-DB = os.environ.get("TRUTH_SQLITE", "/tmp/datacat-truth.db")
+DB = os.environ.get("TRUTH_SQLITE", "/tmp/monitoring-truth.db")
 _con = sqlite3.connect(DB)
 _con.execute("create table if not exists products (id integer primary key, price_cents int)")
 _con.executemany("insert or ignore into products values (?, ?)", [(i, 500 + i * 7 % 5000) for i in range(1, 1001)])

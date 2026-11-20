@@ -1,18 +1,18 @@
 'use strict';
-// DataCat large-scale load generator.
+// Monitoring large-scale load generator.
 // Simulates HOSTS hosts running SERVICES services that emit distributed traces (OTLP protobuf),
 // correlated logs and metrics (OTLP JSON), including host metrics for every host and a
 // high-cardinality custom metric. Every record carries loadtest.run=<RUN> so the stored counts can
 // be checked against what was sent (no data loss).
 //
 // env: TARGET (default http://127.0.0.1:3000/otlp/v1) — or http://127.0.0.1:4318/v1 to go through the agent
-//      DATACAT_API_KEY, RUN, HOSTS=200, SERVICES=50, TRACES_PER_S=400, SECONDS=600, CARDINALITY=20000, CONCURRENCY=8
+//      MONITORING_API_KEY, RUN, HOSTS=200, SERVICES=50, TRACES_PER_S=400, SECONDS=600, CARDINALITY=20000, CONCURRENCY=8
 const http = require('node:http');
 const crypto = require('node:crypto');
 const { Writer } = require('../../sdks/node/lib/span-exporter.js');
 
 const TARGET = process.env.TARGET || 'http://127.0.0.1:3000/otlp/v1';
-const KEY = process.env.DATACAT_API_KEY || '';
+const KEY = process.env.MONITORING_API_KEY || '';
 const RUN = process.env.RUN || `run-${Date.now()}`;
 const HOSTS = Number(process.env.HOSTS || 200);
 const SERVICES = Number(process.env.SERVICES || 50);
@@ -50,7 +50,7 @@ function post(path, body, type) {
   });
 }
 
-// ---- traces (protobuf, hand-encoded with DataCat's writer)
+// ---- traces (protobuf, hand-encoded with Monitoring's writer)
 function kv(w, field, k, v) { const at = w.begin(field); w.string(1, k); const av = w.begin(2); if (typeof v === 'number') { w.tag(3, 0); w.varint(v); } else w.string(1, String(v)); w.end(av); w.end(at); }
 function hr(ns) { return [Number(ns / 1000000000n), Number(ns % 1000000000n)]; }
 function makeTrace(endNs) {

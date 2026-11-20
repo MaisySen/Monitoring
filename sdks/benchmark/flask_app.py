@@ -14,9 +14,9 @@ def index():
 
 
 def stop(*_):
-    if os.environ.get("BENCH_MODE") == "datacat":
-        import datacat
-        datacat.shutdown()
+    if os.environ.get("BENCH_MODE") == "monitoring":
+        import monitoring
+        monitoring.shutdown()
     raise SystemExit(0)
 
 

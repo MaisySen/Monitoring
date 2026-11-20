@@ -41,7 +41,7 @@ func TestContextFormats(t *testing.T) {
 func TestMalformedJSONPreservesBody(t *testing.T) {
 	e := entry.New()
 	e.Body = "not json"
-	if err := normalizeLog(e); err == nil || e.Body != "not json" || e.Attributes["datacat.parse_error"] == nil {
+	if err := normalizeLog(e); err == nil || e.Body != "not json" || e.Attributes["monitoring.parse_error"] == nil {
 		t.Fatal("malformed JSON must be preserved and explicitly marked")
 	}
 }

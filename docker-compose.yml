@@ -3,25 +3,25 @@ services:
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-datacat}
-      POSTGRES_DB: ${POSTGRES_DB:-datacat}
+      POSTGRES_USER: ${POSTGRES_USER:-monitoring}
+      POSTGRES_DB: ${POSTGRES_DB:-monitoring}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-datacat} -d ${POSTGRES_DB:-datacat}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-monitoring} -d ${POSTGRES_DB:-monitoring}"]
       interval: 5s
       timeout: 5s
       retries: 20
-  # Optional ClickHouse for telemetry storage: start with `--profile clickhouse` and set DATACAT_STORAGE=clickhouse in .env.
+  # Optional ClickHouse for telemetry storage: start with `--profile clickhouse` and set MONITORING_STORAGE=clickhouse in .env.
   clickhouse:
     profiles: ["clickhouse"]
     image: clickhouse/clickhouse-server:26.10
     restart: unless-stopped
     environment:
-      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-datacat}
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-monitoring}
       CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-}
-      CLICKHOUSE_DB: ${DATACAT_CLICKHOUSE_DB:-datacat}
+      CLICKHOUSE_DB: ${MONITORING_CLICKHOUSE_DB:-monitoring}
       CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 0
     volumes:
       - clickhouse-data:/var/lib/clickhouse
@@ -32,41 +32,41 @@ services:
       interval: 5s
       timeout: 5s
       retries: 30
-  datacat:
+  monitoring:
     build: .
     restart: unless-stopped
     depends_on:
       postgres:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER:-datacat}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-datacat}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-monitoring}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-monitoring}
       PUBLIC_URL: ${PUBLIC_URL:-http://localhost:3000}
       SESSION_SECRET: ${SESSION_SECRET:?Set SESSION_SECRET in .env}
-      DATACAT_RETENTION_DAYS: ${DATACAT_RETENTION_DAYS:-15}
-      DATACAT_SETUP_TOKEN: ${DATACAT_SETUP_TOKEN:-}
-      DATACAT_TRUST_PROXY: ${DATACAT_TRUST_PROXY:-}
-      DATACAT_ALLOW_PRIVATE_WEBHOOKS: ${DATACAT_ALLOW_PRIVATE_WEBHOOKS:-false}
-      DATACAT_STORAGE: ${DATACAT_STORAGE:-postgres}
-      DATACAT_CLICKHOUSE_URL: ${DATACAT_CLICKHOUSE_URL:-http://clickhouse:8123}
-      DATACAT_CLICKHOUSE_USER: ${CLICKHOUSE_USER:-datacat}
-      DATACAT_CLICKHOUSE_DB: ${DATACAT_CLICKHOUSE_DB:-datacat}
-      DATACAT_CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-}
+      MONITORING_RETENTION_DAYS: ${MONITORING_RETENTION_DAYS:-15}
+      MONITORING_SETUP_TOKEN: ${MONITORING_SETUP_TOKEN:-}
+      MONITORING_TRUST_PROXY: ${MONITORING_TRUST_PROXY:-}
+      MONITORING_ALLOW_PRIVATE_WEBHOOKS: ${MONITORING_ALLOW_PRIVATE_WEBHOOKS:-false}
+      MONITORING_STORAGE: ${MONITORING_STORAGE:-postgres}
+      MONITORING_CLICKHOUSE_URL: ${MONITORING_CLICKHOUSE_URL:-http://clickhouse:8123}
+      MONITORING_CLICKHOUSE_USER: ${CLICKHOUSE_USER:-monitoring}
+      MONITORING_CLICKHOUSE_DB: ${MONITORING_CLICKHOUSE_DB:-monitoring}
+      MONITORING_CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-}
     ports:
       - "${BIND_ADDRESS:-127.0.0.1}:${PORT:-3000}:3000"
     volumes:
       - ./downloads:/app/downloads:ro
-  datacat-agent:
+  monitoring-agent:
     profiles: ["agent"]
     build:
       context: .
       dockerfile: agent/Dockerfile
     restart: unless-stopped
-    depends_on: [datacat]
+    depends_on: [monitoring]
     environment:
-      DATACAT_API_KEY: ${DATACAT_AGENT_API_KEY:-}
+      MONITORING_API_KEY: ${MONITORING_AGENT_API_KEY:-}
     volumes:
-      - ./agent/docker.yaml:/etc/datacat/datacat.yaml:ro
-      - agent-state:/var/lib/datacat-agent
+      - ./agent/docker.yaml:/etc/monitoring/monitoring.yaml:ro
+      - agent-state:/var/lib/monitoring-agent
     # Container metrics only; install the host agent separately for full host visibility.
 volumes:
   postgres-data:

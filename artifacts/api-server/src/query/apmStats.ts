@@ -88,7 +88,7 @@ type Agg = {
 // (minute, service, env, operation, resource) gets about one row per flush instead of one per request.
 const pending = new Map<number, Map<string, Agg>>();
 let flushTimer: NodeJS.Timeout | null = null;
-const FLUSH_MS = Number(process.env.DATACAT_STATS_FLUSH_MS ?? 10000);
+const FLUSH_MS = Number(process.env.MONITORING_STATS_FLUSH_MS ?? 10000);
 
 export async function recordSpanStats(orgId: number, spans: SpanLike[]) {
   if (useClickHouse) return;

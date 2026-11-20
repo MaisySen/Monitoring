@@ -9,5 +9,5 @@ First public release.
 - Telemetry storage in PostgreSQL (default) or ClickHouse.
 - Intake: OpenTelemetry (OTLP/HTTP), the Datadog Agent (tested with 7.56.2 and 7.85.4) and Datadog's open-source
   tracers.
-- DataCat Agent (an OpenTelemetry Collector distribution) and the `@datacat/trace` (Node.js) and `datacat-trace`
+- Monitoring Agent (an OpenTelemetry Collector distribution) and the `@monitoring/trace` (Node.js) and `monitoring-trace`
   (Python) libraries.

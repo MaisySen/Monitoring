@@ -13,7 +13,7 @@ from opentelemetry.proto.collector.metrics.v1.metrics_service_pb2 import ExportM
 from opentelemetry.proto.collector.logs.v1.logs_service_pb2 import ExportLogsServiceRequest
 
 requests = {"traces": [], "metrics": [], "logs": []}
-remote = os.environ.get("DATACAT_VERIFY_REMOTE") == "true"
+remote = os.environ.get("MONITORING_VERIFY_REMOTE") == "true"
 
 
 class Sink(BaseHTTPRequestHandler):
@@ -44,19 +44,19 @@ class Sink(BaseHTTPRequestHandler):
 def main():
     sink, worker, child = None, None, None
     try:
-        env = {**os.environ, "DATACAT_SERVICE": "datacat-python-verify",
-               "DATACAT_ENV": "verification", "PORT": "18082"}
+        env = {**os.environ, "MONITORING_SERVICE": "monitoring-python-verify",
+               "MONITORING_ENV": "verification", "PORT": "18082"}
         if not remote:
             sink = ThreadingHTTPServer(("127.0.0.1", 0), Sink)
             worker = threading.Thread(target=sink.serve_forever, daemon=True)
             worker.start()
-            env.update(DATACAT_URL=f"http://127.0.0.1:{sink.server_port}",
-                       DATACAT_API_KEY="local-verification-only")
+            env.update(MONITORING_URL=f"http://127.0.0.1:{sink.server_port}",
+                       MONITORING_API_KEY="local-verification-only")
         else:
-            assert env.get("DATACAT_URL") and env.get("DATACAT_API_KEY"), "Remote verification requires URL and key"
+            assert env.get("MONITORING_URL") and env.get("MONITORING_API_KEY"), "Remote verification requires URL and key"
         root = Path(__file__).resolve().parent.parent
         child = subprocess.Popen([
-            str(Path(sys.executable).parent / "datacat-run"), sys.executable, "examples/app.py",
+            str(Path(sys.executable).parent / "monitoring-run"), sys.executable, "examples/app.py",
         ], env=env, cwd=root, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         ready = False
         for _ in range(100):
@@ -75,7 +75,7 @@ def main():
         output = child.communicate(timeout=30)[0].decode()
         assert child.returncode == 0, output
         if remote:
-            print("DataCat Python example completed; query service=datacat-python-verify and metric=datacat.example.python.requests.")
+            print("Monitoring Python example completed; query service=monitoring-python-verify and metric=monitoring.example.python.requests.")
             return
         spans = [span for req in requests["traces"] for rs in req.resource_spans
                  for ss in rs.scope_spans for span in ss.spans]
@@ -90,8 +90,8 @@ def main():
         attrs = {item.key: item.value.string_value for item in log.attributes}
         assert attrs["otelTraceID"] == custom.trace_id.hex()
         assert attrs["trace_id"] == custom.trace_id.hex()
-        counter = next(m for m in metrics if m.name == "datacat.example.python.requests")
-        histogram = next(m for m in metrics if m.name == "datacat.example.python.duration")
+        counter = next(m for m in metrics if m.name == "monitoring.example.python.requests")
+        histogram = next(m for m in metrics if m.name == "monitoring.example.python.duration")
         assert counter.sum.aggregation_temporality == 1, "Counter is not DELTA"
         assert histogram.histogram.aggregation_temporality == 1, "Histogram is not DELTA"
         assert counter.sum.data_points[0].as_int == 1

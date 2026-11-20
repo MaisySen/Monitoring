@@ -1,10 +1,10 @@
 'use strict';
 // Shared settings for the benchmark scripts. Everything comes from the environment; nothing is read from fixed paths.
-//   DATACAT_URL       DataCat base URL (default http://localhost:3000)
-//   DATACAT_EMAIL     a DataCat login used to read results back (required by scripts that use the UI API)
-//   DATACAT_PASSWORD  its password (or DATACAT_PASSWORD_FILE)
-//   DATACAT_API_KEY   an API key for intake
-//   DATABASE_URL    DataCat's Postgres database, for the scripts that count stored rows directly
+//   MONITORING_URL       Monitoring base URL (default http://localhost:3000)
+//   MONITORING_EMAIL     a Monitoring login used to read results back (required by scripts that use the UI API)
+//   MONITORING_PASSWORD  its password (or MONITORING_PASSWORD_FILE)
+//   MONITORING_API_KEY   an API key for intake
+//   DATABASE_URL    Monitoring's Postgres database, for the scripts that count stored rows directly
 //   BENCH_DEPS      where bench/setup.sh installed the tracers and apps (default bench/.deps)
 const fs = require('fs');
 const path = require('path');
@@ -17,10 +17,10 @@ function need(name) {
   }
   return v;
 }
-const url = () => (process.env.DATACAT_URL || 'http://localhost:3000').replace(/\/$/, '');
-const email = () => need('DATACAT_EMAIL');
-const password = () => process.env.DATACAT_PASSWORD || (process.env.DATACAT_PASSWORD_FILE ? fs.readFileSync(process.env.DATACAT_PASSWORD_FILE, 'utf8').trim() : need('DATACAT_PASSWORD'));
-const apiKey = () => need('DATACAT_API_KEY');
+const url = () => (process.env.MONITORING_URL || 'http://localhost:3000').replace(/\/$/, '');
+const email = () => need('MONITORING_EMAIL');
+const password = () => process.env.MONITORING_PASSWORD || (process.env.MONITORING_PASSWORD_FILE ? fs.readFileSync(process.env.MONITORING_PASSWORD_FILE, 'utf8').trim() : need('MONITORING_PASSWORD'));
+const apiKey = () => need('MONITORING_API_KEY');
 const databaseUrl = () => need('DATABASE_URL');
 const deps = () => process.env.BENCH_DEPS || path.join(__dirname, '..', '.deps');
 const repo = path.join(__dirname, '..', '..');

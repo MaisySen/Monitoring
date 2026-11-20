@@ -1,10 +1,10 @@
-"""Launch application instrumentation using DataCat's OTel entry points."""
+"""Launch application instrumentation using Monitoring's OTel entry points."""
 import os
 
 
 def run():
-    os.environ["OTEL_PYTHON_DISTRO"] = "datacat"
-    os.environ["OTEL_PYTHON_CONFIGURATOR"] = "datacat"
+    os.environ["OTEL_PYTHON_DISTRO"] = "monitoring"
+    os.environ["OTEL_PYTHON_CONFIGURATOR"] = "monitoring"
     from opentelemetry.instrumentation.auto_instrumentation import run as instrument
     return instrument()
 

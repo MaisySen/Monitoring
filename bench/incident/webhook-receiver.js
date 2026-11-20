@@ -2,7 +2,7 @@
 // fail on purpose: POST /control {"fail": N} makes the next N deliveries return 503 (used by the alert-reliability tests).
 const http = require('http');
 const fs = require('fs');
-const OUT = process.env.OUT || require('path').join(require('os').tmpdir(), 'datacat-webhooks.jsonl');
+const OUT = process.env.OUT || require('path').join(require('os').tmpdir(), 'monitoring-webhooks.jsonl');
 const PORT = Number(process.env.PORT || 5400);
 let failNext = 0;
 http.createServer((req, res) => {

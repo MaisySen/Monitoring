@@ -28,7 +28,7 @@ export function Avatar({ name }: { name?: string }) {
 
 export function recordView(id: string, title: string) {
   const r: Record<string, { t: number; n: number; title: string }> = JSON.parse(
-    localStorage.getItem("datacat-views") ?? localStorage.getItem("dc-views") ?? "{}",
+    localStorage.getItem("monitoring-views") ?? localStorage.getItem("dc-views") ?? "{}",
   );
   r[id] = { t: Date.now(), n: (r[id]?.n ?? 0) + 1, title };
   localStorage.setItem("dc-views", JSON.stringify(r));
@@ -43,7 +43,7 @@ export function DashboardList() {
   const [title, setTitle] = useState("");
   const [importing, setImporting] = useState(false);
   const [json, setJson] = useState("");
-  const [favs, setFavs] = useState<string[]>(() => JSON.parse(localStorage.getItem("datacat-favs") ?? localStorage.getItem("dc-favs") ?? "[]"));
+  const [favs, setFavs] = useState<string[]>(() => JSON.parse(localStorage.getItem("monitoring-favs") ?? localStorage.getItem("dc-favs") ?? "[]"));
   useEffect(() => {
     localStorage.setItem("dc-favs", JSON.stringify(favs));
   }, [favs]);
@@ -59,7 +59,7 @@ export function DashboardList() {
   const [hide, setHide] = useState(false);
   const { user } = useAuthUser();
   const views: Record<string, { t: number; n: number; title: string }> = JSON.parse(
-    localStorage.getItem("datacat-views") ?? localStorage.getItem("dc-views") ?? "{}",
+    localStorage.getItem("monitoring-views") ?? localStorage.getItem("dc-views") ?? "{}",
   );
   const all = list.data?.dashboards ?? [];
   const maxViews = Math.max(1, ...Object.values(views).map((v) => v.n));
@@ -633,7 +633,7 @@ export function DashboardView() {
   const [showJson, setShowJson] = useState(false);
   const [settings, setSettings] = useState(false);
   const [tab, setTab] = useState(0);
-  const [favs, setFavs] = useState<string[]>(() => JSON.parse(localStorage.getItem("datacat-favs") ?? localStorage.getItem("dc-favs") ?? "[]"));
+  const [favs, setFavs] = useState<string[]>(() => JSON.parse(localStorage.getItem("monitoring-favs") ?? localStorage.getItem("dc-favs") ?? "[]"));
   const isFav = favs.includes(id);
   const toggleFav = (x: string) => {
     const n = favs.includes(x) ? favs.filter((y) => y !== x) : [...favs, x];

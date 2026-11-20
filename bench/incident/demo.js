@@ -1,12 +1,12 @@
 #!/usr/bin/env node
-// Scripted incident for the Acme Shop on the DataCat stack: inject a faulty query, prove the alert -> service -> trace ->
-// faulty query + logs path with data from DataCat's own APIs, and time each step.
+// Scripted incident for the Acme Shop on the Monitoring stack: inject a faulty query, prove the alert -> service -> trace ->
+// faulty query + logs path with data from Monitoring's own APIs, and time each step.
 //
 //   node demo.js            set up channel + monitor, inject the fault, wait for alert + webhook, collect evidence
 //   node demo.js --recover  remove the fault, wait for recovery + recovery webhook
 //
 // Needs: the Acme Shop example running (examples/acme-shop), the webhook receiver (webhook-receiver.js), and a
-// DataCat login (DATACAT_EMAIL / DATACAT_PASSWORD). Writes evidence to $OUT (default incident-evidence.json / -recovery.json).
+// Monitoring login (MONITORING_EMAIL / MONITORING_PASSWORD). Writes evidence to $OUT (default incident-evidence.json / -recovery.json).
 'use strict';
 const env = require('../lib/env');
 const http = require('http');
@@ -17,7 +17,7 @@ const path = require('path');
 const DC = env.url();
 const EMAIL = env.email();
 const PASSWORD = env.password();
-const HOOK_FILE = process.env.HOOK_FILE || path.join(require('os').tmpdir(), 'datacat-webhooks.jsonl');
+const HOOK_FILE = process.env.HOOK_FILE || path.join(require('os').tmpdir(), 'monitoring-webhooks.jsonl');
 const RECOVER = process.argv.includes('--recover');
 const MONITOR_NAME = 'Checkout path errors by service';
 // Alert when any Acme service records more than THRESHOLD error spans in 2 minutes (normal maximum about 40, from shop-api; the incident produces about 250). Scoped to the

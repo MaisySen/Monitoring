@@ -7,10 +7,10 @@ import { PageHeader } from "@/components/Layout";
 
 const SECTIONS: { id: string; title: string; group: string }[] = [
   { id: "getting-started", title: "Getting started", group: "Start here" },
-  { id: "agent", title: "DataCat Agent (servers & VMs)", group: "Add DataCat to your code" },
-  { id: "nodejs", title: "Node.js", group: "Add DataCat to your code" },
-  { id: "python", title: "Python", group: "Add DataCat to your code" },
-  { id: "migrate", title: "Migrating from Datadog", group: "Add DataCat to your code" },
+  { id: "agent", title: "Monitoring Agent (servers & VMs)", group: "Add Monitoring to your code" },
+  { id: "nodejs", title: "Node.js", group: "Add Monitoring to your code" },
+  { id: "python", title: "Python", group: "Add Monitoring to your code" },
+  { id: "migrate", title: "Migrating from Datadog", group: "Add Monitoring to your code" },
   { id: "monitors", title: "Alert on your app", group: "Guides" },
   { id: "dashboards", title: "Build a dashboard", group: "Guides" },
   { id: "query-syntax", title: "Query & search syntax", group: "Reference" },
@@ -65,7 +65,7 @@ export function Docs() {
             Documentation
           </span>
         }
-        sub="Code snippets below already include your organization's API key and this DataCat URL"
+        sub="Code snippets below already include your organization's API key and this Monitoring URL"
       />
       <div className="flex flex-1 min-h-0">
         <aside className="w-60 border-r border-line bg-panel overflow-auto py-4">
@@ -87,12 +87,12 @@ export function Docs() {
         <article className="flex-1 overflow-auto px-10 py-8" data-testid="docs-article">
           {section === "getting-started" && (
             <>
-              <H2>Getting started with DataCat</H2>
+              <H2>Getting started with Monitoring</H2>
               <P>
-                DataCat collects <b>traces</b>, <b>logs</b> and <b>metrics</b> from your applications and hosts, lets you explore them, and alerts you when
-                something goes wrong. You instrument with DataCat's own open-source stack, built on <b>OpenTelemetry</b>: the{" "}
+                Monitoring collects <b>traces</b>, <b>logs</b> and <b>metrics</b> from your applications and hosts, lets you explore them, and alerts you when
+                something goes wrong. You instrument with Monitoring's own open-source stack, built on <b>OpenTelemetry</b>: the{" "}
                 <Link className="text-primary" href="/docs/agent">
-                  DataCat Agent
+                  Monitoring Agent
                 </Link>{" "}
                 for hosts and the{" "}
                 <Link className="text-primary" href="/docs/nodejs">
@@ -124,12 +124,12 @@ export function Docs() {
                 <li>
                   <b>Install the agent on your server</b> (optional): one command installs the{" "}
                   <Link className="text-primary" href="/docs/agent">
-                    DataCat Agent
+                    Monitoring Agent
                   </Link>
                   , which reports CPU, memory, disk and network, tails your log files and relays telemetry from your apps.
                 </li>
                 <li>
-                  <b>Add DataCat to your code.</b> One line for{" "}
+                  <b>Add Monitoring to your code.</b> One line for{" "}
                   <Link className="text-primary" href="/docs/nodejs">
                     Node.js
                   </Link>{" "}
@@ -137,7 +137,7 @@ export function Docs() {
                   <Link className="text-primary" href="/docs/python">
                     Python
                   </Link>
-                  . With an agent on the machine nothing else is needed; without one (serverless or containers) the library sends straight to DataCat.
+                  . With an agent on the machine nothing else is needed; without one (serverless or containers) the library sends straight to Monitoring.
                 </li>
                 <li>
                   <b>See your data.</b> Requests appear in{" "}
@@ -175,7 +175,7 @@ export function Docs() {
               </Steps>
               <H3>Your connection details</H3>
               <div className="grid grid-cols-[200px_1fr] gap-y-1 text-[13px] max-w-3xl">
-                <span className="text-ink-3">DataCat URL</span>
+                <span className="text-ink-3">Monitoring URL</span>
                 <span className="mono">{URL}</span>
                 <span className="text-ink-3">API key</span>
                 <span className="mono">{KEY}</span>
@@ -191,20 +191,20 @@ export function Docs() {
 
           {section === "agent" && (
             <>
-              <H2>DataCat Agent</H2>
+              <H2>Monitoring Agent</H2>
               <P>
-                The DataCat Agent is a single binary built on the <b>OpenTelemetry Collector</b>. On each server or VM it reports host metrics (CPU, load,
-                memory, disk, network, processes), tails log files, receives OpenTelemetry data from your apps on ports 4317/4318, and relays it all to DataCat
+                The Monitoring Agent is a single binary built on the <b>OpenTelemetry Collector</b>. On each server or VM it reports host metrics (CPU, load,
+                memory, disk, network, processes), tails log files, receives OpenTelemetry data from your apps on ports 4317/4318, and relays it all to Monitoring
                 in batches with retries. For migrations it also accepts compatible tracers (port 8126) and StatsD clients (port 8125).
               </P>
               <H3>1. Install (Linux)</H3>
-              <Code lang="shell">{`curl -fsSL ${URL}/install.sh | DATACAT_API_KEY=${KEY} sh`}</Code>
+              <Code lang="shell">{`curl -fsSL ${URL}/install.sh | MONITORING_API_KEY=${KEY} sh`}</Code>
               <P>
-                This downloads the agent to <C>/opt/datacat-agent/bin/datacat-agent</C>, writes <C>/etc/datacat/datacat.yaml</C> and, on systemd hosts, starts
-                the <C>datacat-agent</C> service. Without systemd, start it yourself:
+                This downloads the agent to <C>/opt/monitoring-agent/bin/monitoring-agent</C>, writes <C>/etc/monitoring/monitoring.yaml</C> and, on systemd hosts, starts
+                the <C>monitoring-agent</C> service. Without systemd, start it yourself:
               </P>
-              <Code lang="shell">{`/opt/datacat-agent/bin/datacat-agent run -c /etc/datacat/datacat.yaml`}</Code>
-              <H3>2. Configure: /etc/datacat/datacat.yaml</H3>
+              <Code lang="shell">{`/opt/monitoring-agent/bin/monitoring-agent run -c /etc/monitoring/monitoring.yaml`}</Code>
+              <H3>2. Configure: /etc/monitoring/monitoring.yaml</H3>
               <Code lang="yaml">{`api_key: ${KEY}
 url: ${URL}
 env: prod
@@ -225,7 +225,7 @@ logs:
               <P>
                 JSON log lines are parsed automatically: the level becomes the status, <C>message</C>/<C>msg</C> the log text, and <C>trace_id</C> links the log
                 to its trace. Restart the agent after changing the file. To see the full OpenTelemetry Collector configuration the agent generates, run{" "}
-                <C>datacat-agent config -c /etc/datacat/datacat.yaml</C>.
+                <C>monitoring-agent config -c /etc/monitoring/monitoring.yaml</C>.
               </P>
               <H3>3. Check it worked</H3>
               <Steps>
@@ -258,14 +258,14 @@ logs:
             <>
               <H2>Node.js</H2>
               <P>
-                <C>@datacat/trace</C> traces every request, ships logs that link to their traces, and records custom metrics, using the OpenTelemetry SDK under
+                <C>@monitoring/trace</C> traces every request, ships logs that link to their traces, and records custom metrics, using the OpenTelemetry SDK under
                 the hood. It instruments http, Express, Fastify, Koa, pg, mysql, redis, mongodb, fetch and more automatically.
               </P>
               <H3>1. Install</H3>
-              <Code lang="shell">{`npm install ${URL}/downloads/datacat-trace-0.1.0.tgz express winston`}</Code>
+              <Code lang="shell">{`npm install ${URL}/downloads/monitoring-trace-0.1.0.tgz express winston`}</Code>
               <H3>2. Write your app</H3>
               <Code lang="javascript">{`// app.js
-const { metrics } = require('@datacat/trace');   // started by: node -r @datacat/trace/init
+const { metrics } = require('@monitoring/trace');   // started by: node -r @monitoring/trace/init
 const express = require('express');
 const winston = require('winston');
 const logger = winston.createLogger({ level: 'info', format: winston.format.json(), transports: [new winston.transports.Console()] });
@@ -274,7 +274,7 @@ const app = express();
 app.get('/checkout', (req, res) => {
   metrics.increment('checkout.attempts', 1, { plan: 'pro' });     // custom metric
   if (Math.random() < 0.3) {
-    logger.error('payment declined', { order_id: 1234 });         // shipped to DataCat, linked to the trace
+    logger.error('payment declined', { order_id: 1234 });         // shipped to Monitoring, linked to the trace
     return res.status(500).json({ error: 'payment declined' });
   }
   logger.info('checkout complete');
@@ -285,17 +285,17 @@ app.listen(3000);`}</Code>
               <P>
                 With the{" "}
                 <Link className="text-primary" href="/docs/agent">
-                  DataCat Agent
+                  Monitoring Agent
                 </Link>{" "}
                 on the same machine:
               </P>
-              <Code lang="shell">{`DATACAT_SERVICE=checkout DATACAT_ENV=prod DATACAT_VERSION=1.0.0 \\
-node -r @datacat/trace/init app.js`}</Code>
-              <P>Without an agent (serverless or containers), send straight to DataCat:</P>
-              <Code lang="shell">{`DATACAT_URL=${URL} \\
-DATACAT_API_KEY=${KEY} \\
-DATACAT_SERVICE=checkout DATACAT_ENV=prod \\
-node -r @datacat/trace/init app.js`}</Code>
+              <Code lang="shell">{`MONITORING_SERVICE=checkout MONITORING_ENV=prod MONITORING_VERSION=1.0.0 \\
+node -r @monitoring/trace/init app.js`}</Code>
+              <P>Without an agent (serverless or containers), send straight to Monitoring:</P>
+              <Code lang="shell">{`MONITORING_URL=${URL} \\
+MONITORING_API_KEY=${KEY} \\
+MONITORING_SERVICE=checkout MONITORING_ENV=prod \\
+node -r @monitoring/trace/init app.js`}</Code>
               <P>
                 Custom spans: <C>{`tracer.trace('checkout.calculate', { resource: 'cart' }, async (span) => { ... })`}</C>. Metrics: <C>metrics.increment</C>,{" "}
                 <C>gauge</C>, <C>histogram</C>, <C>distribution</C> with tags as <C>{`{ key: 'value' }`}</C> or <C>['key:value']</C>. Store API keys in your
@@ -339,16 +339,16 @@ node -r @datacat/trace/init app.js`}</Code>
             <>
               <H2>Python</H2>
               <P>
-                <C>datacat-trace</C> traces requests, ships logs linked to their traces, and records custom metrics, using the OpenTelemetry SDK. It instruments
+                <C>monitoring-trace</C> traces requests, ships logs linked to their traces, and records custom metrics, using the OpenTelemetry SDK. It instruments
                 Flask, Django, FastAPI, requests, urllib3, sqlite3, psycopg, redis and the logging module.
               </P>
               <H3>1. Install</H3>
-              <Code lang="shell">{`pip install "datacat-trace[instrumentation] @ ${URL}/downloads/datacat_trace-0.1.0-py3-none-any.whl" flask`}</Code>
+              <Code lang="shell">{`pip install "monitoring-trace[instrumentation] @ ${URL}/downloads/monitoring_trace-0.1.0-py3-none-any.whl" flask`}</Code>
               <H3>2. Write your app</H3>
               <Code lang="python">{`# app.py
 import logging
 from flask import Flask, jsonify
-from datacat import metrics
+from monitoring import metrics
 
 log = logging.getLogger("inventory")
 logging.getLogger().setLevel(logging.INFO)
@@ -367,18 +367,18 @@ if __name__ == "__main__":
               <P>
                 With the{" "}
                 <Link className="text-primary" href="/docs/agent">
-                  DataCat Agent
+                  Monitoring Agent
                 </Link>{" "}
                 on the same machine:
               </P>
-              <Code lang="shell">{`DATACAT_SERVICE=inventory DATACAT_ENV=prod datacat-run python app.py`}</Code>
+              <Code lang="shell">{`MONITORING_SERVICE=inventory MONITORING_ENV=prod monitoring-run python app.py`}</Code>
               <P>Without an agent:</P>
-              <Code lang="shell">{`DATACAT_URL=${URL} \\
-DATACAT_API_KEY=${KEY} \\
-DATACAT_SERVICE=inventory DATACAT_ENV=prod \\
-datacat-run python app.py`}</Code>
+              <Code lang="shell">{`MONITORING_URL=${URL} \\
+MONITORING_API_KEY=${KEY} \\
+MONITORING_SERVICE=inventory MONITORING_ENV=prod \\
+monitoring-run python app.py`}</Code>
               <P>
-                Custom spans: <C>{`with tracer.trace("fulfillment.batch", resource="process"):`}</C> after <C>from datacat import tracer</C>.
+                Custom spans: <C>{`with tracer.trace("fulfillment.batch", resource="process"):`}</C> after <C>from monitoring import tracer</C>.
               </P>
               <H3>4. Check it worked</H3>
               <Steps>
@@ -407,32 +407,32 @@ datacat-run python app.py`}</Code>
           {section === "migrate" && (
             <>
               <H2>Migrating from Datadog</H2>
-              <P>DataCat accepts data from Datadog's open-source agent and tracers, so you can move one piece at a time.</P>
+              <P>Monitoring accepts data from Datadog's open-source agent and tracers, so you can move one piece at a time.</P>
               <H3>Option A: keep your tracers, swap the agent</H3>
               <P>
                 Install the{" "}
                 <Link className="text-primary" href="/docs/agent">
-                  DataCat Agent
+                  Monitoring Agent
                 </Link>{" "}
                 with <C>datadog_compat: true</C> (the default). Apps using <C>dd-trace</C>/<C>ddtrace</C> keep sending to <C>localhost:8126</C> and DogStatsD
-                clients to <C>localhost:8125</C>; the DataCat Agent converts both to OpenTelemetry and forwards them.
+                clients to <C>localhost:8125</C>; the Monitoring Agent converts both to OpenTelemetry and forwards them.
               </P>
               <H3>Option B: switch libraries</H3>
               <table className="tbl max-w-3xl my-3">
                 <thead>
                   <tr>
                     <th>Datadog</th>
-                    <th>DataCat</th>
+                    <th>Monitoring</th>
                   </tr>
                 </thead>
                 <tbody>
                   <tr>
                     <td className="mono text-xs">node -r dd-trace/init app.js</td>
-                    <td className="mono text-xs">node -r @datacat/trace/init app.js</td>
+                    <td className="mono text-xs">node -r @monitoring/trace/init app.js</td>
                   </tr>
                   <tr>
                     <td className="mono text-xs">ddtrace-run python app.py</td>
-                    <td className="mono text-xs">datacat-run python app.py</td>
+                    <td className="mono text-xs">monitoring-run python app.py</td>
                   </tr>
                   <tr>
                     <td className="mono text-xs">tracer.trace(name, opts, fn)</td>
@@ -444,7 +444,7 @@ datacat-run python app.py`}</Code>
                   </tr>
                   <tr>
                     <td className="mono text-xs">DD_SERVICE, DD_ENV, DD_VERSION, DD_TAGS</td>
-                    <td className="mono text-xs">DATACAT_SERVICE, DATACAT_ENV, DATACAT_VERSION, DATACAT_TAGS (DD_* read as fallbacks)</td>
+                    <td className="mono text-xs">MONITORING_SERVICE, MONITORING_ENV, MONITORING_VERSION, MONITORING_TAGS (DD_* read as fallbacks)</td>
                   </tr>
                   <tr>
                     <td className="mono text-xs">DD_LOGS_INJECTION=true + file tailing</td>
@@ -452,7 +452,7 @@ datacat-run python app.py`}</Code>
                   </tr>
                 </tbody>
               </table>
-              <H3>Option C: point the Datadog Agent at DataCat</H3>
+              <H3>Option C: point the Datadog Agent at Monitoring</H3>
               <Code lang="yaml">{`# /etc/datadog-agent/datadog.yaml
 api_key: ${KEY}
 dd_url: ${URL}
@@ -464,7 +464,7 @@ apm_config:
   enabled: true
   apm_dd_url: ${URL}`}</Code>
               <P>
-                Dashboards and monitors keep working across all three: DataCat derives the same <C>trace.*</C> request metrics and <C>system.*</C> host metrics
+                Dashboards and monitors keep working across all three: Monitoring derives the same <C>trace.*</C> request metrics and <C>system.*</C> host metrics
                 whichever agent or library sent the data.
               </P>
             </>
@@ -594,14 +594,14 @@ trace_id:1234567890`}</Code>
               <H2>HTTP API</H2>
               <H3>OpenTelemetry (OTLP/HTTP): POST /otlp/v1/traces, /otlp/v1/metrics, /otlp/v1/logs</H3>
               <P>
-                Any OpenTelemetry SDK or Collector can send to DataCat directly. Use <C>{URL}/otlp</C> as the OTLP/HTTP endpoint and send your key in the{" "}
+                Any OpenTelemetry SDK or Collector can send to Monitoring directly. Use <C>{URL}/otlp</C> as the OTLP/HTTP endpoint and send your key in the{" "}
                 <C>DC-API-KEY</C> header (or <C>Authorization: Bearer</C>). Protobuf and JSON bodies are accepted, plain or gzip.
               </P>
               <Code lang="shell">{`export OTEL_EXPORTER_OTLP_ENDPOINT=${URL}/otlp
 export OTEL_EXPORTER_OTLP_HEADERS=DC-API-KEY=${KEY}
 export OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf`}</Code>
               <P>
-                DataCat maps OpenTelemetry conventions onto its products: <C>service.name</C>, <C>deployment.environment</C> and <C>service.version</C> become
+                Monitoring maps OpenTelemetry conventions onto its products: <C>service.name</C>, <C>deployment.environment</C> and <C>service.version</C> become
                 service, env and version; HTTP server spans become <C>http.server.request</C> with resource <C>METHOD /route</C>; database spans become{" "}
                 <C>&lt;db.system&gt;.query</C>; host metrics from the Collector's hostmetrics receiver feed the Infrastructure views; histograms produce{" "}
                 <C>.avg</C>, <C>.count</C>, <C>.median</C>, <C>.95percentile</C> and <C>.99percentile</C> series.

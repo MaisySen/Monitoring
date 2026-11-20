@@ -7,7 +7,7 @@ SOAK_HOURS=3 RUN=soak3h node bench/soak/soak.js      # soak, then ramp
 RAMP_ONLY=1 RUN=ramp2 node bench/soak/soak.js        # ramp only
 ```
 
-Set `DATACAT_URL`, `DATACAT_EMAIL`, `DATACAT_PASSWORD` and `DATACAT_API_KEY`, and run it on the same machine (and in the same process namespace) as the server and Postgres, so per-process CPU and memory can be sampled. The script records:
+Set `MONITORING_URL`, `MONITORING_EMAIL`, `MONITORING_PASSWORD` and `MONITORING_API_KEY`, and run it on the same machine (and in the same process namespace) as the server and Postgres, so per-process CPU and memory can be sampled. The script records:
 
 | File | Contents |
 |---|---|
@@ -81,7 +81,7 @@ The VM has 4 cores and also runs the load generator, the demo apps and the agent
 1. **Intake latency.** At 800 traces/s (about 4,800 spans/s, 2× the soak), everything is still ingested, but sustained p99 passes 2 s. This is where the strict ramp stopped.
 2. **Throughput.** Ingest tops out at about 7,000 spans/s (about 1,200 traces/s), with Postgres near one full core of CPU (95%). At 1,600 traces/s offered, only 70% got in, 3 requests failed, and monitor evaluations fell 101 s behind.
 
-The DataCat server itself never exceeded 38% of one core, and the machine never exceeded about half its CPU. The limit is Postgres write throughput for a single node (inserts plus index maintenance on `spans`, `logs` and `metric_points`), not the API process. The ways to go beyond this are documented, not built:
+The Monitoring server itself never exceeded 38% of one core, and the machine never exceeded about half its CPU. The limit is Postgres write throughput for a single node (inserts plus index maintenance on `spans`, `logs` and `metric_points`), not the API process. The ways to go beyond this are documented, not built:
 - batching span inserts with `COPY`;
 - partitioning the telemetry tables by time;
 - or a columnar store for spans and logs.

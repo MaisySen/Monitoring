@@ -196,7 +196,7 @@ export function ApmServices() {
           </div>
           {rows.length === 0 && !data.isLoading ? (
             <Empty title="No services reporting">
-              Add tracing to your app with @datacat/trace (Node.js) or datacat-trace (Python).{" "}
+              Add tracing to your app with @monitoring/trace (Node.js) or monitoring-trace (Python).{" "}
               <Link className="text-primary" href="/docs/getting-started">
                 Follow the guide →
               </Link>

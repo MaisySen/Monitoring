@@ -2,7 +2,7 @@
 
 sqlite3 (and psycopg 3) connections have ``execute``/``executemany``/``executescript`` shortcuts that create a cursor
 internally. OpenTelemetry's DB-API proxy only traces queries run through ``connection.cursor()``, so queries issued
-with the shortcuts produced no spans. DataCat routes the shortcuts through a traced cursor, with the same return
+with the shortcuts produced no spans. Monitoring routes the shortcuts through a traced cursor, with the same return
 value (the cursor) as the native method.
 """
 
@@ -22,28 +22,28 @@ def patch_connection_shortcuts():
     except ImportError:
         return
     proxy = getattr(dbapi, "TracedConnectionProxy", None)
-    if proxy is None or getattr(proxy, "_datacat_shortcuts", False):
+    if proxy is None or getattr(proxy, "_monitoring_shortcuts", False):
         return
     for name in ("execute", "executemany", "executescript"):
         if name not in proxy.__dict__:
             setattr(proxy, name, _shortcut(name))
-    proxy._datacat_shortcuts = True
+    proxy._monitoring_shortcuts = True
 
 
 _SYSTEMS = {"sqlite3": "sqlite", "psycopg": "postgresql", "psycopg2": "postgresql", "pymysql": "mysql", "MySQLdb": "mysql"}
 
 
 def patch_commit():
-    """Trace ``connection.commit()`` as a client span (opt-in: DATACAT_TRACE_DB_COMMIT=true)'s ``<db>.connection.commit`` span."""
+    """Trace ``connection.commit()`` as a client span (opt-in: MONITORING_TRACE_DB_COMMIT=true)'s ``<db>.connection.commit`` span."""
     try:
         from opentelemetry import trace
         from opentelemetry.instrumentation import dbapi
     except ImportError:
         return
     proxy = getattr(dbapi, "TracedConnectionProxy", None)
-    if proxy is None or getattr(proxy, "_datacat_commit", False):
+    if proxy is None or getattr(proxy, "_monitoring_commit", False):
         return
-    tracer = trace.get_tracer("datacat.dbapi")
+    tracer = trace.get_tracer("monitoring.dbapi")
 
     def commit(self, *args, **kwargs):
         module = type(self.__wrapped__).__module__.split(".")[0]
@@ -53,4 +53,4 @@ def patch_commit():
             return self.__wrapped__.commit(*args, **kwargs)
 
     proxy.commit = commit
-    proxy._datacat_commit = True
+    proxy._monitoring_commit = True

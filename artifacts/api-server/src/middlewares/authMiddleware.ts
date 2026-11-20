@@ -21,7 +21,7 @@ const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 export async function authMiddleware(req: Request, res: Response, next: NextFunction) {
   try {
     const sid = getSessionId(req);
-    // Cookie sessions: a state-changing request must come from DataCat's own pages (SameSite=Lax cookies already stop
+    // Cookie sessions: a state-changing request must come from Monitoring's own pages (SameSite=Lax cookies already stop
     // most cross-site requests; this also covers sibling subdomains).
     if (sid && !SAFE_METHODS.has(req.method)) {
       const origin = req.get("origin");

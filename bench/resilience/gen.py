@@ -1,4 +1,4 @@
-"""Python twin of gen.js: RATE spans/s with attribute seq=N, plus a log line for every second span (run with datacat-run)."""
+"""Python twin of gen.js: RATE spans/s with attribute seq=N, plus a log line for every second span (run with monitoring-run)."""
 import json, logging, os, time
 from opentelemetry import trace
 logging.basicConfig(level=logging.INFO, handlers=[logging.NullHandler()])

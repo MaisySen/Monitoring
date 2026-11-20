@@ -1,8 +1,8 @@
 #!/usr/bin/env node
-// Telemetry correctness harness: sends a workload whose results are known in advance through DataCat's libraries and
-// agent, then checks what DataCat reports (API + UI queries) against that ground truth.
+// Telemetry correctness harness: sends a workload whose results are known in advance through Monitoring's libraries and
+// agent, then checks what Monitoring reports (API + UI queries) against that ground truth.
 //
-//   DATACAT_URL=http://localhost:3000 DATACAT_EMAIL=... DATACAT_PASSWORD=... node run.js > report.json
+//   MONITORING_URL=http://localhost:3000 MONITORING_EMAIL=... MONITORING_PASSWORD=... node run.js > report.json
 //
 // Ground truth comes from the plan (how many requests of each kind, which ones fail) and from the client's own
 // measurements (latency of every request, trace ID returned by the server). Checks:
@@ -54,14 +54,14 @@ const pctile = (arr, p) => { const s = [...arr].sort((a, b) => a - b); return s[
 
 async function main() {
   fs.mkdirSync('/var/log/truth', { recursive: true });
-  // ---------- start the two services on the DataCat stack (libraries -> DataCat Agent on :4318) ----------
-  const env = { ...process.env, DATACAT_ENV: 'truth', DATACAT_VERSION: RUN };
-  delete env.DATACAT_URL; delete env.DATACAT_API_KEY; delete env.DD_AGENT_HOST; delete env.DD_AGENT_PORT;
+  // ---------- start the two services on the Monitoring stack (libraries -> Monitoring Agent on :4318) ----------
+  const env = { ...process.env, MONITORING_ENV: 'truth', MONITORING_VERSION: RUN };
+  delete env.MONITORING_URL; delete env.MONITORING_API_KEY; delete env.DD_AGENT_HOST; delete env.DD_AGENT_PORT;
   const procs = [
-    spawn('node', ['-r', `${FB}/node/node_modules/@datacat/trace/init`, path.join(__dirname, 'truth-gateway.js')],
-      { env: { ...env, NODE_PATH: `${FB}/node/node_modules`, DATACAT_SERVICE: GW }, stdio: 'ignore', detached: true }),
-    spawn(`${FB}/venv/bin/datacat-run`, [`${FB}/venv/bin/python`, path.join(__dirname, 'truth-lookup.py')],
-      { env: { ...env, DATACAT_SERVICE: PY }, stdio: 'ignore', detached: true }),
+    spawn('node', ['-r', `${FB}/node/node_modules/@monitoring/trace/init`, path.join(__dirname, 'truth-gateway.js')],
+      { env: { ...env, NODE_PATH: `${FB}/node/node_modules`, MONITORING_SERVICE: GW }, stdio: 'ignore', detached: true }),
+    spawn(`${FB}/venv/bin/monitoring-run`, [`${FB}/venv/bin/python`, path.join(__dirname, 'truth-lookup.py')],
+      { env: { ...env, MONITORING_SERVICE: PY }, stdio: 'ignore', detached: true }),
   ];
   const stop = () => procs.forEach(p => { try { process.kill(-p.pid, 'SIGTERM'); } catch {} });
   process.on('exit', stop);
@@ -90,7 +90,7 @@ async function main() {
   // Rollups are buffered for up to 10 s and the agent batches for 200 ms; wait for both, plus the metric export (10 s).
   await sleep(25000);
 
-  // ---------- query DataCat ----------
+  // ---------- query Monitoring ----------
   const login = await req('POST', `${DC}/api/auth/login`, { email: EMAIL, password: PASSWORD });
   if (login.status !== 200) throw new Error(`login failed: ${login.status}`);
   const cookie = Object.entries(Object.fromEntries((login.headers['set-cookie'] || []).map((c) => c.split(';')[0].split(/=(.*)/s).slice(0, 2)))).filter(([, v]) => v).map(([k, v]) => `${k}=${v}`).join('; ');
@@ -160,7 +160,7 @@ async function main() {
   const pyLogs = await logCount(`service:${PY}`);
   check(`logs ${PY}: count`, truth.chain.hits, pyLogs, pyLogs === truth.chain.hits);
   // every gateway log links to a stored trace (checked in the database: the API exposes links per trace only)
-  const linked = Number(execSync(`PGPASSWORD=datacat psql -h localhost -U datacat datacat -tAc "select count(*) from logs l where l.service='${GW}' and l.ts >= ${t0 - 60000} and l.trace_id is not null and exists (select 1 from spans s where s.org_id=l.org_id and s.trace_id=l.trace_id and s.start_ms >= ${t0 - 60000})"`).toString().trim());
+  const linked = Number(execSync(`PGPASSWORD=monitoring psql -h localhost -U monitoring monitoring -tAc "select count(*) from logs l where l.service='${GW}' and l.ts >= ${t0 - 60000} and l.trace_id is not null and exists (select 1 from spans s where s.org_id=l.org_id and s.trace_id=l.trace_id and s.start_ms >= ${t0 - 60000})"`).toString().trim());
   check(`logs ${GW}: linked to a stored trace`, N, linked, linked === N);
 
   // sampled traces

@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # End-to-end check (used by CI): first-run setup on an empty database, API and application keys, then the
 # benchmark kit's known-answer checks for metrics, logs and traces. Fails if any answer is wrong.
-#   DATACAT_URL=http://localhost:3000 DATACAT_SETUP_TOKEN=<token> bash scripts/e2e.sh
+#   MONITORING_URL=http://localhost:3000 MONITORING_SETUP_TOKEN=<token> bash scripts/e2e.sh
 set -euo pipefail
 cd "$(dirname "$0")/.."
-URL="${DATACAT_URL:-http://localhost:3000}"
+URL="${MONITORING_URL:-http://localhost:3000}"
 EMAIL="${E2E_EMAIL:-ci@example.com}"
 PASS="${E2E_PASSWORD:-$(openssl rand -hex 16)}"
 LABEL="${LABEL:-e2e}"
@@ -13,8 +13,8 @@ for _ in $(seq 1 60); do curl -fsS "$URL/api/healthz" > /dev/null 2>&1 && break;
 curl -fsS "$URL/api/healthz" > /dev/null
 COOKIES=$(mktemp)
 trap 'rm -f "$COOKIES"' EXIT
-: "${DATACAT_SETUP_TOKEN:?set DATACAT_SETUP_TOKEN to the setup token of the server}"
-curl -fsS -o /dev/null -H "$J" -X POST --data "{\"email\":\"$EMAIL\",\"password\":\"$PASS\",\"orgName\":\"E2E\",\"setupToken\":\"$DATACAT_SETUP_TOKEN\"}" "$URL/api/auth/setup"
+: "${MONITORING_SETUP_TOKEN:?set MONITORING_SETUP_TOKEN to the setup token of the server}"
+curl -fsS -o /dev/null -H "$J" -X POST --data "{\"email\":\"$EMAIL\",\"password\":\"$PASS\",\"orgName\":\"E2E\",\"setupToken\":\"$MONITORING_SETUP_TOKEN\"}" "$URL/api/auth/setup"
 curl -fsS -o /dev/null -c "$COOKIES" -H "$J" -X POST --data "{\"email\":\"$EMAIL\",\"password\":\"$PASS\"}" "$URL/api/auth/login"
 key() {
   curl -fsS -b "$COOKIES" -H "$J" -X POST --data "{\"name\":\"e2e-$1\",\"kind\":\"$1\"}" "$URL/api/ui/org/keys" \

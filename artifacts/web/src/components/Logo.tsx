@@ -1,6 +1,6 @@
 export function CatMark({ size = 28 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 32 32" aria-label="DataCat">
+    <svg width={size} height={size} viewBox="0 0 32 32" aria-label="Monitoring">
       <path d="M6 13 L7.5 4 L13 9.5 Z" fill="#ffb84d" />
       <path d="M26 13 L24.5 4 L19 9.5 Z" fill="#ffb84d" />
       <ellipse cx="16" cy="18" rx="11" ry="10" fill="#ffb84d" />

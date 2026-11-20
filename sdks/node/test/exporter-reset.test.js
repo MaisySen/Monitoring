@@ -2,7 +2,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const http = require('node:http');
-const { DataCatSpanExporter } = require('../lib/span-exporter');
+const { MonitoringSpanExporter } = require('../lib/span-exporter');
 
 test('a connection reset after the response headers is a failed attempt, not a crash', async () => {
   let n = 0;
@@ -16,7 +16,7 @@ test('a connection reset after the response headers is a failed attempt, not a c
     } else res.end();
   });
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
-  const exp = new DataCatSpanExporter({ url: `http://127.0.0.1:${server.address().port}/v1/traces` });
+  const exp = new MonitoringSpanExporter({ url: `http://127.0.0.1:${server.address().port}/v1/traces` });
   const r = await exp.post(Buffer.from('a'));
   assert.equal(r.ok, false);
   assert.equal(r.retryable, true);

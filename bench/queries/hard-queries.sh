@@ -1,10 +1,10 @@
 #!/bin/bash
-# Times DataCat's difficult queries (the API calls the UI makes) while ingestion is running.
+# Times Monitoring's difficult queries (the API calls the UI makes) while ingestion is running.
 # usage: hard-queries.sh <label>  -> one JSON line per query: median of 3 runs, ms
-BASE=${DATACAT_URL:-http://localhost:3000}
+BASE=${MONITORING_URL:-http://localhost:3000}
 LABEL=${1:-run}
 curl -s -c /tmp/cj-hq -o /dev/null -H 'content-type: application/json' -X POST \
-  --data "{\"email\":\"${DATACAT_EMAIL:?set DATACAT_EMAIL}\",\"password\":\"${DATACAT_PASSWORD:?set DATACAT_PASSWORD}\"}" "$BASE/api/auth/login"
+  --data "{\"email\":\"${MONITORING_EMAIL:?set MONITORING_EMAIL}\",\"password\":\"${MONITORING_PASSWORD:?set MONITORING_PASSWORD}\"}" "$BASE/api/auth/login"
 NOW=$(date +%s); H1=$((NOW-3600)); D1=$((NOW-86400)); D7=$((NOW-604800))
 q() { # name method path [body]
   local name=$1 method=$2 path=$3 body=$4 times=() code bytes

@@ -1,7 +1,7 @@
-# DataCat
+# Monitoring
 
 Self-hosted observability: metrics, logs, distributed traces, dashboards, infrastructure
-and alerts in one place. DataCat runs on your infrastructure, stores data in PostgreSQL (or telemetry in
+and alerts in one place. Monitoring runs on your infrastructure, stores data in PostgreSQL (or telemetry in
 ClickHouse, if you choose; see docs/SELF_HOSTING.md), and accepts OpenTelemetry and Datadog-compatible agent traffic.
 No hosted account or external service is required.
 
@@ -15,15 +15,15 @@ No hosted account or external service is required.
 - OpenTelemetry Collector-based host agent and Node.js/Python instrumentation libraries
 - One production process serving the API, web UI, installer and downloads
 
-![DataCat dashboard](docs/images/dashboard.jpg)
+![Monitoring dashboard](docs/images/dashboard.jpg)
 
 ## Quick start with Docker Compose
 
 Requirements: Docker Engine with the Compose plugin, Git, and OpenSSL.
 
 ```sh
-git clone https://github.com/replit/datacat
-cd datacat
+git clone https://github.com/replit/monitoring
+cd monitoring
 cp .env.example .env
 sed -i "s/^POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=$(openssl rand -hex 24)/" .env
 sed -i "s/^SESSION_SECRET=.*/SESSION_SECRET=$(openssl rand -hex 32)/" .env
@@ -34,7 +34,7 @@ docker compose up -d --build
 
 Open **http://localhost:3000**, create your admin account and organization, then create
 an API key under **Organization Settings**. Setup asks for a setup token, printed in the
-server log (`docker compose logs datacat | grep "setup token"`) unless you set `DATACAT_SETUP_TOKEN`.
+server log (`docker compose logs monitoring | grep "setup token"`) unless you set `MONITORING_SETUP_TOKEN`.
 Set `PUBLIC_URL` to your externally reachable HTTPS origin before inviting colleagues or
 installing agents remotely.
 
@@ -43,15 +43,15 @@ Agent binaries and SDK packages are separate release assets. Put them (including
 
 ## Sending data
 
-DataCat accepts the Datadog public intake API and OTLP/HTTP:
+Monitoring accepts the Datadog public intake API and OTLP/HTTP:
 
 | Sender | Status |
 | --- | --- |
 | Datadog Agent 7.56.2 (metrics, logs, check runs, traces) | Tested in CI-style runs |
 | Datadog Agent 7.85.4 (metrics, logs, check runs, traces) | Tested with captured payloads; including the newer string-table trace format |
-| Datadog Agent 7.57–7.84 | Not tested individually. Agents that send traces in a format DataCat cannot read get a 422, never a silent 202 |
+| Datadog Agent 7.57–7.84 | Not tested individually. Agents that send traces in a format Monitoring cannot read get a 422, never a silent 202 |
 | OpenTelemetry Collector / SDKs (OTLP/HTTP) | `/v1/traces`, `/v1/metrics`, `/v1/logs` (also under `/otlp/v1/*`) |
-| DataCat Agent and libraries | Tested in CI |
+| Monitoring Agent and libraries | Tested in CI |
 
 `GET /api/v1/intake/stats` shows, per intake path, how many items were stored and how many were dropped since the
 server started.
@@ -100,7 +100,7 @@ Tests:
 
 ```sh
 pnpm --filter @workspace/api-server test     # server unit tests
-DATACAT_URL=http://localhost:3000 DATACAT_SETUP_TOKEN=<token> bash scripts/e2e.sh   # end-to-end known-answer checks against a fresh install
+MONITORING_URL=http://localhost:3000 MONITORING_SETUP_TOKEN=<token> bash scripts/e2e.sh   # end-to-end known-answer checks against a fresh install
 ```
 
 CI (`.github/workflows/ci.yml`) runs typechecks, unit tests, dependency and vulnerability audits, the end-to-end
@@ -110,7 +110,7 @@ Runnable examples are in [`examples/`](examples). See [Contributing](CONTRIBUTIN
 
 ## Benchmarks
 
-`bench/kit` sends metrics, logs and traces through DataCat and checks every answer against a known value; it reports
+`bench/kit` sends metrics, logs and traces through Monitoring and checks every answer against a known value; it reports
 throughput, query latency and how long data takes to become searchable, for both storage options. The other folders
 in [`bench/`](bench) hold the correctness, resilience, alerting, soak and isolation tests; raw results behind the
 published numbers are in [`bench/evidence/`](bench/evidence).
@@ -118,5 +118,5 @@ published numbers are in [`bench/evidence/`](bench/evidence).
 ## License
 
 [Apache License 2.0](LICENSE). Third-party dependencies retain their own licenses.
-DataCat is an independent project, not affiliated with or endorsed by Datadog, Inc. Datadog is a trademark of
+Monitoring is an independent project, not affiliated with or endorsed by Datadog, Inc. Datadog is a trademark of
 Datadog, Inc.; it is named here only to describe protocol compatibility.

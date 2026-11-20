@@ -1,9 +1,9 @@
 import zlib from "zlib";
 import type { Request } from "express";
 
-// Decompressed payloads are capped (DATACAT_MAX_DECOMPRESSED_MB, default 64 MB) so a small "zip bomb" cannot exhaust
+// Decompressed payloads are capped (MONITORING_MAX_DECOMPRESSED_MB, default 64 MB) so a small "zip bomb" cannot exhaust
 // memory; exceeding it throws PayloadTooLarge, which the intake routes answer with 413.
-const MAX_OUT = Number(process.env.DATACAT_MAX_DECOMPRESSED_MB ?? 64) * 1024 * 1024;
+const MAX_OUT = Number(process.env.MONITORING_MAX_DECOMPRESSED_MB ?? 64) * 1024 * 1024;
 const LIMIT = { maxOutputLength: MAX_OUT };
 export class PayloadTooLarge extends Error {
   status = 413;

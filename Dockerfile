@@ -7,7 +7,7 @@ RUN pnpm install --frozen-lockfile --filter @workspace/api-server... --filter @w
 RUN BASE_PATH=/ pnpm run build:selfhost
 
 FROM node:22-bookworm-slim AS runtime
-ENV NODE_ENV=production PORT=3000 DATACAT_DOWNLOADS_DIR=/app/downloads
+ENV NODE_ENV=production PORT=3000 MONITORING_DOWNLOADS_DIR=/app/downloads
 WORKDIR /app
 RUN mkdir -p /app/downloads && chown node:node /app/downloads
 COPY --from=build --chown=node:node /app/artifacts/api-server/dist ./artifacts/api-server/dist

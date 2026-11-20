@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import http from "node:http";
 
 test("a receiver that trickles bytes is cut off at the total time limit", async () => {
-  process.env.DATACAT_ALLOW_PRIVATE_WEBHOOKS = "true";
+  process.env.MONITORING_ALLOW_PRIVATE_WEBHOOKS = "true";
   const { postWebhook } = await import("../src/lib/safeHttp");
   const server = http.createServer((_req, res) => {
     res.writeHead(200);

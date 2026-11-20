@@ -15,7 +15,7 @@ function valueOf(idx: number): number {
   return MIN_NS * Math.pow(GAMMA, idx) * (2 / (1 + GAMMA));
 }
 
-// ClickHouse storage (DATACAT_STORAGE=clickhouse): span_stats is filled by a materialized view on spans (lib/ch.ts),
+// ClickHouse storage (MONITORING_STORAGE=clickhouse): span_stats is filled by a materialized view on spans (lib/ch.ts),
 // so there is nothing to record or flush at intake; these read it, merging the histograms with sumMap.
 export async function ensureSpanStats() {
   await ensureChSchema();

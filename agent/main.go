@@ -17,7 +17,7 @@ const agentVersion = "0.1.0"
 
 func main() {
 	if err := execute(os.Args[1:]); err != nil {
-		fmt.Fprintln(os.Stderr, "datacat-agent:", err)
+		fmt.Fprintln(os.Stderr, "monitoring-agent:", err)
 		os.Exit(1)
 	}
 }
@@ -28,15 +28,15 @@ func execute(args []string) error {
 		return fmt.Errorf("enable migration trace correlation: %w", err)
 	}
 	if len(args) == 0 || args[0] == "--help" || args[0] == "help" {
-		fmt.Println("DataCat Agent " + agentVersion + "\n\nUsage:\n  datacat-agent run -c /etc/datacat/datacat.yaml\n  datacat-agent config -c FILE [--show-secrets]\n  datacat-agent collector --config FILE\n  datacat-agent version\n\nconfig redacts the API key unless --show-secrets is given.\ncollector accepts an unmodified OpenTelemetry Collector configuration.")
+		fmt.Println("Monitoring Agent " + agentVersion + "\n\nUsage:\n  monitoring-agent run -c /etc/monitoring/monitoring.yaml\n  monitoring-agent config -c FILE [--show-secrets]\n  monitoring-agent collector --config FILE\n  monitoring-agent version\n\nconfig redacts the API key unless --show-secrets is given.\ncollector accepts an unmodified OpenTelemetry Collector configuration.")
 		return nil
 	}
 	if args[0] == "version" || args[0] == "--version" {
-		fmt.Println("DataCat Agent " + agentVersion + " (OpenTelemetry Collector 0.165.0)")
+		fmt.Println("Monitoring Agent " + agentVersion + " (OpenTelemetry Collector 0.165.0)")
 		return nil
 	}
 	settings := otelcol.CollectorSettings{
-		BuildInfo: component.BuildInfo{Command: "datacat-agent", Description: "DataCat host telemetry agent", Version: agentVersion},
+		BuildInfo: component.BuildInfo{Command: "monitoring-agent", Description: "Monitoring host telemetry agent", Version: agentVersion},
 		Factories: components,
 		ConfigProviderSettings: otelcol.ConfigProviderSettings{ResolverSettings: confmap.ResolverSettings{
 			ProviderFactories: []confmap.ProviderFactory{fileprovider.NewFactory(), envprovider.NewFactory(), yamlprovider.NewFactory()},
@@ -92,7 +92,7 @@ func runInteractive(settings otelcol.CollectorSettings) error {
 	return cmd.Execute()
 }
 
-// defaultConfigPath is /etc/datacat/datacat.yaml.
+// defaultConfigPath is /etc/monitoring/monitoring.yaml.
 func defaultConfigPath() string {
-	return "/etc/datacat/datacat.yaml"
+	return "/etc/monitoring/monitoring.yaml"
 }

@@ -1,13 +1,13 @@
 #!/usr/bin/env node
-// Failure-recovery test: numbered spans and logs flow app (@datacat/trace) -> DataCat Agent -> DataCat server ->
+// Failure-recovery test: numbered spans and logs flow app (@monitoring/trace) -> Monitoring Agent -> Monitoring server ->
 // Postgres while one part of the pipeline is broken. For each scenario we count what arrived (unique sequence numbers),
 // what is missing, what arrived twice, and how long until fresh data was visible again after the fault cleared.
 //
 //   SCENARIOS=baseline,backend_outage,agent_restart,db_restart,long_outage node recovery.js > recovery-results.json
 //
 // Faults (process patterns are overridable: SERVER_PATTERN, SERVER_LOOP_PATTERN, AGENT_PATTERN, PG_RESTART_CMD):
-//   backend_outage  DataCat API server down for 60 s (restart loop paused, server killed): the agent must queue + retry
-//   agent_restart   DataCat Agent killed and restarted: the libraries must retry; the agent's disk queue must survive
+//   backend_outage  Monitoring API server down for 60 s (restart loop paused, server killed): the agent must queue + retry
+//   agent_restart   Monitoring Agent killed and restarted: the libraries must retry; the agent's disk queue must survive
 //   db_restart      Postgres restarted (fast shutdown): the server's intake fails until it is back; the agent retries
 //   long_outage     server down for 240 s at 3x the rate, sized to overflow the agent's queue: shows where data drops
 'use strict';
@@ -69,17 +69,17 @@ async function scenario(name) {
   const svc = `recovery-${LANG}-${name.replace(/_/g, '-')}-${RUN}`;
   const rate = f.rate || 200, seconds = f.seconds || 90;
   const t0 = Date.now();
-  const genEnv = { ...process.env, NODE_PATH: `${FB}/node/node_modules`, DATACAT_SERVICE: svc, DATACAT_ENV: 'resilience', RATE: String(rate), SECONDS: String(seconds) };
+  const genEnv = { ...process.env, NODE_PATH: `${FB}/node/node_modules`, MONITORING_SERVICE: svc, MONITORING_ENV: 'resilience', RATE: String(rate), SECONDS: String(seconds) };
   const gen = LANG === 'python'
-    ? spawn(`${FB}/venv/bin/datacat-run`, [`${FB}/venv/bin/python`, path.join(__dirname, 'gen.py')], { env: genEnv, stdio: ['ignore', 'pipe', 'pipe'] })
-    : spawn('node', ['-r', `${FB}/node/node_modules/@datacat/trace/init`, path.join(__dirname, 'gen.js')], { env: genEnv, stdio: ['ignore', 'pipe', 'pipe'] });
+    ? spawn(`${FB}/venv/bin/monitoring-run`, [`${FB}/venv/bin/python`, path.join(__dirname, 'gen.py')], { env: genEnv, stdio: ['ignore', 'pipe', 'pipe'] })
+    : spawn('node', ['-r', `${FB}/node/node_modules/@monitoring/trace/init`, path.join(__dirname, 'gen.js')], { env: genEnv, stdio: ['ignore', 'pipe', 'pipe'] });
   let out = '', err = '';
   gen.stdout.on('data', (d) => (out += d)); gen.stderr.on('data', (d) => (err += d));
   const exited = new Promise((r) => gen.on('exit', r));
   await sleep(f.at * 1000);
   const faultStart = Date.now();
   const info = await f.run();
-  // time until a span created after the fault cleared is visible in DataCat
+  // time until a span created after the fault cleared is visible in Monitoring
   let freshAt = null;
   for (let i = 0; i < 600 && !freshAt; i++) {
     const v = tryPsql(`select count(*) from spans where org_id=1 and service='${svc}' and start_ms > ${info.cleared}`);

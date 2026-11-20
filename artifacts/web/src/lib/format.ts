@@ -38,7 +38,7 @@ export function fmtAgo(ms: number): string {
   if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
   return `${Math.floor(s / 86400)}d ago`;
 }
-// Palette similar in spirit to classic observability palettes, tuned for DataCat
+// Palette similar in spirit to classic observability palettes, tuned for Monitoring
 export const PALETTE = ["#7a55d0", "#f08c2e", "#3a8de0", "#2eac87", "#e2557d", "#e9b93b", "#5462d8", "#9b6a3c", "#21a2b8", "#c4479f", "#7c9a2b", "#8a8fa0"];
 export const WARM = ["#f39a2e", "#e9733a", "#f2b84b", "#d9534f", "#a8442b"];
 export const COOL = ["#bde0fe", "#90caf9", "#5b9bd5", "#3a6ea5", "#1f3c88"];

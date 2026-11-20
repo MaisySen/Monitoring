@@ -1,20 +1,20 @@
-# @datacat/trace
+# @monitoring/trace
 
-DataCat tracing, metrics and correlated logs on the OpenTelemetry SDK. Requires Node.js 22.15+ (Node 24 recommended).
+Monitoring tracing, metrics and correlated logs on the OpenTelemetry SDK. Requires Node.js 22.15+ (Node 24 recommended).
 
 ## Install and start
 
 ```sh
-npm install @datacat/trace
-DATACAT_SERVICE=checkout node -r @datacat/trace/init app.js
+npm install @monitoring/trace
+MONITORING_SERVICE=checkout node -r @monitoring/trace/init app.js
 ```
 
 From a checkout of this repository: `cd sdks/node && npm ci`, then
-`DATACAT_SERVICE=node-example node -r ./init examples/app.js`.
+`MONITORING_SERVICE=node-example node -r ./init examples/app.js`.
 Initialize **before** loading Express, HTTP clients, database drivers or loggers:
 
 ```js
-const { tracer, metrics } = require('@datacat/trace').init({
+const { tracer, metrics } = require('@monitoring/trace').init({
   service: 'checkout', env: 'production', version: '1.2.3'
 });
 const express = require('express');
@@ -38,38 +38,38 @@ Winston, Pino and Bunyan records receive `trace_id`/`span_id` in active spans an
 Defaults to an agent at `http://localhost:4318`. Agentless:
 
 ```sh
-DATACAT_URL=https://your-datacat.example DATACAT_API_KEY="$YOUR_KEY" \
-DATACAT_SERVICE=checkout node -r @datacat/trace/init app.js
+MONITORING_URL=https://your-monitoring.example MONITORING_API_KEY="$YOUR_KEY" \
+MONITORING_SERVICE=checkout node -r @monitoring/trace/init app.js
 ```
 
-`DATACAT_URL` is the application origin, **without** `/otlp`; signals go to `/otlp/v1/{traces,metrics,logs}` with `DC-API-KEY`. No key is needed when using an agent.
+`MONITORING_URL` is the application origin, **without** `/otlp`; signals go to `/otlp/v1/{traces,metrics,logs}` with `DC-API-KEY`. No key is needed when using an agent.
 
 | Variable | Meaning / default |
 | --- | --- |
-| `DATACAT_SERVICE` | Service name; `OTEL_SERVICE_NAME`, resource attributes, then `DD_SERVICE`; default `node-app` |
-| `DATACAT_ENV` | Environment; OTel resource attribute, then `DD_ENV` |
-| `DATACAT_VERSION` | Service version; OTel resource attribute, then `DD_VERSION` |
-| `DATACAT_TAGS` | Comma-separated `key:value` resource tags; fallback `DD_TAGS` |
-| `DATACAT_URL` / `DATACAT_API_KEY` | Agentless application origin and key; missing key is an error |
-| `DATACAT_AGENT_URL` | OTLP HTTP agent base; fallback `OTEL_EXPORTER_OTLP_ENDPOINT`, then `http://localhost:4318` |
-| `DATACAT_LOGS_INJECTION` | Correlation field injection, default `true`; shipping remains enabled |
-| `DATACAT_LOG_SHIPPING` | Ship log records over OTLP from the app, default `true`; set `false` when the DataCat Agent tails the app's log files (IDs are still injected) |
-| `DATACAT_HANDLE_SIGNALS` | Flush spans, logs and metrics on SIGTERM/SIGINT before the process exits, default `true` |
-| `DATACAT_EXPORT_RETRY_SECONDS` | How long a span batch is retried while the agent/endpoint is unreachable or returns 408/429/502/503/504, default `30` |
-| `DATACAT_TRACE_DB_CONNECT` | Connection-pool checkout spans (`pg-pool.connect`), default `false` |
-| `DATACAT_SAMPLE_RATE` | Parent-based root sampling probability `[0,1]`; fallback `OTEL_TRACES_SAMPLER_ARG`, default `1` |
-| `DATACAT_RUNTIME_METRICS` | Event-loop delay, heap and OTel runtime metrics; default `false` |
+| `MONITORING_SERVICE` | Service name; `OTEL_SERVICE_NAME`, resource attributes, then `DD_SERVICE`; default `node-app` |
+| `MONITORING_ENV` | Environment; OTel resource attribute, then `DD_ENV` |
+| `MONITORING_VERSION` | Service version; OTel resource attribute, then `DD_VERSION` |
+| `MONITORING_TAGS` | Comma-separated `key:value` resource tags; fallback `DD_TAGS` |
+| `MONITORING_URL` / `MONITORING_API_KEY` | Agentless application origin and key; missing key is an error |
+| `MONITORING_AGENT_URL` | OTLP HTTP agent base; fallback `OTEL_EXPORTER_OTLP_ENDPOINT`, then `http://localhost:4318` |
+| `MONITORING_LOGS_INJECTION` | Correlation field injection, default `true`; shipping remains enabled |
+| `MONITORING_LOG_SHIPPING` | Ship log records over OTLP from the app, default `true`; set `false` when the Monitoring Agent tails the app's log files (IDs are still injected) |
+| `MONITORING_HANDLE_SIGNALS` | Flush spans, logs and metrics on SIGTERM/SIGINT before the process exits, default `true` |
+| `MONITORING_EXPORT_RETRY_SECONDS` | How long a span batch is retried while the agent/endpoint is unreachable or returns 408/429/502/503/504, default `30` |
+| `MONITORING_TRACE_DB_CONNECT` | Connection-pool checkout spans (`pg-pool.connect`), default `false` |
+| `MONITORING_SAMPLE_RATE` | Parent-based root sampling probability `[0,1]`; fallback `OTEL_TRACES_SAMPLER_ARG`, default `1` |
+| `MONITORING_RUNTIME_METRICS` | Event-loop delay, heap and OTel runtime metrics; default `false` |
 | `OTEL_RESOURCE_ATTRIBUTES` | Additional `key=value` attributes |
-| `OTEL_EXPORTER_OTLP_{TRACES,METRICS,LOGS}_ENDPOINT` | Full signal URL when DataCat destination variables are absent |
+| `OTEL_EXPORTER_OTLP_{TRACES,METRICS,LOGS}_ENDPOINT` | Full signal URL when Monitoring destination variables are absent |
 | `OTEL_EXPORTER_OTLP_HEADERS` | Comma-separated URL-encoded `key=value` headers |
 | `OTEL_METRIC_EXPORT_INTERVAL` | Metrics interval in milliseconds; default `10000` |
 
-Programmatic camelCase equivalents: `service`, `env`, `version`, `tags`, `url`, `apiKey`, `agentUrl`, `logsInjection`, `sampleRate`, `runtimeMetrics`, `metricInterval`. DataCat configuration takes precedence over OTel and migration settings. Resource attributes include `telemetry.distro.name=datacat` and `telemetry.distro.version`. Exporters always use OTLP/HTTP protobuf; counters and histograms export DELTA temporality.
+Programmatic camelCase equivalents: `service`, `env`, `version`, `tags`, `url`, `apiKey`, `agentUrl`, `logsInjection`, `sampleRate`, `runtimeMetrics`, `metricInterval`. Monitoring configuration takes precedence over OTel and migration settings. Resource attributes include `telemetry.distro.name=monitoring` and `telemetry.distro.version`. Exporters always use OTLP/HTTP protobuf; counters and histograms export DELTA temporality.
 
 ## Custom metrics and lifecycle
 
 ```js
-const dc = require('@datacat/trace');
+const dc = require('@monitoring/trace');
 dc.metrics.increment('orders.total');                 // value defaults to 1
 dc.metrics.gauge('queue.depth', 12, { queue: 'work' });
 dc.metrics.histogram('orders.duration', 42, ['unit:ms']);
@@ -82,4 +82,4 @@ Call `shutdown()` during your application's graceful signal handling, after clos
 
 ## Verification
 
-`npm test` runs configuration tests. `node test/verify.js` starts a temporary local OTLP sink, runs the sample as a child, decodes protobuf requests, and checks spans, correlated logs and DELTA metrics. `DATACAT_VERIFY_REMOTE=true DATACAT_URL=http://localhost:3000 DATACAT_API_KEY=... node test/verify.js` instead sends to DataCat; check the service `datacat-node-verify` in the database or UI.
+`npm test` runs configuration tests. `node test/verify.js` starts a temporary local OTLP sink, runs the sample as a child, decodes protobuf requests, and checks spans, correlated logs and DELTA metrics. `MONITORING_VERIFY_REMOTE=true MONITORING_URL=http://localhost:3000 MONITORING_API_KEY=... node test/verify.js` instead sends to Monitoring; check the service `monitoring-node-verify` in the database or UI.

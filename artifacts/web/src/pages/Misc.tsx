@@ -162,8 +162,8 @@ export function OrgSettings() {
                   <div className="flex items-center mb-3">
                     <p className="text-ink-2 max-w-2xl">
                       {kind === "api"
-                        ? "API keys identify your organization when the agent, tracers and the HTTP intake send data to DataCat."
-                        : "Application keys, used together with an API key, give scripts access to the DataCat API (dashboards, monitors, queries)."}
+                        ? "API keys identify your organization when the agent, tracers and the HTTP intake send data to Monitoring."
+                        : "Application keys, used together with an API key, give scripts access to the Monitoring API (dashboards, monitors, queries)."}
                     </p>
                     {isAdmin && (
                       <>
@@ -325,7 +325,7 @@ export function OrgSettings() {
               <div className="section-title">Sample data</div>
               <p className="text-ink-2">
                 Simulates four hosts and three services (storefront, checkout-api, payments) sending metrics, logs and traces through the same intake the agent
-                uses, for two hours, with 30 minutes of history. Useful for exploring DataCat before installing an agent. Sample data is tagged{" "}
+                uses, for two hours, with 30 minutes of history. Useful for exploring Monitoring before installing an agent. Sample data is tagged{" "}
                 <span className="mono">env:sample</span>.
               </p>
               <SampleDataButton />
@@ -431,11 +431,11 @@ dogstatsd:
 logs:
   - path: /var/log/myapp/*.log
     service: myapp`;
-  const docker = `docker run -d --name datacat-agent --network host \
+  const docker = `docker run -d --name monitoring-agent --network host \
   -v /proc:/hostfs/proc:ro -v /var/log:/var/log:ro \
-  -v /etc/datacat:/etc/datacat \
-  -e DATACAT_API_KEY=${key} \
-  debian:stable-slim sh -c "apt-get update -qq && apt-get install -yqq curl >/dev/null && curl -fsSL ${url}/install.sh | sh && /opt/datacat-agent/bin/datacat-agent run -c /etc/datacat/datacat.yaml"`;
+  -v /etc/monitoring:/etc/monitoring \
+  -e MONITORING_API_KEY=${key} \
+  debian:stable-slim sh -c "apt-get update -qq && apt-get install -yqq curl >/dev/null && curl -fsSL ${url}/install.sh | sh && /opt/monitoring-agent/bin/monitoring-agent run -c /etc/monitoring/monitoring.yaml"`;
   const code = (s: string) => (
     <div className="relative">
       <pre className="mono text-xs bg-[#23222c] text-white rounded p-4 overflow-auto">{s}</pre>
@@ -446,10 +446,10 @@ logs:
   );
   return (
     <div>
-      <PageHeader title="Install the DataCat Agent" />
+      <PageHeader title="Install the Monitoring Agent" />
       <div className="p-6 max-w-4xl space-y-5">
         <p className="text-ink-2">
-          The DataCat Agent is built on the OpenTelemetry Collector. It reports host metrics, tails log files, relays traces, metrics and logs from your apps,
+          The Monitoring Agent is built on the OpenTelemetry Collector. It reports host metrics, tails log files, relays traces, metrics and logs from your apps,
           and accepts compatible tracer and StatsD traffic for easy migration. See the{" "}
           <a className="text-primary" href="/docs/agent">
             agent guide
@@ -482,9 +482,9 @@ logs:
         </div>
         {tab === "linux" && (
           <>
-            {code(`curl -fsSL ${url}/install.sh | DATACAT_API_KEY=${key} sh`)}
+            {code(`curl -fsSL ${url}/install.sh | MONITORING_API_KEY=${key} sh`)}
             <p className="text-xs text-ink-2">
-              Installs <span className="mono">/opt/datacat-agent/bin/datacat-agent</span>, writes <span className="mono">/etc/datacat/datacat.yaml</span> and
+              Installs <span className="mono">/opt/monitoring-agent/bin/monitoring-agent</span>, writes <span className="mono">/etc/monitoring/monitoring.yaml</span> and
               starts the service on systemd hosts. Your host appears in Infrastructure within a minute.
             </p>
           </>
@@ -493,20 +493,20 @@ logs:
           <>
             {code(yaml)}
             <p className="text-xs text-ink-2">
-              Edit <span className="mono">/etc/datacat/datacat.yaml</span> and restart the agent.{" "}
-              <span className="mono">datacat-agent config -c /etc/datacat/datacat.yaml</span> prints the generated OpenTelemetry Collector configuration.
+              Edit <span className="mono">/etc/monitoring/monitoring.yaml</span> and restart the agent.{" "}
+              <span className="mono">monitoring-agent config -c /etc/monitoring/monitoring.yaml</span> prints the generated OpenTelemetry Collector configuration.
             </p>
           </>
         )}
         {tab === "docker" && code(docker)}
         {tab === "libs" &&
           code(`# Node.js
-npm install ${url}/downloads/datacat-trace-0.1.0.tgz
-DATACAT_SERVICE=my-app DATACAT_ENV=prod node -r @datacat/trace/init app.js
+npm install ${url}/downloads/monitoring-trace-0.1.0.tgz
+MONITORING_SERVICE=my-app MONITORING_ENV=prod node -r @monitoring/trace/init app.js
 
 # Python
-pip install "datacat-trace[instrumentation] @ ${url}/downloads/datacat_trace-0.1.0-py3-none-any.whl"
-DATACAT_SERVICE=my-app DATACAT_ENV=prod datacat-run python app.py`)}
+pip install "monitoring-trace[instrumentation] @ ${url}/downloads/monitoring_trace-0.1.0-py3-none-any.whl"
+MONITORING_SERVICE=my-app MONITORING_ENV=prod monitoring-run python app.py`)}
       </div>
     </div>
   );
@@ -557,8 +557,8 @@ export function Home() {
           <div className="card p-6 flex items-center gap-5 bg-[#eef2fc] border-brand-100">
             <CatMark size={48} />
             <div className="flex-1">
-              <div className="section-title">Start sending data to DataCat</div>
-              <div className="text-ink-2">Add DataCat to your code (Node.js or Python) or install the host agent. It takes about ten minutes.</div>
+              <div className="section-title">Start sending data to Monitoring</div>
+              <div className="text-ink-2">Add Monitoring to your code (Node.js or Python) or install the host agent. It takes about ten minutes.</div>
             </div>
             <SampleDataButton />
             <Link href="/docs/getting-started" className="btn-primary">
@@ -665,7 +665,7 @@ export function Login({ restricted, email }: { restricted?: boolean; email?: str
         <div className="flex justify-center mb-3">
           <CatMark size={56} />
         </div>
-        <h1 className="text-[22px] font-bold mb-1">DataCat</h1>
+        <h1 className="text-[22px] font-bold mb-1">Monitoring</h1>
         <p className="text-ink-2 mb-6">Metrics, logs, traces, dashboards and alerts in one place.</p>
         {setup && <h2 className="font-semibold text-base mb-4">Create your admin account + organization</h2>}
         {token && <h2 className="font-semibold text-base mb-4">Join your organization</h2>}
@@ -677,7 +677,7 @@ export function Login({ restricted, email }: { restricted?: boolean; email?: str
         {restricted ? (
           <>
             <div className="card bg-panel p-3 text-xs text-ink-2 mb-4 text-left">
-              DataCat is invite-only right now. <b>{email}</b> doesn't have access yet. Ask a DataCat admin to invite you, then open the invite link.
+              Monitoring is invite-only right now. <b>{email}</b> doesn't have access yet. Ask a Monitoring admin to invite you, then open the invite link.
             </div>
             <button className="btn w-full justify-center" onClick={logout}>
               Sign in with a different account
@@ -704,7 +704,7 @@ export function Login({ restricted, email }: { restricted?: boolean; email?: str
                       autoComplete="off"
                       data-testid="setup-token"
                     />
-                    <span className="text-ink-3">Printed in the server log at startup, or the value of DATACAT_SETUP_TOKEN.</span>
+                    <span className="text-ink-3">Printed in the server log at startup, or the value of MONITORING_SETUP_TOKEN.</span>
                   </label>
                 )}
                 {setup && (

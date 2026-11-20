@@ -1,6 +1,6 @@
 # Benchmark kit: throughput and correctness with known answers
 
-Three scripts send synthetic telemetry to DataCat through its public API, then check
+Three scripts send synthetic telemetry to Monitoring through its public API, then check
 every answer against a value known in advance. Every result has a correctness column, so a fast but wrong answer
 is visible right away. They need Node.js 20+ and nothing else (no npm install).
 
@@ -13,14 +13,14 @@ is visible right away. They need Node.js 20+ and nothing else (no npm install).
 All three also measure ingest throughput, ingest request p50/p99, the time until the last thing sent is
 queryable, and median query latency over 3 runs.
 
-## 1. Start DataCat locally
+## 1. Start Monitoring locally
 
 ```sh
-git clone https://github.com/replit/datacat && cd datacat
+git clone https://github.com/replit/monitoring && cd monitoring
 cp .env.example .env
 # set POSTGRES_PASSWORD and SESSION_SECRET in .env (any long random strings)
 docker compose up -d --build                                   # Postgres storage (default)
-# or, for ClickHouse storage: set DATACAT_STORAGE=clickhouse and CLICKHOUSE_PASSWORD in .env, then
+# or, for ClickHouse storage: set MONITORING_STORAGE=clickhouse and CLICKHOUSE_PASSWORD in .env, then
 # docker compose --profile clickhouse up -d --build
 curl -s localhost:3000/api/healthz                             # {"status":"ok"}
 ```
@@ -35,16 +35,16 @@ To test both storage options, run the kit once per option. Switching storage nee
 
 ```sh
 cd bench/kit
-TARGET=http://localhost:3000 API_KEY=<api key> APP_KEY=<application key> LABEL=datacat-postgres ./run-all.sh
+TARGET=http://localhost:3000 API_KEY=<api key> APP_KEY=<application key> LABEL=monitoring-postgres ./run-all.sh
 ```
 
 It prints a summary table and writes `results/<LABEL>/{metrics,logs,traces}.json` plus `summary.md`.
 `PROFILE=quick` takes about 1 minute, `standard` (default) about 3–5 minutes, and `large` (200k-customer metrics, 500k logs,
 100k traces) longer.
 
-## Reference results (DataCat, Nov 14 2026)
+## Reference results (Monitoring, Nov 14 2026)
 
-One 4 vCPU / 11 GB Linux VM, DataCat and its database on the same machine, `standard` profile, concurrency 4.
+One 4 vCPU / 11 GB Linux VM, Monitoring and its database on the same machine, `standard` profile, concurrency 4.
 Every answer was correct in both modes.
 
 | | Postgres storage | ClickHouse storage |

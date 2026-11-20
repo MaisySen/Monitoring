@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-// Data isolation and protection tests against a running DataCat server (default http://127.0.0.1:8081).
+// Data isolation and protection tests against a running Monitoring server (default http://127.0.0.1:8081).
 //
-//   DATACAT_URL=http://127.0.0.1:3000 DATABASE_URL=postgresql://... node bench/security/isolation.js > isolation-results.json
+//   MONITORING_URL=http://127.0.0.1:3000 DATABASE_URL=postgresql://... node bench/security/isolation.js > isolation-results.json
 //
 //   1 organization boundaries   two orgs, each with a user and an API key, ingest marked data. Neither can see, look up
 //                               by id, change or delete the other's spans, traces, logs, metrics, hosts, monitors,
@@ -19,7 +19,7 @@ const fs = require('fs');
 const crypto = require('crypto');
 const { execSync } = require('child_process');
 
-const DC = process.env.DATACAT_URL || 'http://127.0.0.1:3000';
+const DC = process.env.MONITORING_URL || 'http://127.0.0.1:3000';
 const RUN = process.env.RUN || crypto.randomBytes(3).toString('hex');
 const psql = (q) => execSync(`psql "${process.env.DATABASE_URL}" -tAc "${q.replace(/"/g, '\\"')}"`, { encoding: 'utf8' }).trim();
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -47,7 +47,7 @@ async function makeOrg(label) {
   const orgId = Number(psql(`insert into orgs (name) values ('isolation-${label}-${RUN}') returning id`).split('\n')[0]);
   const key = newKey();
   psql(`insert into api_keys (org_id, name, key, kind) values (${orgId}, 'iso ${label}', '${key}', 'api')`);
-  const email = `iso-${label}-${RUN}@datacat.local`, password = `Iso-${crypto.randomBytes(12).toString('hex')}`, token = newToken();
+  const email = `iso-${label}-${RUN}@monitoring.local`, password = `Iso-${crypto.randomBytes(12).toString('hex')}`, token = newToken();
   psql(`insert into invites (org_id, email, role, token) values (${orgId}, '${email}', 'admin', '${token}')`);
   const r = await req('POST', `/api/auth/invites/${token}`, { email, password });
   if (r.status !== 200) throw new Error(`invite accept ${label}: ${r.status} ${r.body}`);
@@ -144,7 +144,7 @@ async function ingest(org, service) {
   if ((await req('POST', '/otlp/v1/logs', otlpLog(svcA, 'still works'), { 'DC-API-KEY': A.key })).status >= 400) byId.push("B revoked A's key");
   check('isolation', "cross-org access by id (monitor GET/PUT/DELETE, dashboard GET/DELETE, channel DELETE, key revoke)", 'all refused, nothing changed', byId.join('; ') || 'all refused, nothing changed', byId.length === 0);
   // a key can only write into its own org (no org override via headers/body)
-  await req('POST', '/otlp/v1/logs', otlpLog(`iso-override-${RUN}`, 'override attempt'), { 'DC-API-KEY': B.key, 'x-datacat-org': String(A.orgId), 'dd-org-id': String(A.orgId) });
+  await req('POST', '/otlp/v1/logs', otlpLog(`iso-override-${RUN}`, 'override attempt'), { 'DC-API-KEY': B.key, 'x-monitoring-org': String(A.orgId), 'dd-org-id': String(A.orgId) });
   await sleep(1500);
   const landed = psql(`select string_agg(distinct org_id::text, ',') from logs where service='iso-override-${RUN}'`);
   check('isolation', "org override headers ignored: B's key writes only into B", String(B.orgId), landed, landed === String(B.orgId));

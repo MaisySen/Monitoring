@@ -1,4 +1,4 @@
-// Known-behaviour Node service for the correctness harness (instrumented with @datacat/trace, through the DataCat Agent).
+// Known-behaviour Node service for the correctness harness (instrumented with @monitoring/trace, through the Monitoring Agent).
 //   GET /op/fast|medium|slow   sleeps 10 / 50 / 200 ms, 200 OK, one info log
 //   GET /op/fail               sleeps 20 ms, 500, one error log
 //   GET /op/chain              calls the Python service over HTTP (it queries SQLite and logs), 200, one info log
@@ -6,7 +6,7 @@
 const express = require('express');
 const winston = require('winston');
 const { trace } = require('@opentelemetry/api');
-const { metrics } = require('@datacat/trace');
+const { metrics } = require('@monitoring/trace');
 const log = winston.createLogger({ level: 'info', format: winston.format.json(), transports: [new winston.transports.File({ filename: require('path').join(process.env.TRUTH_LOG_DIR || '/tmp', 'truth-gateway.log') })] });
 const SLEEP = { fast: 10, medium: 50, slow: 200, fail: 20 };
 const PY = 'http://127.0.0.1:5301';

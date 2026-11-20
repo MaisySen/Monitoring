@@ -1,4 +1,4 @@
-# Contributing to DataCat
+# Contributing to Monitoring
 
 Issues and pull requests are welcome. Discuss large changes first and keep changes
 focused. By contributing, you license your contribution under Apache-2.0.
@@ -16,8 +16,8 @@ pnpm --filter @workspace/api-server run typecheck
 pnpm --filter @workspace/web run typecheck
 BASE_PATH=/ pnpm run build:selfhost
 pnpm --filter @workspace/api-server test
-# with DataCat running on an empty database:
-DATACAT_URL=http://localhost:3000 DATACAT_SETUP_TOKEN=<token> bash scripts/e2e.sh
+# with Monitoring running on an empty database:
+MONITORING_URL=http://localhost:3000 MONITORING_SETUP_TOKEN=<token> bash scripts/e2e.sh
 ```
 
 Run API/UI dev scripts as described in the README. For the agent:
@@ -29,7 +29,7 @@ environment; never commit `.env`, binaries, generated collector sources or secre
 
 - Include a clear problem statement and reproducible validation steps.
 - Preserve organization isolation and existing OTLP/agent/API-key compatibility.
-- Keep the app branded DataCat; third-party names belong in migration explanations.
+- Keep the app branded Monitoring; third-party names belong in migration explanations.
 - Add a versioned, non-destructive startup migration when changing DB schema, and
   update the shared Drizzle schema. Test both empty and existing databases.
 - Update the configuration reference when adding environment variables.

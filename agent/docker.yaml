@@ -1,8 +1,8 @@
-api_key: ${DATACAT_API_KEY}
-url: http://datacat:3000
+api_key: ${MONITORING_API_KEY}
+url: http://monitoring:3000
 env: prod
 listen: 127.0.0.1
-state_dir: /var/lib/datacat-agent
+state_dir: /var/lib/monitoring-agent
 host_metrics:
   enabled: true
   interval: 15s

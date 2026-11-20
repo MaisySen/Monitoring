@@ -3,10 +3,10 @@
  *
  * Accepts protobuf (application/x-protobuf) and JSON (application/json), gzip or plain, on
  *   POST /otlp/v1/traces | /otlp/v1/metrics | /otlp/v1/logs
- * and maps OpenTelemetry data onto DataCat's model so every product (APM, Logs, Infrastructure,
+ * and maps OpenTelemetry data onto Monitoring's model so every product (APM, Logs, Infrastructure,
  * dashboards, monitors) works on it. The message definitions below are taken from opentelemetry-proto v1
  * (https://github.com/open-telemetry/opentelemetry-proto, Copyright 2019, OpenTelemetry Authors, Apache-2.0).
- * Naming of operations/resources and host-metric mapping follow the conventions the DataCat Agent
+ * Naming of operations/resources and host-metric mapping follow the conventions the Monitoring Agent
  * and libraries rely on (http.server.request, <db.system>.query, system.cpu.user, ...).
  */
 import protobuf from "protobufjs";
@@ -158,7 +158,7 @@ const RES_KNOWN = new Set([
   "process.owner",
   "process.command",
   "service.instance.id",
-  "datacat.agent.version",
+  "monitoring.agent.version",
 ]);
 
 interface ResInfo {
@@ -180,8 +180,8 @@ function resourceInfo(resource: any): ResInfo {
     if (RES_KNOWN.has(k) || v === null || typeof v === "object") continue;
     // detector noise (host.arch, os.version, process.runtime.*, telemetry.*) stays on spans/logs as attributes, not as metric tags
     if (/^(host|os|process|telemetry|service\.instance|k8s\.pod\.uid|container\.image\.id)\./.test(k)) continue;
-    // DataCat tags arrive as datacat.tag.<key> or as plain resource attributes
-    tags.push(`${k.replace(/^datacat\.tag\./, "")}:${v}`);
+    // Monitoring tags arrive as monitoring.tag.<key> or as plain resource attributes
+    tags.push(`${k.replace(/^monitoring\.tag\./, "")}:${v}`);
   }
   return { service: str(a["service.name"]).replace(/^unknown_service.*$/, "") || "", env, version, host: str(a["host.name"]), tags, attrs: a };
 }
@@ -229,7 +229,7 @@ function opAndResource(name: string, kind: number, a: Attrs): { op: string; reso
     const t = str(a[`${fw}.type`]);
     if (t) return { op: `${fw}.${t.replace(/\s+/g, "_")}`, resource: str(a[`${fw}.name`]) || name, type: "web" };
   }
-  const explicit = str(a["resource.name"] ?? a["datacat.resource"]);
+  const explicit = str(a["resource.name"] ?? a["monitoring.resource"]);
   return {
     op:
       name
@@ -367,7 +367,7 @@ export function otlpToLogs(req: any): LogIn[] {
 
 // ---------- metrics ----------
 const cumulative = new Map<string, any>(); // last cumulative value per stream, for delta conversion
-const cumulativeMaxSetting = Number(process.env.DATACAT_CUMULATIVE_STREAMS_MAX ?? 500_000);
+const cumulativeMaxSetting = Number(process.env.MONITORING_CUMULATIVE_STREAMS_MAX ?? 500_000);
 const CUMULATIVE_MAX = Number.isFinite(cumulativeMaxSetting) && cumulativeMaxSetting >= 1000 ? Math.floor(cumulativeMaxSetting) : 500_000;
 function rememberCumulative(k: string, v: any) {
   cumulative.delete(k);
@@ -447,7 +447,7 @@ const CPU_STATE: Record<string, string> = {
 };
 
 /**
- * Host metric mapping (OpenTelemetry hostmetrics names → DataCat's system.* names used by the
+ * Host metric mapping (OpenTelemetry hostmetrics names → Monitoring's system.* names used by the
  * Infrastructure list, host map and host dashboards). The original OTel series are stored too.
  */
 function hostMappings(
@@ -531,7 +531,7 @@ export function otlpToMetrics(
     if (r.host && isHostMetrics)
       hosts.set(r.host, {
         os: str(r.attrs["os.type"]) || undefined,
-        agentVersion: str(r.attrs["datacat.agent.version"]) || undefined,
+        agentVersion: str(r.attrs["monitoring.agent.version"]) || undefined,
         tags: r.tags,
       });
     const baseTags = [...r.tags, ...(r.service ? [`service:${r.service}`] : [])];

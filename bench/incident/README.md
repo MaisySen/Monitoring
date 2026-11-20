@@ -1,11 +1,11 @@
 # Incident demo: injected faulty query → alert → affected service → trace → faulty query and logs
 
-Repeatable on the Acme Shop running on the DataCat stack (`examples/acme-shop`, started with `run.sh`).
+Repeatable on the Acme Shop running on the Monitoring stack (`examples/acme-shop`, started with `run.sh`).
 
 ## Run it
 
 ```
-node bench/incident/webhook-receiver.js &        # records notifications to /var/log/datacat-webhooks.jsonl
+node bench/incident/webhook-receiver.js &        # records notifications to /var/log/monitoring-webhooks.jsonl
 node bench/incident/demo.js                      # creates channel + monitor, injects the fault, waits, collects evidence
 #   ...walk the UI (below) while the fault is on...
 node bench/incident/demo.js --recover            # removes the fault, waits for OK and the recovery notification
@@ -30,7 +30,7 @@ bash bench/incident/inject.sh on|off|status      # the fault switch on its own
 
 The browser walkthrough was recorded by an automated browser tester: monitor (Alert, both groups) → Related telemetry → Example trace → `postgresql.query` span with the faulty statement → trace logs → cart-service APM page with an Errors spike and `GET /cart/:user` showing 482 errors.
 
-Note: newer OpenTelemetry pg instrumentation redacts database error text on spans, keeping only the SQLSTATE code. The full message ("column "quantity" does not exist") reaches DataCat through the service's error log in the same trace.
+Note: newer OpenTelemetry pg instrumentation redacts database error text on spans, keeping only the SQLSTATE code. The full message ("column "quantity" does not exist") reaches Monitoring through the service's error log in the same trace.
 
 ## Evidence-based correlation
 
@@ -44,7 +44,7 @@ When a monitor alerts on a service, its status page shows a **What changed** pan
 | `logs` | Warn/error log patterns (numbers and ids masked) **only where the count increased** | Baseline count, incident count, example trace |
 | `latency` | Hits, errors and p95 per resource in both windows | The numbers |
 
-DataCat does not guess a cause: no ranking by "likelihood" and no text diagnosis. The user sees which change came first and which span fails in every failing trace, and every row links to an example trace.
+Monitoring does not guess a cause: no ranking by "likelihood" and no text diagnosis. The user sees which change came first and which span fails in every failing trace, and every row links to an example trace.
 
 Example: deploying the faulty cart-service 2.1.0 (`inject.sh deploy-bad`) produced, in `correlation-cart-deploy-bad.json` and `correlation-gateway-deploy-bad.json`:
 - version 2.1.0 first seen, 0 → 764 requests

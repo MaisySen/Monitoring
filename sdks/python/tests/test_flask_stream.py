@@ -19,7 +19,7 @@ class FlaskStreamTests(unittest.TestCase):
         provider = TracerProvider()
         provider.add_span_processor(SimpleSpanProcessor(exporter))
         trace.set_tracer_provider(provider)
-        from datacat._fast_flask import patch_flask
+        from monitoring._fast_flask import patch_flask
         self.assertTrue(patch_flask())
         app = flask.Flask("t")
 

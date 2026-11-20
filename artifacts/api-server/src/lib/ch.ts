@@ -2,21 +2,21 @@
  * ClickHouse storage for telemetry (spans, logs, metric series and points, APM rollups).
  * App data (users, orgs, keys, monitors, dashboards, events, hosts) stays in Postgres.
  *
- *   DATACAT_CLICKHOUSE_URL       default http://127.0.0.1:8123
- *   DATACAT_CLICKHOUSE_DB        default datacat
- *   DATACAT_CLICKHOUSE_USER      default "default"
- *   DATACAT_CLICKHOUSE_PASSWORD  default empty
- *   DATACAT_CLICKHOUSE_CLUSTER   optional: create Replicated* tables ON CLUSTER <name> (needs Keeper)
- *   DATACAT_RETENTION_DAYS       default 15, applied as table TTLs
+ *   MONITORING_CLICKHOUSE_URL       default http://127.0.0.1:8123
+ *   MONITORING_CLICKHOUSE_DB        default monitoring
+ *   MONITORING_CLICKHOUSE_USER      default "default"
+ *   MONITORING_CLICKHOUSE_PASSWORD  default empty
+ *   MONITORING_CLICKHOUSE_CLUSTER   optional: create Replicated* tables ON CLUSTER <name> (needs Keeper)
+ *   MONITORING_RETENTION_DAYS       default 15, applied as table TTLs
  */
 import { logger } from "./logger";
 
-const BASE = process.env.DATACAT_CLICKHOUSE_URL ?? "http://127.0.0.1:8123";
-const DB = process.env.DATACAT_CLICKHOUSE_DB ?? "datacat";
-const USER = process.env.DATACAT_CLICKHOUSE_USER ?? "default";
-const PASS = process.env.DATACAT_CLICKHOUSE_PASSWORD ?? "";
-const CLUSTER = process.env.DATACAT_CLICKHOUSE_CLUSTER ?? "";
-const RETENTION_DAYS = Number(process.env.DATACAT_RETENTION_DAYS ?? process.env.RETENTION_DAYS ?? 15);
+const BASE = process.env.MONITORING_CLICKHOUSE_URL ?? "http://127.0.0.1:8123";
+const DB = process.env.MONITORING_CLICKHOUSE_DB ?? "monitoring";
+const USER = process.env.MONITORING_CLICKHOUSE_USER ?? "default";
+const PASS = process.env.MONITORING_CLICKHOUSE_PASSWORD ?? "";
+const CLUSTER = process.env.MONITORING_CLICKHOUSE_CLUSTER ?? "";
+const RETENTION_DAYS = Number(process.env.MONITORING_RETENTION_DAYS ?? process.env.RETENTION_DAYS ?? 15);
 
 /** Typed query parameters: {pN:Type} placeholders, sent as param_pN (never interpolated into SQL). */
 export class ChParams {
@@ -87,7 +87,7 @@ export async function chInsert(table: string, rows: object[]) {
   const body = `INSERT INTO ${table} FORMAT JSONEachRow\n` + rows.map((r) => JSON.stringify(r)).join("\n");
   const res = await fetch(
     url({
-      async_insert: process.env.DATACAT_CLICKHOUSE_ASYNC_INSERT ?? "1",
+      async_insert: process.env.MONITORING_CLICKHOUSE_ASYNC_INSERT ?? "1",
       wait_for_async_insert: "1",
       async_insert_busy_timeout_ms: "200",
       input_format_skip_unknown_fields: "1",
@@ -163,7 +163,7 @@ export function ensureChSchema(): Promise<void> {
       for (const sql of DDL) await chQuery(sql, {}, { noDb: sql.startsWith("CREATE DATABASE") });
       // installs created before weighted distribution points
       await chQuery(`ALTER TABLE ${DB}.metric_points${onCluster} ADD COLUMN IF NOT EXISTS weight Float64 DEFAULT 1 CODEC(ZSTD(1))`);
-      // keep TTLs in step with DATACAT_RETENTION_DAYS when it changes between restarts
+      // keep TTLs in step with MONITORING_RETENTION_DAYS when it changes between restarts
       for (const [t, e] of [
         ["spans", "toDateTime(intDiv(start_ms, 1000))"],
         ["logs", "toDateTime(intDiv(ts, 1000))"],

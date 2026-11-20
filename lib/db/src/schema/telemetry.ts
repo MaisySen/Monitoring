@@ -134,7 +134,7 @@ export const eventsTable = pgTable(
     title: text("title").notNull(),
     text: text("text").notNull().default(""),
     alertType: text("alert_type").notNull().default("info"),
-    source: text("source").notNull().default("datacat"),
+    source: text("source").notNull().default("monitoring"),
     monitorId: integer("monitor_id"),
     groupKey: text("group_key"),
     tags: text("tags").array().notNull().default([]),

@@ -1,5 +1,5 @@
 'use strict';
-// Run: node -r @datacat/trace/init app.js
+// Run: node -r @monitoring/trace/init app.js
 const { tracer, metrics, forceFlush, shutdown } = require('..');
 const express = require('express');
 const winston = require('winston');
@@ -10,10 +10,10 @@ const logger = winston.createLogger({
 const app = express();
 app.get('/work', async (req, res) => {
   await tracer.trace('example.work', { resource: 'example', tags: { component: 'example' } }, async () => {
-    metrics.increment('datacat.example.node.requests', 1, { route: 'work' });
-    metrics.gauge('datacat.example.node.queue', 2);
-    metrics.histogram('datacat.example.node.duration', 12);
-    logger.info('DataCat Node example request', { example: true });
+    metrics.increment('monitoring.example.node.requests', 1, { route: 'work' });
+    metrics.gauge('monitoring.example.node.queue', 2);
+    metrics.histogram('monitoring.example.node.duration', 12);
+    logger.info('Monitoring Node example request', { example: true });
   });
   res.json({ ok: true });
 });

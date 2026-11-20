@@ -18,7 +18,7 @@ function install({ contextManager, ignorePaths = [] }) {
   const als = contextManager && contextManager._asyncLocalStorage;
   if (!als || typeof als.enterWith !== 'function') return false; // fall back to the stock instrumentation
   installed = true;
-  const tracer = api.trace.getTracer('@datacat/trace/http-server', '0.1.0');
+  const tracer = api.trace.getTracer('@monitoring/trace/http-server', '0.1.0');
   const ignore = new Set(ignorePaths);
 
   dc.subscribe('http.server.request.start', ({ request, response }) => {

@@ -1,4 +1,4 @@
-const { metrics } = require('@datacat/trace');
+const { metrics } = require('@monitoring/trace');
 const express = require('express');
 const log = require('../log')('web-gateway');
 const app = express(); app.use(express.json());

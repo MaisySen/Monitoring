@@ -5,7 +5,7 @@ const http = require('node:http');
 const { spawn } = require('node:child_process');
 const path = require('node:path');
 const { gunzipSync } = require('node:zlib');
-const remote = process.env.DATACAT_VERIFY_REMOTE === 'true';
+const remote = process.env.MONITORING_VERIFY_REMOTE === 'true';
 const captured = { traces: [], metrics: [], logs: [] };
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -47,7 +47,7 @@ async function main() {
   let sink, child;
   let childOutput = '';
   try {
-    const env = { ...process.env, DATACAT_SERVICE: 'datacat-node-verify', DATACAT_ENV: 'verification', PORT: '18081' };
+    const env = { ...process.env, MONITORING_SERVICE: 'monitoring-node-verify', MONITORING_ENV: 'verification', PORT: '18081' };
     if (!remote) {
       sink = http.createServer((req, res) => {
         const chunks = [];
@@ -66,10 +66,10 @@ async function main() {
         });
       });
       await new Promise(resolve => sink.listen(0, '127.0.0.1', resolve));
-      env.DATACAT_URL = `http://127.0.0.1:${sink.address().port}`;
-      env.DATACAT_API_KEY = 'local-verification-only';
+      env.MONITORING_URL = `http://127.0.0.1:${sink.address().port}`;
+      env.MONITORING_API_KEY = 'local-verification-only';
     } else {
-      assert(env.DATACAT_URL && env.DATACAT_API_KEY, 'Remote verification requires DATACAT_URL and DATACAT_API_KEY');
+      assert(env.MONITORING_URL && env.MONITORING_API_KEY, 'Remote verification requires MONITORING_URL and MONITORING_API_KEY');
     }
     child = spawn(process.execPath, ['-r', './init', 'examples/app.js'], {
       cwd: path.resolve(__dirname, '..'), env, stdio: ['ignore', 'pipe', 'pipe'],
@@ -102,15 +102,15 @@ async function main() {
       const correlated = logs.find(log => log.get(9)?.[0].equals(custom.get(1)[0]) &&
         log.get(10)?.[0].equals(custom.get(2)[0]));
       assert(correlated, 'Missing trace-correlated OTLP log');
-      const counter = metrics.find(metric => metric.get(1)?.[0].toString() === 'datacat.example.node.requests');
+      const counter = metrics.find(metric => metric.get(1)?.[0].toString() === 'monitoring.example.node.requests');
       assert(counter, 'Missing custom counter');
       assert.equal(fields(counter.get(7)[0]).get(2)[0], 1n, 'Counter is not DELTA');
-      const histogram = metrics.find(metric => metric.get(1)?.[0].toString() === 'datacat.example.node.duration');
+      const histogram = metrics.find(metric => metric.get(1)?.[0].toString() === 'monitoring.example.node.duration');
       assert(histogram, 'Missing custom histogram');
       assert.equal(fields(histogram.get(9)[0]).get(2)[0], 1n, 'Histogram is not DELTA');
       console.log(JSON.stringify({ verified: 'node', spans: spans.length, correlatedLogs: logs.length, metrics: metrics.length, temporality: 'DELTA' }));
     } else {
-      console.log('DataCat Node example completed; query service=datacat-node-verify and metric=datacat.example.node.requests.');
+      console.log('Monitoring Node example completed; query service=monitoring-node-verify and metric=monitoring.example.node.requests.');
     }
   } finally {
     if (child && child.exitCode === null) child.kill('SIGKILL');

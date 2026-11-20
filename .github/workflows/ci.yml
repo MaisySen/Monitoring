@@ -16,20 +16,20 @@ jobs:
     services:
       postgres:
         image: postgres:16-alpine
-        env: { POSTGRES_USER: datacat, POSTGRES_PASSWORD: datacat, POSTGRES_DB: datacat }
+        env: { POSTGRES_USER: monitoring, POSTGRES_PASSWORD: monitoring, POSTGRES_DB: monitoring }
         ports: ["5432:5432"]
-        options: --health-cmd "pg_isready -U datacat" --health-interval 5s --health-timeout 5s --health-retries 20
+        options: --health-cmd "pg_isready -U monitoring" --health-interval 5s --health-timeout 5s --health-retries 20
       clickhouse:
         image: clickhouse/clickhouse-server:26.10
-        env: { CLICKHOUSE_USER: datacat, CLICKHOUSE_PASSWORD: datacat, CLICKHOUSE_DB: datacat, CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: "1" }
+        env: { CLICKHOUSE_USER: monitoring, CLICKHOUSE_PASSWORD: monitoring, CLICKHOUSE_DB: monitoring, CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: "1" }
         ports: ["8123:8123"]
     env:
-      DATABASE_URL: postgresql://datacat:datacat@localhost:5432/datacat
-      DATACAT_STORAGE: ${{ matrix.storage }}
-      DATACAT_CLICKHOUSE_URL: http://localhost:8123
-      DATACAT_CLICKHOUSE_USER: datacat
-      DATACAT_CLICKHOUSE_PASSWORD: datacat
-      DATACAT_SETUP_TOKEN: ci-only-setup-token
+      DATABASE_URL: postgresql://monitoring:monitoring@localhost:5432/monitoring
+      MONITORING_STORAGE: ${{ matrix.storage }}
+      MONITORING_CLICKHOUSE_URL: http://localhost:8123
+      MONITORING_CLICKHOUSE_USER: monitoring
+      MONITORING_CLICKHOUSE_PASSWORD: monitoring
+      MONITORING_SETUP_TOKEN: ci-only-setup-token
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -47,7 +47,7 @@ jobs:
         run: pnpm audit --prod
       - name: Build
         run: pnpm --filter @workspace/api-server run build && BASE_PATH=/ pnpm --filter @workspace/web run build
-      - name: Start DataCat
+      - name: Start Monitoring
         run: |
           for i in $(seq 1 60); do curl -fsS http://localhost:8123/ping > /dev/null && break; sleep 1; done
           PORT=3000 NODE_ENV=production PUBLIC_URL=http://localhost:3000 SESSION_SECRET=ci-only-session-secret-0123456789abcdef node artifacts/api-server/dist/index.mjs > server.log 2>&1 &
@@ -104,4 +104,4 @@ jobs:
       - name: Secrets scan (full history)
         run: go run github.com/zricethezav/gitleaks/v8@v8.28.0 git --redact --verbose .
       - name: Docker image builds
-        run: docker build -t datacat:ci .
+        run: docker build -t monitoring:ci .

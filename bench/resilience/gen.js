@@ -1,6 +1,6 @@
 // Numbered telemetry generator for the recovery tests: RATE spans/s, each with attribute seq=N, plus one log line
-// (seq=N) for every second span, sent by @datacat/trace through the DataCat Agent. Prints {"spans":..,"logs":..} sent.
-const { tracer } = require('@datacat/trace');
+// (seq=N) for every second span, sent by @monitoring/trace through the Monitoring Agent. Prints {"spans":..,"logs":..} sent.
+const { tracer } = require('@monitoring/trace');
 const winston = require('winston');
 const log = winston.createLogger({ level: 'info', transports: [new winston.transports.Console({ silent: true })] });
 const RATE = Number(process.env.RATE || 200), SECONDS = Number(process.env.SECONDS || 90);

@@ -42,7 +42,7 @@ type config struct {
 		Port    int  `yaml:"port"`
 	} `yaml:"dogstatsd"`
 	Debug bool `yaml:"debug"`
-	// Compression for data sent to DataCat: zstd (default; several times less CPU than gzip at a similar ratio), gzip or none.
+	// Compression for data sent to Monitoring: zstd (default; several times less CPU than gzip at a similar ratio), gzip or none.
 	Compression string `yaml:"compression"`
 	Listen      string `yaml:"listen"`
 	StateDir    string `yaml:"state_dir"`
@@ -57,7 +57,7 @@ func (c config) compression() string {
 }
 
 func defaults() config {
-	c := config{URL: "http://localhost:3000", Listen: "127.0.0.1", StateDir: "/var/lib/datacat-agent"}
+	c := config{URL: "http://localhost:3000", Listen: "127.0.0.1", StateDir: "/var/lib/monitoring-agent"}
 	c.HostMetrics = hostMetricsConfig{Enabled: true, Interval: "15s"}
 	c.APM.OTLP, c.APM.DatadogCompat = true, true
 	c.Dogstatsd.Enabled, c.Dogstatsd.Port = true, 8125
@@ -87,7 +87,7 @@ func loadConfig(path string) (config, error) {
 		}
 	}
 	if c.Env == "" {
-		for _, k := range []string{"DATACAT_ENV", "DD_ENV"} {
+		for _, k := range []string{"MONITORING_ENV", "DD_ENV"} {
 			if c.Env = os.Getenv(k); c.Env != "" {
 				break
 			}
@@ -106,7 +106,7 @@ func tagsToMap(tags []string) (map[string]string, error) {
 			return nil, fmt.Errorf("invalid tag %q: expected key:value", tag)
 		}
 		switch key {
-		case "host.name", "os.type", "datacat.agent.version", "deployment.environment", "service.name":
+		case "host.name", "os.type", "monitoring.agent.version", "deployment.environment", "service.name":
 			return nil, fmt.Errorf("tag %q is reserved; use the corresponding configuration field", key)
 		}
 		result[key] = value
@@ -139,7 +139,7 @@ func generateConfig(c config) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	attrs := []any{object{"key": "datacat.agent.version", "value": agentVersion, "action": "upsert"}}
+	attrs := []any{object{"key": "monitoring.agent.version", "value": agentVersion, "action": "upsert"}}
 	if c.Env != "" {
 		attrs = append(attrs, object{"key": "deployment.environment", "value": c.Env, "action": "upsert"})
 	}
@@ -222,20 +222,20 @@ func generateConfig(c config) ([]byte, error) {
 		receivers[name] = object{
 			"include": []string{l.Path}, "start_at": l.StartAt, "include_file_path": true,
 			"storage": "file_storage", "resource": resource,
-			"operators": []any{object{"type": "datacat_json", "on_error": "send"}},
+			"operators": []any{object{"type": "monitoring_json", "on_error": "send"}},
 		}
 		logs = append(logs, name)
 	}
-	exporters := object{"otlphttp/datacat": object{
+	exporters := object{"otlphttp/monitoring": object{
 		"endpoint": strings.TrimRight(c.URL, "/") + "/otlp", "headers": object{"DC-API-KEY": c.APIKey},
 		"compression": c.compression(), "timeout": "30s",
 		"retry_on_failure": object{"enabled": true, "initial_interval": "1s", "max_interval": "30s", "max_elapsed_time": "0s"},
 		"sending_queue":    object{"enabled": true, "num_consumers": 2, "queue_size": 1000},
 	}}
 	if c.StateDir != "" {
-		exporters["otlphttp/datacat"].(object)["sending_queue"].(object)["storage"] = "file_storage"
+		exporters["otlphttp/monitoring"].(object)["sending_queue"].(object)["storage"] = "file_storage"
 	}
-	exporterNames := []string{"otlphttp/datacat"}
+	exporterNames := []string{"otlphttp/monitoring"}
 	if c.Debug {
 		exporters["debug"] = object{"verbosity": "detailed", "sampling_initial": 5, "sampling_thereafter": 100}
 		exporterNames = append(exporterNames, "debug")
@@ -244,7 +244,7 @@ func generateConfig(c config) ([]byte, error) {
 		"memory_limiter": object{"check_interval": "1s", "limit_mib": 256, "spike_limit_mib": 64},
 		"resourcedetection": object{"detectors": []string{"system"}, "timeout": "5s", "override": false,
 			"system": object{"hostname_sources": []string{"os"}}},
-		"resource/datacat":  object{"attributes": attrs},
+		"resource/monitoring":  object{"attributes": attrs},
 		"cumulativetodelta": object{"initial_value": "drop"},
 		"batch":             object{"timeout": "200ms", "send_batch_size": 1024, "send_batch_max_size": 2048},
 	}
@@ -256,7 +256,7 @@ func generateConfig(c config) ([]byte, error) {
 		if len(p.in) == 0 {
 			continue
 		}
-		procs := []string{"memory_limiter", "resourcedetection", "resource/datacat"}
+		procs := []string{"memory_limiter", "resourcedetection", "resource/monitoring"}
 		if p.name == "metrics" {
 			procs = append(procs, "cumulativetodelta")
 		}

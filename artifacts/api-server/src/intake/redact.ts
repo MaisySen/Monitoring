@@ -12,14 +12,14 @@
  *   key name   attributes whose *name* looks secret (password, secret, token, api_key, authorization, cookie, ...) are
  *              masked entirely, whatever their value
  * Opt-in / configuration (environment):
- *   DATACAT_REDACTION=off             disable all redaction
- *   DATACAT_REDACT_EMAILS=true        also mask email addresses
- *   DATACAT_REDACT_PATTERNS='re1;;re2'   extra regular expressions (JavaScript syntax), replaced with [REDACTED:custom]
- *   DATACAT_REDACT_KEYS='ssn,dob'     extra attribute names to mask entirely (case-insensitive substring match)
+ *   MONITORING_REDACTION=off             disable all redaction
+ *   MONITORING_REDACT_EMAILS=true        also mask email addresses
+ *   MONITORING_REDACT_PATTERNS='re1;;re2'   extra regular expressions (JavaScript syntax), replaced with [REDACTED:custom]
+ *   MONITORING_REDACT_KEYS='ssn,dob'     extra attribute names to mask entirely (case-insensitive substring match)
  */
 const env = process.env;
-const enabled = String(env.DATACAT_REDACTION ?? "on").toLowerCase() !== "off";
-const redactEmails = String(env.DATACAT_REDACT_EMAILS ?? "false").toLowerCase() === "true";
+const enabled = String(env.MONITORING_REDACTION ?? "on").toLowerCase() !== "off";
+const redactEmails = String(env.MONITORING_REDACT_EMAILS ?? "false").toLowerCase() === "true";
 const SECRET_KEY_WORDS = [
   "password",
   "passwd",
@@ -34,12 +34,12 @@ const SECRET_KEY_WORDS = [
   "private_key",
   "client_secret",
   "access_key",
-  ...String(env.DATACAT_REDACT_KEYS ?? "")
+  ...String(env.MONITORING_REDACT_KEYS ?? "")
     .split(",")
     .map((s) => s.trim().toLowerCase())
     .filter(Boolean),
 ];
-const custom = String(env.DATACAT_REDACT_PATTERNS ?? "")
+const custom = String(env.MONITORING_REDACT_PATTERNS ?? "")
   .split(";;")
   .map((s) => s.trim())
   .filter(Boolean)

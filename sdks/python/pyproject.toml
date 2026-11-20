@@ -3,9 +3,9 @@ requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "datacat-trace"
+name = "monitoring-trace"
 version = "0.1.0"
-description = "DataCat tracing, metrics and logs powered by OpenTelemetry"
+description = "Monitoring tracing, metrics and logs powered by OpenTelemetry"
 readme = "README.md"
 requires-python = ">=3.10"
 license = "Apache-2.0"
@@ -19,9 +19,9 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/replit/datacat"
-Source = "https://github.com/replit/datacat/tree/main/sdks/python"
-Issues = "https://github.com/replit/datacat/issues"
+Homepage = "https://github.com/replit/monitoring"
+Source = "https://github.com/replit/monitoring/tree/main/sdks/python"
+Issues = "https://github.com/replit/monitoring/issues"
 
 [project.optional-dependencies]
 instrumentation = [
@@ -38,14 +38,14 @@ instrumentation = [
 test = ["flask>=3", "requests>=2"]
 
 [project.scripts]
-datacat-run = "datacat.cli:run"
-datacat-bootstrap = "datacat.cli:bootstrap"
+monitoring-run = "monitoring.cli:run"
+monitoring-bootstrap = "monitoring.cli:bootstrap"
 
 [project.entry-points.opentelemetry_distro]
-datacat = "datacat.distro:DataCatDistro"
+monitoring = "monitoring.distro:MonitoringDistro"
 
 [project.entry-points.opentelemetry_configurator]
-datacat = "datacat.distro:DataCatConfigurator"
+monitoring = "monitoring.distro:MonitoringConfigurator"
 
 [tool.setuptools.packages.find]
 where = ["src"]

@@ -1,4 +1,4 @@
-/** Metric storage reads for ClickHouse (DATACAT_STORAGE=clickhouse). Query parsing, grouping and formulas stay in metrics.ts. */
+/** Metric storage reads for ClickHouse (MONITORING_STORAGE=clickhouse). Query parsing, grouping and formulas stay in metrics.ts. */
 import { chQuery, ChParams, ensureChSchema } from "../lib/ch";
 
 /** Series of a metric that reported since `since`; FINAL collapses metadata rows not yet merged by ReplacingMergeTree. */

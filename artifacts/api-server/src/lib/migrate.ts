@@ -72,7 +72,7 @@ CREATE TABLE IF NOT EXISTS monitors (
 );
 CREATE TABLE IF NOT EXISTS events (
  id bigserial PRIMARY KEY, org_id integer NOT NULL, ts bigint NOT NULL, title text NOT NULL,
- text text NOT NULL DEFAULT '', alert_type text NOT NULL DEFAULT 'info', source text NOT NULL DEFAULT 'datacat',
+ text text NOT NULL DEFAULT '', alert_type text NOT NULL DEFAULT 'info', source text NOT NULL DEFAULT 'monitoring',
  monitor_id integer, group_key text, tags text[] NOT NULL DEFAULT '{}'
 );
 CREATE INDEX IF NOT EXISTS events_org_ts ON events(org_id,ts);
@@ -99,13 +99,13 @@ export async function migrateDatabase() {
   try {
     await connection.query("BEGIN");
     await connection.query("SELECT pg_advisory_xact_lock(386428100)");
-    await connection.query("CREATE TABLE IF NOT EXISTS datacat_migrations (version integer PRIMARY KEY, applied_at timestamptz NOT NULL DEFAULT now())");
-    const { rows } = await connection.query("SELECT version FROM datacat_migrations");
+    await connection.query("CREATE TABLE IF NOT EXISTS monitoring_migrations (version integer PRIMARY KEY, applied_at timestamptz NOT NULL DEFAULT now())");
+    const { rows } = await connection.query("SELECT version FROM monitoring_migrations");
     const applied = new Set(rows.map((r) => r.version));
     for (const [i, migration] of migrations.entries()) {
       if (applied.has(i + 1)) continue;
       await connection.query(migration);
-      await connection.query("INSERT INTO datacat_migrations(version) VALUES ($1)", [i + 1]);
+      await connection.query("INSERT INTO monitoring_migrations(version) VALUES ($1)", [i + 1]);
     }
     await connection.query("COMMIT");
   } catch (error) {

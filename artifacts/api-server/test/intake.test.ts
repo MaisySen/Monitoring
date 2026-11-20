@@ -83,7 +83,7 @@ test("OTLP logs keep severity, message and trace correlation", () => {
 });
 
 test("OTLP metrics: tags and agent version from resource attributes", () => {
-  for (const prefix of ["datacat"]) {
+  for (const prefix of ["monitoring"]) {
     const { points, hosts } = otlpToMetrics(1, {
       resourceMetrics: [
         {

@@ -1,13 +1,13 @@
 # Difficult queries under load
 
-Times the API calls DataCat's UI makes for its hardest screens: high-cardinality metrics, 7-day ranges, and large log and span searches. Each runs **while ingestion is running**: `bench/scale/loadgen.js` at 400 traces/s, which is about 2,400 spans/s, 400 logs/s and 20,000-series custom metrics, sent straight to intake.
+Times the API calls Monitoring's UI makes for its hardest screens: high-cardinality metrics, 7-day ranges, and large log and span searches. Each runs **while ingestion is running**: `bench/scale/loadgen.js` at 400 traces/s, which is about 2,400 spans/s, 400 logs/s and 20,000-series custom metrics, sent straight to intake.
 
 | Script | What it does |
 |---|---|
 | `hard-queries.sh <label>` | 15 queries, 3 runs each, median reported (one JSON line per query) |
 | `ab-metrics.js` | Same-data A/B for the metric engine: two API builds on one database, interleaved, checks the answers are identical |
 
-Both scripts log in with `DATACAT_URL`, `DATACAT_EMAIL` and `DATACAT_PASSWORD`.
+Both scripts log in with `MONITORING_URL`, `MONITORING_EMAIL` and `MONITORING_PASSWORD`.
 
 ## What changed
 
@@ -66,9 +66,9 @@ Over 24 hours, the high-cardinality metric touches every one of its ~267k series
 
 ```bash
 # load (20 min)
-DATACAT_API_KEY=… RUN=q TRACES_PER_S=400 SECONDS=1200 node bench/scale/loadgen.js &
+MONITORING_API_KEY=… RUN=q TRACES_PER_S=400 SECONDS=1200 node bench/scale/loadgen.js &
 sleep 60
 bash bench/queries/hard-queries.sh after-under-load > after.jsonl
-# same-data A/B: run the old build on :8081 and the new build on :8082 (DATACAT_BACKGROUND_JOBS=false), then
+# same-data A/B: run the old build on :8081 and the new build on :8082 (MONITORING_BACKGROUND_JOBS=false), then
 A=http://localhost:8081 B=http://localhost:8082 ROUNDS=3 node bench/queries/ab-metrics.js > ab-metrics.json
 ```

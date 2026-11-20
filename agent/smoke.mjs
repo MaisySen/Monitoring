@@ -1,4 +1,4 @@
-// Sends explicitly named verification telemetry to a running local DataCat Agent.
+// Sends explicitly named verification telemetry to a running local Monitoring Agent.
 // No API key is needed: the agent authenticates its outbound connection.
 import { randomBytes } from "node:crypto";
 import { appendFileSync, writeFileSync } from "node:fs";
@@ -7,7 +7,7 @@ import dgram from "node:dgram";
 const traceId = randomBytes(16).toString("hex");
 const spanId = randomBytes(8).toString("hex");
 const start = BigInt(Date.now()) * 1_000_000n;
-const service = "datacat-agent-smoke";
+const service = "monitoring-agent-smoke";
 const response = await fetch("http://127.0.0.1:4318/v1/traces", {
   method: "POST",
   headers: { "Content-Type": "application/json" },
@@ -15,7 +15,7 @@ const response = await fetch("http://127.0.0.1:4318/v1/traces", {
     resourceSpans: [{
       resource: { attributes: [{ key: "service.name", value: { stringValue: service } }] },
       scopeSpans: [{
-        scope: { name: "datacat-agent-verification", version: "0.1.0" },
+        scope: { name: "monitoring-agent-verification", version: "0.1.0" },
         spans: [{
           traceId, spanId, name: "GET /agent-smoke", kind: 2,
           startTimeUnixNano: start.toString(),
@@ -53,7 +53,7 @@ const compat = await fetch("http://127.0.0.1:8126/v0.4/traces", {
   method: "POST",
   headers: { "Content-Type": "application/msgpack", "X-Datadog-Trace-Count": "1" },
   body: pack([[{
-    service: "datacat-agent-compat-smoke", name: "web.request", resource: "GET /compat-smoke",
+    service: "monitoring-agent-compat-smoke", name: "web.request", resource: "GET /compat-smoke",
     type: "web", trace_id: BigInt(`0x${legacyTrace.slice(16)}`), span_id: BigInt(`0x${legacySpan}`),
     parent_id: 0n, start, duration: 5_000_000n, error: 0,
     meta: { env: "agent-qa", "_dd.p.tid": legacyTrace.slice(0, 16), "http.method": "GET" },
@@ -64,16 +64,16 @@ if (!compat.ok) throw new Error(`migration input: ${compat.status} ${await compa
 
 const udp = dgram.createSocket("udp4");
 await new Promise((resolve, reject) => udp.send(
-  Buffer.from("datacat.agent.smoke.requests:3|c|#service:datacat-agent-smoke,verification:datacat-agent\n" +
-    "datacat.agent.smoke.temperature:42|g|#verification:datacat-agent\n" +
-    "datacat.agent.smoke.latency:12|ms|#verification:datacat-agent"),
+  Buffer.from("monitoring.agent.smoke.requests:3|c|#service:monitoring-agent-smoke,verification:monitoring-agent\n" +
+    "monitoring.agent.smoke.temperature:42|g|#verification:monitoring-agent\n" +
+    "monitoring.agent.smoke.latency:12|ms|#verification:monitoring-agent"),
   8125, "127.0.0.1", (err) => err ? reject(err) : resolve(),
 ));
 udp.close();
 if (process.env.SMOKE_LOG_PATH) {
   appendFileSync(process.env.SMOKE_LOG_PATH, JSON.stringify({
     timestamp: new Date().toISOString(), level: "info",
-    message: "DataCat Agent end-to-end verification", trace_id: traceId, span_id: spanId,
+    message: "Monitoring Agent end-to-end verification", trace_id: traceId, span_id: spanId,
   }) + "\n");
 }
 const evidence = { otlp_status: response.status, migration_status: compat.status, trace_id: traceId,

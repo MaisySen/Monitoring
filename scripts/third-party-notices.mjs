@@ -13,10 +13,10 @@ if (!out) {
 const data = JSON.parse(fs.readFileSync(0, "utf8"));
 const FILES = /^(licen[cs]e|copying|notice)(\..*|-.*)?$/i;
 const parts = [
-  "DataCat server and web UI: third-party notices",
+  "Monitoring server and web UI: third-party notices",
   "==============================================",
   "",
-  "DataCat is licensed under the Apache License, Version 2.0 (see LICENSE and NOTICE).",
+  "Monitoring is licensed under the Apache License, Version 2.0 (see LICENSE and NOTICE).",
   "The server bundle and web UI include the npm packages below, each under its own license.",
   "",
 ];

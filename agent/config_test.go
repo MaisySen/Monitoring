@@ -18,7 +18,7 @@ func TestGenerate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, expected := range []string{"DC-API-KEY: unit-test-key", "http://localhost:3000/otlp", "system.cpu.utilization", "system.memory.utilization", "datacat_json", "service.name: test-service", "cumulativetodelta", "host.name", "deployment.environment", "datacat.agent.version", "storage: file_storage", "sending_queue:"} {
+	for _, expected := range []string{"DC-API-KEY: unit-test-key", "http://localhost:3000/otlp", "system.cpu.utilization", "system.memory.utilization", "monitoring_json", "service.name: test-service", "cumulativetodelta", "host.name", "deployment.environment", "monitoring.agent.version", "storage: file_storage", "sending_queue:"} {
 		if !strings.Contains(string(out), expected) {
 			t.Errorf("missing %q", expected)
 		}
@@ -32,7 +32,7 @@ func TestInvalidConfig(t *testing.T) {
 		func(c *config) { c.URL = "https://user:pass@example.com" },
 		func(c *config) { c.HostMetrics.Interval = "0s" },
 		func(c *config) { c.Tags = []string{"no-value"} },
-		func(c *config) { c.Tags = []string{"datacat.agent.version:spoof"} },
+		func(c *config) { c.Tags = []string{"monitoring.agent.version:spoof"} },
 		func(c *config) { c.Dogstatsd.Port = 0 },
 		func(c *config) { c.Logs = []logConfig{{Path: "/tmp/test"}} },
 	} {

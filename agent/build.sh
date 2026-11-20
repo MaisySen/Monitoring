@@ -15,4 +15,4 @@ go mod edit -toolchain=go1.26.11
 go mod tidy
 go test -p 2 -trimpath -tags grpcnotrace ./...
 mkdir -p "${DESTDIR:-../dist}"
-go build -p 2 -trimpath -tags grpcnotrace -ldflags="-s -w" -o "${DESTDIR:-../dist}/datacat-agent" .
+go build -p 2 -trimpath -tags grpcnotrace -ldflags="-s -w" -o "${DESTDIR:-../dist}/monitoring-agent" .

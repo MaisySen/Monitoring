@@ -8,15 +8,15 @@ import { isStorageError } from "../lib/http";
 import { logger } from "../lib/logger";
 
 /**
- * Agentless intake: open-source tracers (dd-trace for Node, ddtrace for Python, ...) talk to DataCat as if
+ * Agentless intake: open-source tracers (dd-trace for Node, ddtrace for Python, ...) talk to Monitoring as if
  * it were the local agent. The org is identified by, in order:
  *   1. the API key in the URL path:  DD_TRACE_AGENT_URL=https://<host>/agent/<api_key>   (Python keeps paths)
- *   2. a global tag on every span/metric: DD_TAGS=datacat_api_key:<api_key>             (Node drops paths)
+ *   2. a global tag on every span/metric: DD_TAGS=monitoring_api_key:<api_key>             (Node drops paths)
  *   3. a DD-API-KEY header (custom HTTP senders)
  * The key tag is stripped before anything is stored.
  */
 const router: Router = Router();
-const KEY_TAGS = ["datacat_api_key", "dc_api_key"];
+const KEY_TAGS = ["monitoring_api_key", "dc_api_key"];
 
 const s = (v: unknown) => (typeof v === "bigint" ? v.toString() : v === undefined || v === null ? "" : String(v));
 
@@ -86,7 +86,7 @@ async function handleTraces(req: Request, res: Response, version: "v0.4" | "v0.5
     if (!orgId) {
       res
         .status(403)
-        .json({ error: "DataCat could not identify your organization. Set DD_TAGS=datacat_api_key:<API key> or put the key in DD_TRACE_AGENT_URL." });
+        .json({ error: "Monitoring could not identify your organization. Set DD_TAGS=monitoring_api_key:<API key> or put the key in DD_TRACE_AGENT_URL." });
       return;
     }
     const host = s(req.headers["datadog-meta-hostname"]) || "";

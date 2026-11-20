@@ -1,6 +1,6 @@
 import json, logging, os, random, time, requests
 LOG_DIR = os.environ.get("ACME_LOG_DIR", "/tmp/acme-shop")
-from datacat import tracer, metrics   # started by: datacat-run python worker.py
+from monitoring import tracer, metrics   # started by: monitoring-run python worker.py
 
 class JsonFormatter(logging.Formatter):
     def format(self, r):

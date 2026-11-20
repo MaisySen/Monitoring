@@ -1,5 +1,5 @@
-# Copy to /etc/datacat/datacat.yaml (mode 0600).
-api_key: ${DATACAT_API_KEY}
+# Copy to /etc/monitoring/monitoring.yaml (mode 0600).
+api_key: ${MONITORING_API_KEY}
 url: http://localhost:3000
 # hostname: my-host
 env: prod
@@ -9,7 +9,7 @@ host_metrics:
   interval: 15s
 # Local-only by default. Set 0.0.0.0 only behind appropriate firewall rules.
 listen: 127.0.0.1
-state_dir: /var/lib/datacat-agent
+state_dir: /var/lib/monitoring-agent
 apm:
   otlp: true
   datadog_compat: true

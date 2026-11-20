@@ -1,5 +1,5 @@
 import os
-"""DataCat telemetry: init(), tracer.trace(), and tagged custom metrics."""
+"""Monitoring telemetry: init(), tracer.trace(), and tagged custom metrics."""
 import atexit
 import logging
 import threading
@@ -17,7 +17,7 @@ _initialized = False
 
 
 def init(_instrument=True, **options):
-    # Flush spans and logs every 500 ms (the OTel default is 5 s) so data shows up in DataCat quickly.
+    # Flush spans and logs every 500 ms (the OTel default is 5 s) so data shows up in Monitoring quickly.
     os.environ.setdefault("OTEL_BSP_SCHEDULE_DELAY", "500")
     os.environ.setdefault("OTEL_BLRP_SCHEDULE_DELAY", "500")
     # A bigger queue avoids dropping spans under bursts.
@@ -45,12 +45,12 @@ def init(_instrument=True, **options):
         resource = Resource.create(c["attributes"])
         sampler = ParentBased(TraceIdRatioBased(c["sample_rate"])) if c["sample_rate_override"] else None
         span_provider = TracerProvider(resource=resource, sampler=sampler)
-        if os.environ.get("DATACAT_EXPORTER", "datacat") == "otel":
+        if os.environ.get("MONITORING_EXPORTER", "monitoring") == "otel":
             span_exporter = OTLPSpanExporter(endpoint=c["endpoints"]["traces"], headers=c["headers"])
         else:
-            # DataCat's direct OTLP encoder: shorter GIL holds in the export thread, lower tail latency.
-            from ._span_exporter import DataCatSpanExporter
-            span_exporter = DataCatSpanExporter(c["endpoints"]["traces"], headers=c["headers"])
+            # Monitoring's direct OTLP encoder: shorter GIL holds in the export thread, lower tail latency.
+            from ._span_exporter import MonitoringSpanExporter
+            span_exporter = MonitoringSpanExporter(c["endpoints"]["traces"], headers=c["headers"])
         span_provider.add_span_processor(BatchSpanProcessor(span_exporter))
         metric_exporter = OTLPMetricExporter(
             endpoint=c["endpoints"]["metrics"], headers=c["headers"],
@@ -73,7 +73,7 @@ def init(_instrument=True, **options):
             logging.getLogger().addHandler(_handler)
             _keep_basic_config_working()
         if c["logs_injection"]:
-            # Install before the logging instrumentor so native and DataCat IDs coexist.
+            # Install before the logging instrumentor so native and Monitoring IDs coexist.
             _previous_factory = logging.getLogRecordFactory()
             previous = _previous_factory
 
@@ -99,19 +99,19 @@ def init(_instrument=True, **options):
         if c["runtime_metrics"]:
             import gc
             from opentelemetry.metrics import Observation
-            meter = otel_metrics.get_meter("datacat.runtime", __version__)
+            meter = otel_metrics.get_meter("monitoring.runtime", __version__)
             meter.create_observable_gauge("runtime.python.gc.objects",
                                           callbacks=[lambda _: [Observation(len(gc.get_objects()))]])
         if _instrument:
             from opentelemetry.instrumentation.dependencies import get_dist_dependency_conflicts
             disabled = set(__import__("os").environ.get("OTEL_PYTHON_DISABLED_INSTRUMENTATIONS", "").split(","))
-            # Lean Flask server spans replace OpenTelemetry's Flask instrumentation (DATACAT_FAST_FLASK=false to undo).
+            # Lean Flask server spans replace OpenTelemetry's Flask instrumentation (MONITORING_FAST_FLASK=false to undo).
             if c["fast_flask"] and "flask" not in disabled:
                 from ._fast_flask import patch_flask
                 if patch_flask():
                     disabled.add("flask")
-            # Request-duration metrics from instrumentations are off by default: DataCat derives request counts,
-            # errors and latency from spans at ingest (DATACAT_HTTP_METRICS=true to also record them in the app).
+            # Request-duration metrics from instrumentations are off by default: Monitoring derives request counts,
+            # errors and latency from spans at ingest (MONITORING_HTTP_METRICS=true to also record them in the app).
             instrument_kwargs = {}
             if not c["http_metrics"]:
                 from opentelemetry.metrics import NoOpMeterProvider
@@ -128,9 +128,9 @@ def init(_instrument=True, **options):
 
 
 def _keep_basic_config_working():
-    """logging.basicConfig() does nothing when the root logger already has a handler, so DataCat's shipping handler
+    """logging.basicConfig() does nothing when the root logger already has a handler, so Monitoring's shipping handler
     would silently swallow the app's own basicConfig(level=..., filename=...). Hide it while basicConfig runs."""
-    if getattr(logging.basicConfig, "_datacat", False):
+    if getattr(logging.basicConfig, "_monitoring", False):
         return
     original = logging.basicConfig
 
@@ -145,7 +145,7 @@ def _keep_basic_config_working():
             if attached and _handler not in root.handlers:
                 root.addHandler(_handler)
 
-    basicConfig._datacat = True
+    basicConfig._monitoring = True
     logging.basicConfig = basicConfig
 
 

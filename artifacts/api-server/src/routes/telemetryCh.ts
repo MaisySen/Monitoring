@@ -1,4 +1,4 @@
-/** Telemetry API on ClickHouse storage (DATACAT_STORAGE=clickhouse): same routes and responses as telemetry.ts, queried with ClickHouse SQL. */
+/** Telemetry API on ClickHouse storage (MONITORING_STORAGE=clickhouse): same routes and responses as telemetry.ts, queried with ClickHouse SQL. */
 import { serviceSummary, serviceTimeseries, serviceResources, serviceOperations, apmEnvs } from "../query/apmStats";
 import { chQuery, ChParams } from "../lib/ch";
 import { hostMetricsCh } from "../query/metricsCh";
@@ -173,7 +173,7 @@ async function hostRows(orgId: number) {
       agent_version: x.agent_version,
       tags: x.tags,
       meta: x.meta,
-      apps: [...new Set([...(x.apps ?? []), ...(appBy.get(x.name) ?? []).filter((a) => !["trace", "service_check", "datadog", "datacat"].includes(a))])].sort(),
+      apps: [...new Set([...(x.apps ?? []), ...(appBy.get(x.name) ?? []).filter((a) => !["trace", "service_check", "datadog", "monitoring"].includes(a))])].sort(),
       services: svcBy.get(x.name) ?? [],
       up: now - Number(x.last_seen) < 600,
       last_seen: Number(x.last_seen),
@@ -203,7 +203,7 @@ router.get(
         up: r.up,
         last_reported_time: r.last_seen,
         apps: r.apps,
-        tags_by_source: { DataCat: r.tags },
+        tags_by_source: { Monitoring: r.tags },
         metrics: { cpu: r.cpu, iowait: r.iowait, load: r.load15 },
         meta: { agent_version: r.agent_version, platform: r.platform },
       })),

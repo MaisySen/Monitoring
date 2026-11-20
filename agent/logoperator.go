@@ -18,8 +18,8 @@ import (
 // A small, in-process Stanza operator preserves integer precision in JSON trace
 // context. In particular, uint64 decimal IDs must never pass through float64.
 func init() {
-	operator.Register("datacat_json", func() operator.Builder {
-		return &jsonLogConfig{TransformerConfig: helper.NewTransformerConfig("datacat_json", "datacat_json")}
+	operator.Register("monitoring_json", func() operator.Builder {
+		return &jsonLogConfig{TransformerConfig: helper.NewTransformerConfig("monitoring_json", "monitoring_json")}
 	})
 }
 
@@ -56,7 +56,7 @@ func normalizeLog(e *entry.Entry) error {
 	dec.UseNumber()
 	var data map[string]any
 	if err := dec.Decode(&data); err != nil || data == nil {
-		e.AddAttribute("datacat.parse_error", "expected a JSON object")
+		e.AddAttribute("monitoring.parse_error", "expected a JSON object")
 		return fmt.Errorf("log is not a JSON object; preserving original body")
 	}
 	if e.Attributes == nil {
@@ -119,7 +119,7 @@ func normalizeLog(e *entry.Entry) error {
 	}
 	if len(failures) > 0 {
 		msg := strings.Join(failures, "; ")
-		e.AddAttribute("datacat.parse_error", msg)
+		e.AddAttribute("monitoring.parse_error", msg)
 		return fmt.Errorf("invalid log trace context: %s", msg)
 	}
 	return nil

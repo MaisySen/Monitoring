@@ -6,7 +6,7 @@
 **/*.egg-info
 agent/_build
 agent/_tools
-**/downloads/datacat-agent-*
+**/downloads/monitoring-agent-*
 .git
 .env
 .env.*

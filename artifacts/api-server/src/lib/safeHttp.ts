@@ -6,8 +6,8 @@ import net from "node:net";
 // Outbound webhook delivery. By default, destinations on loopback, private, link-local (including cloud metadata
 // endpoints) and other non-public addresses are refused, both for IP literals and for every address a hostname
 // resolves to at connect time (so DNS rebinding cannot slip through). Redirects are not followed.
-// DATACAT_ALLOW_PRIVATE_WEBHOOKS=true allows internal destinations, for receivers on your own network.
-const allowPrivate = String(process.env.DATACAT_ALLOW_PRIVATE_WEBHOOKS ?? "false").toLowerCase() === "true";
+// MONITORING_ALLOW_PRIVATE_WEBHOOKS=true allows internal destinations, for receivers on your own network.
+const allowPrivate = String(process.env.MONITORING_ALLOW_PRIVATE_WEBHOOKS ?? "false").toLowerCase() === "true";
 
 const blocked = new net.BlockList();
 for (const [a, p] of [
@@ -94,9 +94,9 @@ export function checkWebhookUrl(raw: string): URL {
   if (u.username || u.password) throw Object.assign(new Error("Put credentials in headers, not in the URL"), { status: 400 });
   const host = u.hostname.replace(/^\[|\]$/g, "");
   if (net.isIP(host) && isBlockedAddress(host))
-    throw Object.assign(new Error("Webhook URLs on private or local addresses are disabled (DATACAT_ALLOW_PRIVATE_WEBHOOKS)"), { status: 400 });
+    throw Object.assign(new Error("Webhook URLs on private or local addresses are disabled (MONITORING_ALLOW_PRIVATE_WEBHOOKS)"), { status: 400 });
   if (!allowPrivate && /^(localhost|.*\.localhost|.*\.local|.*\.internal)$/i.test(host))
-    throw Object.assign(new Error("Webhook URLs on private or local addresses are disabled (DATACAT_ALLOW_PRIVATE_WEBHOOKS)"), { status: 400 });
+    throw Object.assign(new Error("Webhook URLs on private or local addresses are disabled (MONITORING_ALLOW_PRIVATE_WEBHOOKS)"), { status: 400 });
   return u;
 }
 
@@ -111,7 +111,7 @@ const safeLookup: net.LookupFunction = (hostname, options, callback) => {
   });
 };
 
-// Headers that control the connection or message framing; DataCat sets these itself.
+// Headers that control the connection or message framing; Monitoring sets these itself.
 const RESERVED_HEADERS = new Set(["host", "transfer-encoding", "connection", "content-length", "upgrade", "te", "keep-alive", "proxy-connection", "trailer"]);
 
 /** Validates custom webhook headers: a JSON object of string values, without connection or framing headers. */

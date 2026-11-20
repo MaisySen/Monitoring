@@ -226,7 +226,7 @@ function encode(w, spans) {
 
 const RETRYABLE_STATUS = new Set([408, 429, 502, 503, 504]);
 
-class DataCatSpanExporter {
+class MonitoringSpanExporter {
   constructor({ url, headers = {}, timeoutMillis = 10000 }) {
     this.url = new URL(url);
     this.transport = this.url.protocol === 'https:' ? https : http;
@@ -236,7 +236,7 @@ class DataCatSpanExporter {
     this.writer = new Writer();
     this.pending = new Set();
     this.stopped = false;
-    this.retryMs = Number(process.env.DATACAT_EXPORT_RETRY_SECONDS ?? 30) * 1000;
+    this.retryMs = Number(process.env.MONITORING_EXPORT_RETRY_SECONDS ?? 30) * 1000;
   }
   export(spans, resultCallback) {
     if (this.stopped) return resultCallback({ code: FAILED, error: new Error('exporter shut down') });
@@ -290,4 +290,4 @@ class DataCatSpanExporter {
   shutdown() { this.stopped = true; return this.forceFlush().then(() => this.agent.destroy()); }
 }
 
-module.exports = { DataCatSpanExporter, encode, Writer };
+module.exports = { MonitoringSpanExporter, encode, Writer };

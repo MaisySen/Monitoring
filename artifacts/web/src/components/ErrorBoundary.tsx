@@ -7,7 +7,7 @@ export class ErrorBoundary extends Component<{ children: ReactNode; resetKey?: s
     return { error };
   }
   componentDidCatch(error: Error, info: ErrorInfo) {
-    console.error("DataCat view crashed:", error, info.componentStack);
+    console.error("Monitoring view crashed:", error, info.componentStack);
     this.setState({ stack: (info.componentStack ?? "").trim().split("\n").slice(0, 12).join("\n") });
   }
   componentDidUpdate(prev: { resetKey?: string }) {

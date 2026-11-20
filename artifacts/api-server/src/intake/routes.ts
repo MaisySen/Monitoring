@@ -11,9 +11,9 @@ import { isStorageError } from "../lib/http";
 import { pool } from "@workspace/db";
 
 const router: Router = Router();
-// Request bodies are capped (compressed size; DATACAT_MAX_BODY_MB, default 16 MB, like the OTel Collector's 20 MiB),
+// Request bodies are capped (compressed size; MONITORING_MAX_BODY_MB, default 16 MB, like the OTel Collector's 20 MiB),
 // and decompressed size is capped separately in decode.ts.
-const MAX_BODY_BYTES = Number(process.env.DATACAT_MAX_BODY_MB ?? 16) * 1024 * 1024;
+const MAX_BODY_BYTES = Number(process.env.MONITORING_MAX_BODY_MB ?? 16) * 1024 * 1024;
 // Read the body as-is (agents send gzip/deflate/zstd + protobuf); decompression happens in decode.ts.
 export function raw(req: Request, res: Response, next: NextFunction) {
   const chunks: Buffer[] = [];
@@ -21,7 +21,7 @@ export function raw(req: Request, res: Response, next: NextFunction) {
   req.on("data", (c: Buffer) => {
     size += c.length;
     if (size > MAX_BODY_BYTES) {
-      if (!res.headersSent) res.status(413).json({ errors: [`Payload too large (limit ${MAX_BODY_BYTES >> 20} MB; DATACAT_MAX_BODY_MB)`], status: "error" });
+      if (!res.headersSent) res.status(413).json({ errors: [`Payload too large (limit ${MAX_BODY_BYTES >> 20} MB; MONITORING_MAX_BODY_MB)`], status: "error" });
       req.removeAllListeners("data");
       req.resume();
       chunks.length = 0;

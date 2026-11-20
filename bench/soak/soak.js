@@ -25,7 +25,7 @@ const PASSWORD = env.password();
 const DC = env.url();
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const sh = (c, t = 120000) => { try { return execSync(c, { encoding: 'utf8', timeout: t, stdio: ['ignore', 'pipe', 'pipe'] }).trim(); } catch { return ''; } };
-const psql = (q, t) => sh(`PGPASSWORD=datacat psql -h localhost -U datacat datacat -tAc "${q.replace(/"/g, '\\"')}"`, t);
+const psql = (q, t) => sh(`PGPASSWORD=monitoring psql -h localhost -U monitoring monitoring -tAc "${q.replace(/"/g, '\\"')}"`, t);
 const append = (f, o) => fs.appendFileSync(path.join(OUT, f), JSON.stringify(o) + '\n');
 const TICK = Number(sh('getconf CLK_TCK')) || 100;
 
@@ -60,7 +60,7 @@ function sample(extra = {}) {
   const stale = psql("select coalesce(max(extract(epoch from now())*1000 - last_evaluated_at),0)::bigint from monitors where name like 'soak %'");
   const s = { t: new Date(now).toISOString(), elapsed_min: Math.round((now - t0) / 60000),
     server_rss_mb: Math.round(rssMb(server)), pg_rss_mb: Math.round(rssMb(pg)),
-    db_size_mb: Math.round(Number(psql("select pg_database_size('datacat')")) / 1048576),
+    db_size_mb: Math.round(Number(psql("select pg_database_size('monitoring')")) / 1048576),
     monitor_eval_staleness_s: Math.round(Number(stale) / 1000), rows_inserted_total: Number(ins), ...extra };
   if (prev) {
     const dt = (now - prev.now) / 1000;
@@ -75,7 +75,7 @@ function sample(extra = {}) {
 
 function loadgen(run, tps, seconds) {
   const p = spawn('node', [path.join(__dirname, '..', 'scale', 'loadgen.js')], {
-    env: { ...process.env, DATACAT_API_KEY: KEY, RUN: run, TRACES_PER_S: String(tps), SECONDS: String(seconds), CONCURRENCY: '8' }, stdio: ['ignore', 'pipe', 'pipe'],
+    env: { ...process.env, MONITORING_API_KEY: KEY, RUN: run, TRACES_PER_S: String(tps), SECONDS: String(seconds), CONCURRENCY: '8' }, stdio: ['ignore', 'pipe', 'pipe'],
   });
   let final = '', lastStat = null;
   p.stdout.on('data', (d) => (final += d));

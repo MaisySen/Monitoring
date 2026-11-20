@@ -11,7 +11,7 @@ def _instrument(kind, name):
     with _lock:
         key = (kind, name)
         if key not in _instruments:
-            meter = otel_metrics.get_meter("datacat", "0.1.0")
+            meter = otel_metrics.get_meter("monitoring", "0.1.0")
             factory = {"counter": meter.create_counter, "gauge": meter.create_gauge,
                        "histogram": meter.create_histogram}[kind]
             _instruments[key] = factory(name)

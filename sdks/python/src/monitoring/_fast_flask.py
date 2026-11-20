@@ -1,10 +1,10 @@
-"""Lean Flask server tracing (default; DATACAT_FAST_FLASK=false restores OpenTelemetry's Flask instrumentation).
+"""Lean Flask server tracing (default; MONITORING_FAST_FLASK=false restores OpenTelemetry's Flask instrumentation).
 
 OpenTelemetry's Flask instrumentation is generic: it runs the global propagators (trace context and baggage), collects
 a large set of semantic-convention request attributes, records request duration and active-request metrics, and
 wraps several Flask hooks. In profiles of a small Flask service it was the biggest single source of tracing CPU.
 
-DataCat's backend needs one server span per request with the method, route, path and status (it derives request
+Monitoring's backend needs one server span per request with the method, route, path and status (it derives request
 counts, errors and latency metrics from spans at ingest). This module creates exactly that with the OpenTelemetry
 SDK, continuing W3C ``traceparent`` context from the caller, so child spans (database queries, outgoing HTTP calls)
 and log correlation work as before.
@@ -74,7 +74,7 @@ def patch_flask():
         import flask
     except ImportError:
         return False
-    tracer = trace.get_tracer("datacat.flask")
+    tracer = trace.get_tracer("monitoring.flask")
     original_wsgi_app = flask.Flask.wsgi_app
     original_dispatch = flask.Flask.dispatch_request
 

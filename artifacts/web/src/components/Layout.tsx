@@ -210,9 +210,9 @@ export function Layout({ children }: { children: ReactNode }) {
   return (
     <div className="flex h-full bg-nav">
       <nav className="w-[200px] shrink-0 bg-nav text-white flex flex-col relative z-30" onMouseLeave={() => setHover(null)}>
-        <Link href="/" className="flex flex-col items-center justify-center pt-4 pb-3 gap-1" aria-label="DataCat home">
+        <Link href="/" className="flex flex-col items-center justify-center pt-4 pb-3 gap-1" aria-label="Monitoring home">
           <CatMark size={54} />
-          <span className="text-[15px] font-extrabold tracking-[0.12em]">DATACAT</span>
+          <span className="text-[15px] font-extrabold tracking-[0.12em]">MONITORING</span>
         </Link>
         <div className="flex-1 flex flex-col gap-3 pt-1">
           {NAV_GROUPS.map((g, gi) => (
@@ -265,7 +265,7 @@ export function Layout({ children }: { children: ReactNode }) {
             className="absolute left-1/2 -translate-x-1/2 w-[340px] h-[26px] rounded-[3px] bg-white/[0.12] hover:bg-white/[0.17] text-white/70 text-[12px] flex items-center gap-2 px-2.5"
             data-testid="global-search"
           >
-            <Search size={13} /> <span className="flex-1 text-left">Search DataCat</span>
+            <Search size={13} /> <span className="flex-1 text-left">Search Monitoring</span>
             <kbd className="text-[10px] text-white/60">⌘ K</kbd>
           </button>
           {user && (

@@ -1,5 +1,5 @@
 import unittest
-from datacat.config import configuration, tags
+from monitoring.config import configuration, tags
 
 
 class ConfigTests(unittest.TestCase):
@@ -10,12 +10,12 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(c["attributes"]["service.version"], "2")
         self.assertEqual(c["attributes"]["deployment.environment"], "qa")
         self.assertEqual(c["attributes"]["team"], "core")
-        self.assertEqual(c["attributes"]["telemetry.distro.name"], "datacat")
+        self.assertEqual(c["attributes"]["telemetry.distro.name"], "monitoring")
 
     def test_agentless_and_precedence(self):
         c = configuration({"service": "direct"}, {
-            "DATACAT_URL": "https://example.test/", "DATACAT_API_KEY": "test-only",
-            "DATACAT_SERVICE": "native", "OTEL_SERVICE_NAME": "otel", "DD_SERVICE": "legacy",
+            "MONITORING_URL": "https://example.test/", "MONITORING_API_KEY": "test-only",
+            "MONITORING_SERVICE": "native", "OTEL_SERVICE_NAME": "otel", "DD_SERVICE": "legacy",
             "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT": "http://ignored",
         })
         self.assertEqual(c["attributes"]["service.name"], "direct")
@@ -27,7 +27,7 @@ class ConfigTests(unittest.TestCase):
             "OTEL_EXPORTER_OTLP_ENDPOINT": "http://collector:4318/",
             "OTEL_EXPORTER_OTLP_LOGS_ENDPOINT": "http://logs/v1/logs",
             "OTEL_RESOURCE_ATTRIBUTES": "service.name=otel,service.version=3,deployment.environment=dev",
-            "DATACAT_LOGS_INJECTION": "false",
+            "MONITORING_LOGS_INJECTION": "false",
         })
         self.assertEqual(c["endpoints"]["metrics"], "http://collector:4318/v1/metrics")
         self.assertEqual(c["endpoints"]["logs"], "http://logs/v1/logs")
@@ -40,9 +40,9 @@ class ConfigTests(unittest.TestCase):
 
     def test_invalid(self):
         with self.assertRaisesRegex(ValueError, "API_KEY"):
-            configuration(environ={"DATACAT_URL": "https://example.test"})
+            configuration(environ={"MONITORING_URL": "https://example.test"})
         with self.assertRaisesRegex(ValueError, "between"):
-            configuration(environ={"DATACAT_SAMPLE_RATE": "2"})
+            configuration(environ={"MONITORING_SAMPLE_RATE": "2"})
 
 if __name__ == "__main__":
     unittest.main()

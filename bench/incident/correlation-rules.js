@@ -4,7 +4,7 @@
 //   new       v1 runs up to the window, v2 appears in the window                  -> "version v2 first seen"
 //   rollback  v1 runs, v2 runs, then v1 again up to the window, v2 in the window   -> "version v2 returned"
 //   canary    v1 and v2 both run up to the window, both continue                  -> no version change reported
-// usage: node correlation-rules.js > correlation-rules.json   (needs DATACAT_EMAIL/DATACAT_PASSWORD and DATACAT_API_KEY)
+// usage: node correlation-rules.js > correlation-rules.json   (needs MONITORING_EMAIL/MONITORING_PASSWORD and MONITORING_API_KEY)
 const fs = require('fs');
 const crypto = require('crypto');
 const env = require('../lib/env');

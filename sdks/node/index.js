@@ -7,7 +7,7 @@ let shutdownPromise;
 let timer;
 let loopDelay;
 const instruments = new Map();
-const meter = () => api.metrics.getMeter('@datacat/trace', '0.1.0');
+const meter = () => api.metrics.getMeter('@monitoring/trace', '0.1.0');
 function instrument(kind, name) {
   const key = `${kind}:${name}`;
   if (!instruments.has(key)) {
@@ -30,7 +30,7 @@ const tracer = {
     if (typeof fn !== 'function') throw new TypeError('tracer.trace requires a callback');
     const attributes = tags(options.tags);
     if (options.resource) attributes['resource.name'] = options.resource;
-    return api.trace.getTracer('@datacat/trace', '0.1.0').startActiveSpan(name, { attributes }, span => {
+    return api.trace.getTracer('@monitoring/trace', '0.1.0').startActiveSpan(name, { attributes }, span => {
       // Familiar helpers without changing native OTel semantics.
       span.setTag = (key, value) => span.setAttribute(key, value);
       const fail = error => {
@@ -51,7 +51,7 @@ const tracer = {
 
 function init(options = {}) {
   if (sdk) return module.exports;
-  // Flush spans and logs every 500 ms (the OTel default is 5 s) so data shows up in DataCat quickly.
+  // Flush spans and logs every 500 ms (the OTel default is 5 s) so data shows up in Monitoring quickly.
   process.env.OTEL_BSP_SCHEDULE_DELAY ??= '500';
   process.env.OTEL_BLRP_SCHEDULE_DELAY ??= '500';
   // Bigger batches mean fewer exports per second; a bigger queue avoids dropping spans under bursts.
@@ -62,7 +62,7 @@ function init(options = {}) {
   const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumentations-node');
   const { resourceFromAttributes, defaultResource, processDetector, hostDetector, osDetector } = require('@opentelemetry/resources');
   const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-proto');
-  const { DataCatSpanExporter } = require('./lib/span-exporter');
+  const { MonitoringSpanExporter } = require('./lib/span-exporter');
   const { AsyncLocalStorageContextManager } = require('@opentelemetry/context-async-hooks');
   const contextManager = new AsyncLocalStorageContextManager();
   const { OTLPMetricExporter } = require('@opentelemetry/exporter-metrics-otlp-proto');
@@ -85,8 +85,8 @@ function init(options = {}) {
     contextManager,
     resource: defaultResource().merge(resourceFromAttributes(c.attributes)),
     resourceDetectors: [processDetector, hostDetector, osDetector, { detect: () => resourceFromAttributes(c.attributes) }],
-    // DataCat's single-pass OTLP encoder (DATACAT_EXPORTER=otel switches back to the stock exporter).
-    traceExporter: c.exporter === 'otel' ? new OTLPTraceExporter(exporter('traces')) : new DataCatSpanExporter(exporter('traces')),
+    // Monitoring's single-pass OTLP encoder (MONITORING_EXPORTER=otel switches back to the stock exporter).
+    traceExporter: c.exporter === 'otel' ? new OTLPTraceExporter(exporter('traces')) : new MonitoringSpanExporter(exporter('traces')),
     sampler: c.sampleRateOverride ? new ParentBasedSampler({ root: new TraceIdRatioBasedSampler(c.sampleRate) }) : undefined,
     metricReaders: [new PeriodicExportingMetricReader({
       exporter: new OTLPMetricExporter({ ...exporter('metrics'), temporalityPreference: AggregationTemporality.DELTA }),
@@ -95,16 +95,16 @@ function init(options = {}) {
     // sdk-logs 3.x takes an options object
     logRecordProcessors: c.logShipping ? [new BatchLogRecordProcessor({ exporter: new OTLPLogExporter(exporter('logs')) })] : [],
     instrumentations: [getNodeAutoInstrumentations({
-      // Low-value, high-volume spans are off by default (DATACAT_TRACE_NETWORK=true turns them on).
+      // Low-value, high-volume spans are off by default (MONITORING_TRACE_NETWORK=true turns them on).
       '@opentelemetry/instrumentation-fs': { enabled: false },
       '@opentelemetry/instrumentation-dns': { enabled: c.traceNetwork },
-      // Incoming requests are traced by DataCat's lean diagnostics_channel tracer (lib/http-server.js);
-      // DATACAT_FAST_HTTP=false switches back to the stock instrumentation. Outgoing requests stay here.
+      // Incoming requests are traced by Monitoring's lean diagnostics_channel tracer (lib/http-server.js);
+      // MONITORING_FAST_HTTP=false switches back to the stock instrumentation. Outgoing requests stay here.
       '@opentelemetry/instrumentation-http': { disableIncomingRequestInstrumentation: c.fastHttp },
       // Express 5 runs on the 'router' package; the express instrumentation already covers its layers,
       // so the router instrumentation would only add duplicate spans.
       '@opentelemetry/instrumentation-router': { enabled: c.traceRouter },
-      // Middleware layers are opt-in (DATACAT_TRACE_MIDDLEWARE=true); route handlers are always traced.
+      // Middleware layers are opt-in (MONITORING_TRACE_MIDDLEWARE=true); route handlers are always traced.
       '@opentelemetry/instrumentation-express': { ignoreLayersType: [...(c.traceMiddleware ? [] : ['middleware', 'router']), ...(c.traceHandlers ? [] : ['request_handler'])] },
       '@opentelemetry/instrumentation-net': { enabled: c.traceNetwork },
       '@opentelemetry/instrumentation-pg': { ignoreConnectSpans: !c.traceDbConnect },
@@ -116,7 +116,7 @@ function init(options = {}) {
   });
   sdk.start();
   if (c.fastHttp) require('./lib/http-server').install({ contextManager, ignorePaths: c.ignorePaths });
-  // DataCat derives request rate, errors and latency from spans on the server, so the HTTP
+  // Monitoring derives request rate, errors and latency from spans on the server, so the HTTP
   // instrumentations do not need to record their own per-request histograms in-process.
   if (!c.httpMetrics) {
     const noopMeterProvider = { getMeter: () => api.createNoopMeter() };
@@ -134,11 +134,11 @@ function init(options = {}) {
     }, 1000);
     timer.unref();
   }
-  process.once('beforeExit', () => { shutdown().catch(error => console.error('DataCat shutdown failed:', error.message)); });
+  process.once('beforeExit', () => { shutdown().catch(error => console.error('Monitoring shutdown failed:', error.message)); });
   if (c.handleSignals) {
     // A process stopped by a signal never reaches beforeExit, so the last batch of spans/logs and up to one metric
     // interval would be lost. Flush (at most 2 s), then: if the app has its own handler for the signal, leave the exit
-    // to it; otherwise re-raise the signal so the process exits exactly as it would without DataCat.
+    // to it; otherwise re-raise the signal so the process exits exactly as it would without Monitoring.
     for (const sig of ['SIGTERM', 'SIGINT']) {
       const onSignal = () => {
         const appHandles = process.listenerCount(sig) > 0;

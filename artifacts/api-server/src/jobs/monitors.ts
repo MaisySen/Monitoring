@@ -537,8 +537,8 @@ export function startMonitorLoop() {
 
 /** Drop telemetry older than the retention window so the database stays small. */
 export function startRetentionLoop() {
-  const days = Number(process.env.DATACAT_RETENTION_DAYS ?? process.env.RETENTION_DAYS ?? 15);
-  if (!Number.isFinite(days) || days <= 0) throw new Error("DATACAT_RETENTION_DAYS must be a positive number");
+  const days = Number(process.env.MONITORING_RETENTION_DAYS ?? process.env.RETENTION_DAYS ?? 15);
+  if (!Number.isFinite(days) || days <= 0) throw new Error("MONITORING_RETENTION_DAYS must be a positive number");
   // ClickHouse enforces retention itself with table TTLs (lib/ch.ts), dropping whole expired partitions.
   if (useClickHouse) return;
   const run = async () => {

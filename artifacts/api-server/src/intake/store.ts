@@ -3,8 +3,8 @@ import { redactLog, redactSpan } from "./redact";
 
 // Size limits applied before storage (span tag values are truncated at 25,000 characters and large
 // log messages are truncated). Keeps one oversized record from bloating the database or the UI.
-const MAX_MESSAGE = Number(process.env.DATACAT_MAX_LOG_MESSAGE_CHARS ?? 262_144);
-const MAX_VALUE = Number(process.env.DATACAT_MAX_ATTRIBUTE_CHARS ?? 25_000);
+const MAX_MESSAGE = Number(process.env.MONITORING_MAX_LOG_MESSAGE_CHARS ?? 262_144);
+const MAX_VALUE = Number(process.env.MONITORING_MAX_ATTRIBUTE_CHARS ?? 25_000);
 const MAX_ATTRS = 500;
 const cut = (v: string, n: number) => (v.length > n ? v.slice(0, n) + "…[truncated]" : v);
 function limitValues(o: Record<string, any> | undefined, depth = 0): Record<string, any> | undefined {
@@ -249,7 +249,7 @@ async function recordHostServices(orgId: number, spans: { host: string; service:
 }
 
 // integrations seen per host (metric namespace, e.g. postgresql.*, redis.*), recorded once per new namespace
-const IGNORED_APPS = new Set(["system", "trace", "service_check", "datadog", "datacat", "runtime", "otelcol"]);
+const IGNORED_APPS = new Set(["system", "trace", "service_check", "datadog", "monitoring", "runtime", "otelcol"]);
 const hostApps = new Map<string, Set<string>>();
 function newApps(orgId: number, series: PointIn[]): Map<string, string[]> {
   const out = new Map<string, string[]>();

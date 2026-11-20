@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Alert reliability test. Drives monitors with metrics whose values this script controls (sent straight to DataCat's
+// Alert reliability test. Drives monitors with metrics whose values this script controls (sent straight to Monitoring's
 // series API) and checks every notification that reaches the local webhook receiver (webhook-receiver.js on :5400).
 //
 //   node alerts.js > alerts-results.json
@@ -27,7 +27,7 @@ const DC = env.url();
 const EMAIL = env.email();
 const PASSWORD = env.password();
 const API_KEY = env.apiKey();
-const HOOKS = process.env.HOOK_FILE || path.join(require('os').tmpdir(), 'datacat-webhooks.jsonl');
+const HOOKS = process.env.HOOK_FILE || path.join(require('os').tmpdir(), 'monitoring-webhooks.jsonl');
 const RUN = process.env.RUN || Math.random().toString(36).slice(2, 7);
 const M = (k) => `alerttest.${RUN}.${k}`;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));

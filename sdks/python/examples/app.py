@@ -1,22 +1,22 @@
-"""Run with datacat-run python examples/app.py, then GET /work."""
+"""Run with monitoring-run python examples/app.py, then GET /work."""
 import logging
 import os
 from flask import Flask
-from datacat import tracer, metrics, shutdown
+from monitoring import tracer, metrics, shutdown
 
 logging.basicConfig(level=logging.INFO)
 logging.getLogger().setLevel(logging.INFO)
-logger = logging.getLogger("datacat.example")
+logger = logging.getLogger("monitoring.example")
 app = Flask(__name__)
 
 
 @app.get("/work")
 def work():
     with tracer.trace("example.work", resource="example", tags={"component": "example"}):
-        metrics.increment("datacat.example.python.requests", tags={"route": "work"})
-        metrics.gauge("datacat.example.python.queue", 2)
-        metrics.histogram("datacat.example.python.duration", 12)
-        logger.info("DataCat Python example request")
+        metrics.increment("monitoring.example.python.requests", tags={"route": "work"})
+        metrics.gauge("monitoring.example.python.queue", 2)
+        metrics.histogram("monitoring.example.python.duration", 12)
+        logger.info("Monitoring Python example request")
     return {"ok": True}
 
 

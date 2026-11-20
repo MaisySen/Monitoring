@@ -165,7 +165,7 @@ def _span(span) -> bytes:
     return b"".join(parts)
 
 
-_YIELD_EVERY = int(os.environ.get("DATACAT_EXPORT_YIELD_EVERY", "32"))
+_YIELD_EVERY = int(os.environ.get("MONITORING_EXPORT_YIELD_EVERY", "32"))
 
 
 def encode_spans(spans: Sequence) -> bytes:
@@ -201,7 +201,7 @@ def encode_spans(spans: Sequence) -> bytes:
 _RETRYABLE_STATUS = {408, 429, 502, 503, 504}
 
 
-class DataCatSpanExporter(SpanExporter):
+class MonitoringSpanExporter(SpanExporter):
     def __init__(self, endpoint: str, headers: Optional[Dict[str, str]] = None, timeout: float = 10.0, compression: Optional[str] = None):
         u = urlparse(endpoint)
         self._https = u.scheme == "https"
@@ -216,7 +216,7 @@ class DataCatSpanExporter(SpanExporter):
         self._conn = None
         self._lock = threading.Lock()
         self._shutdown = False
-        self._retry_seconds = float(os.environ.get("DATACAT_EXPORT_RETRY_SECONDS", "30"))
+        self._retry_seconds = float(os.environ.get("MONITORING_EXPORT_RETRY_SECONDS", "30"))
 
     def _connection(self):
         if self._conn is None:
@@ -230,13 +230,13 @@ class DataCatSpanExporter(SpanExporter):
         try:
             body = encode_spans(spans)
         except Exception:  # never break the app because of telemetry
-            _log.exception("DataCat: failed to encode spans")
+            _log.exception("Monitoring: failed to encode spans")
             return SpanExportResult.FAILURE
         if self._gzip:
             body = gzip.compress(body, 1)
         # The agent restarting or a brief network failure must not drop the batch: retry network errors and
         # 408/429/502/503/504 with exponential backoff (0.25 s .. 5 s, honouring Retry-After) for up to
-        # DATACAT_EXPORT_RETRY_SECONDS (default 30). Retries stop once the exporter is shutting down.
+        # MONITORING_EXPORT_RETRY_SECONDS (default 30). Retries stop once the exporter is shutting down.
         deadline = time.monotonic() + self._retry_seconds
         attempt = 0
         with self._lock:
@@ -250,7 +250,7 @@ class DataCatSpanExporter(SpanExporter):
                     if 200 <= resp.status < 300:
                         return SpanExportResult.SUCCESS
                     if resp.status not in _RETRYABLE_STATUS:
-                        _log.warning("DataCat: span export failed: HTTP %s", resp.status)
+                        _log.warning("Monitoring: span export failed: HTTP %s", resp.status)
                         return SpanExportResult.FAILURE
                     try:
                         retry_after = float(resp.getheader("Retry-After") or 0)
@@ -268,7 +268,7 @@ class DataCatSpanExporter(SpanExporter):
                 delay = max(retry_after, min(5.0, 0.25 * 2 ** attempt)) * random.uniform(0.8, 1.2)
                 attempt += 1
                 if self._shutdown or time.monotonic() + delay > deadline:
-                    _log.warning("DataCat: span export failed after %d attempts: %s", attempt, error)
+                    _log.warning("Monitoring: span export failed after %d attempts: %s", attempt, error)
                     return SpanExportResult.FAILURE
                 time.sleep(delay)
 

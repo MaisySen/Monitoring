@@ -5,10 +5,10 @@ import { clearSession, createSession, getSessionId, setSessionCookie, hashPasswo
 import { getOrigin } from "../lib/config";
 import crypto from "node:crypto";
 
-// First-run setup creates the first admin and always needs the setup token: DATACAT_SETUP_TOKEN if set, otherwise a
+// First-run setup creates the first admin and always needs the setup token: MONITORING_SETUP_TOKEN if set, otherwise a
 // random one printed in the server log at startup. Network location is not trusted (behind a reverse proxy every
 // request looks local), so a server exposed to the internet cannot be claimed before its operator finishes setup.
-const configuredSetupToken = process.env.DATACAT_SETUP_TOKEN ?? "";
+const configuredSetupToken = process.env.MONITORING_SETUP_TOKEN ?? "";
 const SETUP_TOKEN = configuredSetupToken || crypto.randomBytes(18).toString("base64url");
 export const generatedSetupToken = configuredSetupToken ? null : SETUP_TOKEN;
 function setupAllowed(req: Request) {
@@ -22,7 +22,7 @@ const router: IRouter = Router();
 // Only same-origin paths: parsed against a fixed origin so "//host", "/\\host" and similar forms are refused.
 export function getSafeReturnTo(value: unknown): string {
   if (typeof value !== "string" || !value.startsWith("/")) return "/";
-  const base = "http://datacat.invalid";
+  const base = "http://monitoring.invalid";
   try {
     const u = new URL(value, base);
     return u.origin === base ? u.pathname + u.search + u.hash : "/";
@@ -122,7 +122,7 @@ async function signIn(res: Response, user: SessionData["user"]) {
 router.post("/auth/setup", async (req, res) => {
   if (!setupAllowed(req)) {
     res.status(403).json({
-      error: "Enter the setup token. It is DATACAT_SETUP_TOKEN, or the token printed in the server log at startup.",
+      error: "Enter the setup token. It is MONITORING_SETUP_TOKEN, or the token printed in the server log at startup.",
     });
     return;
   }

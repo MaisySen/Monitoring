@@ -1,6 +1,6 @@
-# DataCat large-scale test
+# Monitoring large-scale test
 
-Measured Nov 11, 2026 in one test VM (4 vCPU, 11 GB RAM). DataCat API, PostgreSQL 18, the Acme Shop demo and its DataCat Agent all ran on the same machine as the load generator, so these are single-box numbers.
+Measured Nov 11, 2026 in one test VM (4 vCPU, 11 GB RAM). Monitoring API, PostgreSQL 18, the Acme Shop demo and its Monitoring Agent all ran on the same machine as the load generator, so these are single-box numbers.
 
 ## Workload (`loadgen.js`)
 
@@ -12,7 +12,7 @@ Measured Nov 11, 2026 in one test VM (4 vCPU, 11 GB RAM). DataCat API, PostgreSQ
 | Logs | ~408 logs/s, each linked to its trace (failed requests log twice) |
 | High-cardinality metric | `scale.orders.placed` tagged with `customer.id` (20,000 values) and `plan`: 2,000 points every 10 s |
 | Duration | 10 minutes per run (~1.45 M spans, ~245 k logs, 184 k metric points) |
-| Path | OTLP/HTTP straight to DataCat's intake (protobuf traces, JSON logs and metrics), the way 200 agents would send |
+| Path | OTLP/HTTP straight to Monitoring's intake (protobuf traces, JSON logs and metrics), the way 200 agents would send |
 
 Every record carries `loadtest.run=<run>` so stored counts are checked against sent counts.
 
@@ -48,7 +48,7 @@ APM rollups for scale4 count exactly the 719,440 top-level spans stored.
 
 ## Gaps found and fixed
 
-1. **Intake stalled on high-cardinality metrics** (requests timed out). Each new series was created with its own awaited upsert, and `last_seen` was refreshed with one UPDATE per series, each waiting for a WAL flush. Fix: new series are created with one multi-row upsert per request, `last_seen` refreshes are batched into one statement, and DataCat's connections use asynchronous commit (`DATACAT_SYNCHRONOUS_COMMIT=on` restores the default; a crash can lose the last fraction of a second, never corrupt data).
+1. **Intake stalled on high-cardinality metrics** (requests timed out). Each new series was created with its own awaited upsert, and `last_seen` was refreshed with one UPDATE per series, each waiting for a WAL flush. Fix: new series are created with one multi-row upsert per request, `last_seen` refreshes are batched into one statement, and Monitoring's connections use asynchronous commit (`MONITORING_SYNCHRONOUS_COMMIT=on` restores the default; a crash can lose the last fraction of a second, never corrupt data).
 2. **APM screens scanned every raw span in the range.** Fix: per-minute rollups (`span_stats`) written at intake with a mergeable log-scale latency histogram (~2% relative error, like DDSketch), buffered in memory and flushed every 10 s, with finished minutes compacted to one row per key. Existing installs backfill rollups from stored spans on first start.
 3. **Host list scanned the last hour of spans** to list services per host, and all metric series to list integrations. Fix: a small `host_services` table and `hosts.apps`, both maintained at intake.
 4. **Trace metrics were keyed by host**, multiplying series by the number of hosts (435k series). Fix: trace metrics are keyed by service/resource/env only.

@@ -2,7 +2,7 @@
 # Run the portable benchmark kit (metrics, logs, traces) against one backend and write results/<LABEL>/*.json
 # plus a one-screen summary. Needs Node.js 20+ and nothing else.
 #
-#   TARGET=http://localhost:3000 API_KEY=... APP_KEY=... LABEL=datacat-postgres ./run-all.sh
+#   TARGET=http://localhost:3000 API_KEY=... APP_KEY=... LABEL=monitoring-postgres ./run-all.sh
 #
 # Optional: PROFILE=quick|standard|large (default standard), CONCURRENCY (default 4), OTLP_URL (traces intake if the
 # backend serves OTLP on another port, e.g. http://localhost:4318/v1/traces).

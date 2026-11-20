@@ -1,7 +1,7 @@
 {
-  "name": "@datacat/trace",
+  "name": "@monitoring/trace",
   "version": "0.1.0",
-  "description": "DataCat tracing, metrics and logs powered by OpenTelemetry",
+  "description": "Monitoring tracing, metrics and logs powered by OpenTelemetry",
   "license": "Apache-2.0",
   "main": "index.js",
   "exports": {
@@ -50,11 +50,11 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/replit/datacat.git",
+    "url": "git+https://github.com/replit/monitoring.git",
     "directory": "sdks/node"
   },
-  "homepage": "https://github.com/replit/datacat#readme",
+  "homepage": "https://github.com/replit/monitoring#readme",
   "bugs": {
-    "url": "https://github.com/replit/datacat/issues"
+    "url": "https://github.com/replit/monitoring/issues"
   }
 }

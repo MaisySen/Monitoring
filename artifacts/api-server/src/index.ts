@@ -24,16 +24,16 @@ const server = app.listen(port, (err) => {
     process.exit(1);
   }
   logger.info({ port }, "Server listening");
-  // Run several API processes against one database by giving all but one DATACAT_BACKGROUND_JOBS=false, so monitors
+  // Run several API processes against one database by giving all but one MONITORING_BACKGROUND_JOBS=false, so monitors
   // are evaluated (and notifications sent) by exactly one process.
-  if (String(process.env.DATACAT_BACKGROUND_JOBS ?? "true").toLowerCase() !== "false") {
+  if (String(process.env.MONITORING_BACKGROUND_JOBS ?? "true").toLowerCase() !== "false") {
     startMonitorLoop();
     startRetentionLoop();
     void buildBackgroundIndexes((msg, extra) => logger.info(extra ?? {}, msg));
-  } else logger.info("background jobs disabled (DATACAT_BACKGROUND_JOBS=false)");
+  } else logger.info("background jobs disabled (MONITORING_BACKGROUND_JOBS=false)");
 });
 
-// On SIGTERM/SIGINT: stop accepting connections, let requests in progress finish (up to DATACAT_SHUTDOWN_SECONDS,
+// On SIGTERM/SIGINT: stop accepting connections, let requests in progress finish (up to MONITORING_SHUTDOWN_SECONDS,
 // default 25), flush pending APM rollups, close the database pool, then exit.
 let stopping = false;
 for (const sig of ["SIGTERM", "SIGINT"] as const)
@@ -41,7 +41,7 @@ for (const sig of ["SIGTERM", "SIGINT"] as const)
     if (stopping) return;
     stopping = true;
     logger.info({ signal: sig }, "shutting down");
-    const limitMs = Math.max(1, Number(process.env.DATACAT_SHUTDOWN_SECONDS ?? 25)) * 1000;
+    const limitMs = Math.max(1, Number(process.env.MONITORING_SHUTDOWN_SECONDS ?? 25)) * 1000;
     const force = setTimeout(() => {
       logger.warn("shutdown time limit reached; exiting");
       process.exit(0);

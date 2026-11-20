@@ -1,11 +1,11 @@
 #!/bin/bash
-# Times the API calls behind DataCat's core screens (what the UI fetches) over the last hour.
+# Times the API calls behind Monitoring's core screens (what the UI fetches) over the last hour.
 # usage: query-probe.sh [label]   — prints one JSON line per endpoint with wall time in ms.
-# Logs in with DATACAT_EMAIL / DATACAT_PASSWORD (cookie jar /tmp/cj-probe).
-BASE=${DATACAT_URL:-http://localhost:3000}
+# Logs in with MONITORING_EMAIL / MONITORING_PASSWORD (cookie jar /tmp/cj-probe).
+BASE=${MONITORING_URL:-http://localhost:3000}
 LABEL=${1:-probe}
 curl -s -c /tmp/cj-probe -o /dev/null -H 'content-type: application/json' -X POST \
-  --data "{\"email\":\"${DATACAT_EMAIL:?set DATACAT_EMAIL}\",\"password\":\"${DATACAT_PASSWORD:?set DATACAT_PASSWORD}\"}" "$BASE/api/auth/login"
+  --data "{\"email\":\"${MONITORING_EMAIL:?set MONITORING_EMAIL}\",\"password\":\"${MONITORING_PASSWORD:?set MONITORING_PASSWORD}\"}" "$BASE/api/auth/login"
 NOW=$(date +%s); FROM=$((NOW-3600))
 t() { # name method path [json-body]
   local name=$1 method=$2 path=$3 body=$4 out

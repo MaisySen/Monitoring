@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Summarize one or more result folders from run-all.sh as a Markdown table.
-//   node summarize.js results/datacat-postgres results/datacat-clickhouse
+//   node summarize.js results/monitoring-postgres results/monitoring-clickhouse
 'use strict';
 const fs = require('fs'), path = require('path');
 const dirs = process.argv.slice(2);
