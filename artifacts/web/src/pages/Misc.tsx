@@ -6,7 +6,7 @@ import { api } from "@/lib/api";
 import { PageHeader, ICONS } from "@/components/Layout";
 import { TimePicker } from "@/components/TimePicker";
 import { StatusBadge, Empty } from "@/components/Panels";
-import { CatMark } from "@/components/Logo";
+import { MonitoringMark } from "@/components/Logo";
 import { useTime } from "@/lib/time";
 import { useAuthUser } from "@/lib/auth";
 import { fmtAgo, fmtTime, fmtNum, fmtDuration } from "@/lib/format";
@@ -827,7 +827,7 @@ export function Home() {
       <div className="p-6 space-y-6">
         {empty && (
           <div className="card p-6 flex items-center gap-5 bg-[#eef2fc] border-brand-100">
-            <CatMark size={48} />
+            <MonitoringMark size={48} />
             <div className="flex-1">
               <div className="section-title">Start sending data to Monitoring</div>
               <div className="text-ink-2">Add Monitoring to your code (Node.js or Python) or install the host agent. It takes about ten minutes.</div>
@@ -942,7 +942,7 @@ export function Login({ restricted, email }: { restricted?: boolean; email?: str
     <div className="min-h-full flex items-center justify-center bg-brand-900 py-8">
       <div className="bg-white rounded-lg shadow-2xl p-8 w-[400px] text-center">
         <div className="flex justify-center mb-3">
-          <CatMark size={56} />
+          <MonitoringMark size={56} />
         </div>
         <h1 className="text-[22px] font-bold mb-1">Monitoring</h1>
         <p className="text-ink-2 mb-6">Metrics, logs, traces, dashboards and alerts in one place.</p>

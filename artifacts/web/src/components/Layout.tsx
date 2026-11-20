@@ -21,7 +21,7 @@ import {
   ChevronDown,
   Check,
 } from "lucide-react";
-import { CatMark } from "./Logo";
+import { MonitoringMark } from "./Logo";
 import { useAuthUser } from "@/lib/auth";
 import { api } from "@/lib/api";
 
@@ -257,7 +257,7 @@ export function Layout({ children }: { children: ReactNode }) {
     <div className="flex h-full bg-nav">
       <nav className="w-[200px] shrink-0 bg-nav text-white flex flex-col relative z-30" onMouseLeave={() => setHover(null)}>
         <Link href="/" className="flex flex-col items-center justify-center pt-4 pb-3 gap-1" aria-label="Monitoring home">
-          <CatMark size={54} />
+          <MonitoringMark size={54} />
           <span className="text-[15px] font-extrabold tracking-[0.12em]">MONITORING</span>
         </Link>
         <OrgSwitcher />
