@@ -159,3 +159,19 @@ Working copy of the Monitoring feature build. Local only: not published anywhere
   (columns added, 3,193 rows intact) and fresh-DB unit tests still 63/63.
 - Earlier scale-run stored-count verification (run scale-1795161821) was done against memtest's older
   logs schema (tags query); unaffected: spans/logs counts matched exactly.
+
+## 2026-11-20 19:44 - Server-only resilience results (no agent binary)
+Runner bench/resilience/server-only.js (app -> server OTLP -> Postgres; does NOT cover the agent disk
+queue). 100 spans/s, 60s runs, fault at 20s. Evidence: bench/evidence/recovery/server-only-2026-11-20.json.
+- baseline: 6000/6000 spans, 3000/3000 logs, 0 duplicates.
+- server outage 15s (< 30s client retry budget): 0 spans lost, 0 dup; 51/3000 logs lost (stock OTEL log
+  exporter retries less - known upstream limitation, the Monitoring span exporter's retry fix is what
+  saved spans). Fresh data visible 1ms after recovery.
+- server outage 45s (> budget): 4050/6000 spans and 2039/3000 logs lost - BUT gen ended at 60s, 5s before
+  the server came back, so post-recovery delivery was never exercised; loss overstated by harness design.
+  Rerun queued with SECONDS=110. This measures app-side bounded loss WITHOUT the agent; the agent's disk
+  queue claim (upstream README) still needs the agent binary.
+- db_restart: runner2's run was polluted (PG restart apparently never fired; generator stopped early);
+  data discarded, clean rerun queued.
+- Harness hardening: don't await gen 'exit' (lost SIGCHLD left zombie + pending promise; sandbox-specific).
+  Poll summary line + child liveness instead, then SIGKILL the child.

@@ -89,11 +89,33 @@ async function runScenario(name) {
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   let out = '', err = '';
-  gen.stdout.on('data', (c) => (out += c));
   gen.stderr.on('data', (c) => (err += c));
-  const sentP = new Promise((resolve) => gen.on('exit', () => {
-    try { resolve(JSON.parse(out.trim().split('\n').pop())); } catch { resolve({ spans: 0, logs: 0, parse_error: out.slice(-200) }); }
-  }));
+  // Resolve when the generator prints its {"spans":..,"logs":..} summary line, then stop the child.
+  // (Waiting for a natural 'exit' is unreliable: OTEL timers can keep the process alive and a lost
+  // SIGCHLD leaves the promise pending forever.)
+  // Poll for the summary line or child death: SIGCHLD/'exit' has proven unreliable in this
+  // environment (lost notifications left a zombie child and a permanently pending promise).
+  let resolveSent;
+  const sentP = new Promise((resolve) => (resolveSent = resolve));
+  const finish = () => {
+    try { resolveSent(JSON.parse(out.trim().split('\n').pop())); } catch { resolveSent({ spans: 0, logs: 0, parse_error: out.slice(-200) }); }
+  };
+  gen.stdout.on('data', (c) => {
+    out += c;
+    const line = out.trim().split('\n').pop();
+    try {
+      const j = JSON.parse(line);
+      if (typeof j.spans === 'number') resolveSent(j);
+    } catch {}
+  });
+  const childWatch = setInterval(() => {
+    if (!gen.pid) return;
+    try { process.kill(gen.pid, 0); } catch { clearInterval(childWatch); finish(); }
+  }, 1000);
+  sentP.then(() => {
+    clearInterval(childWatch);
+    setTimeout(() => { try { gen.kill('SIGKILL'); } catch {} }, 500).unref();
+  });
 
   await sleep(FAULT_AT * 1000);
   const faultStart = Date.now();
@@ -122,6 +144,7 @@ async function runScenario(name) {
     if (key !== last) { last = key; counts = c; stableSince = Date.now(); }
     else if (Date.now() - stableSince > 20000) break;
     if (counts.spans_unique >= sent.spans && counts.logs_unique >= sent.logs && Date.now() - stableSince > 5000) break;
+    process.stderr.write(`  ${name}: stored ${counts.spans_unique}/${sent.spans} spans ${counts.logs_unique}/${sent.logs} logs\n`);
     await sleep(2000);
   }
 
