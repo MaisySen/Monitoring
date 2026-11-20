@@ -1,8 +1,8 @@
 {
-  "run": "psx1",
+  "run": "up1",
   "server": "http://127.0.0.1:4730",
-  "passed": 17,
-  "total": 17,
+  "passed": 18,
+  "total": 18,
   "results": [
     {
       "area": "isolation",
@@ -62,6 +62,13 @@
     },
     {
       "area": "isolation",
+      "name": "uptime checks: B cannot list, mutate, probe or set status on A's checks",
+      "expected": "refused + intact",
+      "actual": "refused + intact",
+      "pass": true
+    },
+    {
+      "area": "isolation",
       "name": "cross-org access by id (monitor GET/PUT/DELETE, dashboard GET/DELETE, channel DELETE, key revoke)",
       "expected": "all refused, nothing changed",
       "actual": "all refused, nothing changed",
@@ -70,8 +77,8 @@
     {
       "area": "isolation",
       "name": "org override headers ignored: B's key writes only into B",
-      "expected": "3",
-      "actual": "3",
+      "expected": "5",
+      "actual": "5",
       "pass": true
     },
     {
@@ -85,7 +92,7 @@
       "area": "revocation",
       "name": "new key accepted, then refused right after revocation (OTLP and Agent intake)",
       "expected": "2xx then 403/401",
-      "actual": "200 then 403/403 after 7 ms",
+      "actual": "200 then 403/403 after 6 ms",
       "pass": true
     },
     {
@@ -99,7 +106,7 @@
       "area": "malformed",
       "name": "server memory bounded after the malformed payloads (incl. 60 MB body and gzip bomb)",
       "expected": "< +300 MB",
-      "actual": "129 -> 220 MB",
+      "actual": "111 -> 204 MB",
       "pass": true
     },
     {
