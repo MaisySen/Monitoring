@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link, useLocation } from "wouter";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   LayoutDashboard,
   Server,
@@ -17,6 +17,9 @@ import {
   UserPlus,
   LifeBuoy,
   PlugZap,
+  Building2,
+  ChevronDown,
+  Check,
 } from "lucide-react";
 import { CatMark } from "./Logo";
 import { useAuthUser } from "@/lib/auth";
@@ -190,6 +193,49 @@ function CommandPalette({ open, onClose }: { open: boolean; onClose: () => void 
   );
 }
 
+/** Active organization name; opens a menu to switch between the user's organizations. */
+function OrgSwitcher() {
+  const { user, orgs } = useAuthUser();
+  const [open, setOpen] = useState(false);
+  const qc = useQueryClient();
+  if (!user || orgs.length === 0) return null;
+  const select = async (orgId: number) => {
+    setOpen(false);
+    if (orgId === user.orgId) return;
+    await api("/ui/org/select", { body: { orgId } });
+    await qc.invalidateQueries();
+  };
+  return (
+    <div className="relative mx-2 mb-1">
+      <button
+        className="w-full flex items-center gap-2 px-2.5 h-[30px] rounded-[3px] text-[13px] text-white/85 bg-white/[0.07] hover:bg-white/[0.12]"
+        onClick={() => setOpen((o) => !o)}
+        data-testid="org-switcher"
+      >
+        <Building2 size={14} className="shrink-0" />
+        <span className="flex-1 truncate text-left">{user.orgName}</span>
+        <ChevronDown size={13} className="shrink-0 text-white/60" />
+      </button>
+      {open && (
+        <div className="absolute left-0 right-0 top-[34px] z-50 rounded-md bg-white text-ink shadow-2xl py-1 max-h-64 overflow-auto">
+          {orgs.map((o) => (
+            <button
+              key={o.orgId}
+              onClick={() => select(o.orgId)}
+              className="w-full flex items-center gap-2 px-3 h-8 text-left text-[13px] hover:bg-[#eef2fc]"
+              data-testid={`org-option-${o.orgId}`}
+            >
+              <span className="w-4 shrink-0">{o.orgId === user.orgId && <Check size={13} className="text-primary" />}</span>
+              <span className="flex-1 truncate">{o.orgName}</span>
+              <span className="text-[11px] text-ink-3 capitalize">{o.role}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function Layout({ children }: { children: ReactNode }) {
   const [loc] = useLocation();
   const [hover, setHover] = useState<string | null>(null);
@@ -214,6 +260,7 @@ export function Layout({ children }: { children: ReactNode }) {
           <CatMark size={54} />
           <span className="text-[15px] font-extrabold tracking-[0.12em]">MONITORING</span>
         </Link>
+        <OrgSwitcher />
         <div className="flex-1 flex flex-col gap-3 pt-1">
           {NAV_GROUPS.map((g, gi) => (
             <div key={gi} className="flex flex-col gap-px">

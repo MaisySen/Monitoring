@@ -2,7 +2,8 @@ import { pool } from "@workspace/db";
 
 // Additive, versioned bootstrap for both a clean database and existing installations.
 // Never use destructive schema push in production. Add future migrations to this array.
-const migrations = [
+// Exported so tests can apply or replay individual versions against scratch databases.
+export const migrations = [
   `
 CREATE TABLE IF NOT EXISTS sessions (sid varchar PRIMARY KEY, sess jsonb NOT NULL, expire timestamp NOT NULL);
 CREATE INDEX IF NOT EXISTS "IDX_session_expire" ON sessions(expire);
@@ -91,6 +92,18 @@ CREATE INDEX IF NOT EXISTS notification_log_retry ON notification_log(next_attem
   // 3: weighted distribution points (Datadog Agent sketches store each bin as one value with its count); NULL means 1
   `
 ALTER TABLE metric_points ADD COLUMN IF NOT EXISTS weight double precision;
+`,
+  // 4: multi-organization membership. Existing single-org users are backfilled from users.org_id/role; those
+  // columns stay (unused) so a rollback keeps the old behavior.
+  `
+CREATE TABLE IF NOT EXISTS org_memberships (
+ user_id varchar NOT NULL, org_id integer NOT NULL, role text NOT NULL DEFAULT 'member',
+ created_at timestamptz NOT NULL DEFAULT now(), PRIMARY KEY (user_id, org_id)
+);
+CREATE INDEX IF NOT EXISTS org_memberships_org ON org_memberships(org_id);
+INSERT INTO org_memberships (user_id, org_id, role)
+ SELECT id, org_id, role FROM users WHERE org_id IS NOT NULL
+ ON CONFLICT (user_id, org_id) DO NOTHING;
 `,
 ];
 

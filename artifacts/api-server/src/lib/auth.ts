@@ -19,6 +19,8 @@ export interface AuthUser {
 export interface SessionData {
   user: AuthUser;
   kind?: "local";
+  /** The organization the user is currently working in; must be one of their memberships. */
+  activeOrgId?: number;
 }
 
 export async function createSession(data: SessionData): Promise<string> {

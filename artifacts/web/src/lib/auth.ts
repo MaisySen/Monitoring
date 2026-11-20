@@ -10,6 +10,12 @@ export interface Me {
   orgName: string;
   role: string;
 }
+export interface OrgInfo {
+  orgId: number;
+  orgName: string;
+  role: string;
+}
+
 export function useAuthUser() {
   const q = useQuery({
     queryKey: ["auth"],
@@ -21,12 +27,15 @@ export function useAuthUser() {
         email: string | null;
         setupRequired: boolean;
         setupTokenRequired?: boolean;
+        orgs?: OrgInfo[];
+        activeOrgId?: number | null;
       }>("/auth/user"),
     staleTime: 60_000,
   });
   return {
     ...q,
     user: q.data?.user ?? null,
+    orgs: q.data?.orgs ?? [],
     logout: () => (window.location.href = "/api/logout?returnTo=/"),
   };
 }

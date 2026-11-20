@@ -6,6 +6,15 @@ export const orgsTable = pgTable("orgs", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+// A user can belong to many organizations; role is per organization. Authorization reads this table only
+// (users.org_id/users.role are legacy columns kept for rollback; migration 4 backfills this table from them).
+export const orgMembershipsTable = pgTable("org_memberships", {
+  userId: varchar("user_id").notNull(),
+  orgId: integer("org_id").notNull(),
+  role: text("role").notNull().default("member"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const invitesTable = pgTable("invites", {
   id: serial("id").primaryKey(),
   email: varchar("email").notNull(),

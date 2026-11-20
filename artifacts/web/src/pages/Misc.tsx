@@ -80,6 +80,101 @@ function KeyCell({ k }: { k: string }) {
   );
 }
 
+/** Lists the signed-in user's organizations and offers create / join-with-invite. Switching lives in the sidebar. */
+function OrganizationsPanel({
+  createOrg,
+  newOrgName,
+  setNewOrgName,
+  joinOrg,
+  joinToken,
+  setJoinToken,
+  err,
+}: {
+  createOrg: any;
+  newOrgName: string;
+  setNewOrgName: (v: string) => void;
+  joinOrg: any;
+  joinToken: string;
+  setJoinToken: (v: string) => void;
+  err: string | null;
+}) {
+  const { user, orgs } = useAuthUser();
+  return (
+    <div className="space-y-6 max-w-xl">
+      <div>
+        <div className="section-title mb-2">Your organizations</div>
+        <table className="tbl card">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Your role</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {orgs.map((o) => (
+              <tr key={o.orgId}>
+                <td>{o.orgName}</td>
+                <td className="capitalize">{o.role}</td>
+                <td className="text-ink-2 text-xs">{o.orgId === user?.orgId ? "active" : ""}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <p className="text-xs text-ink-3 mt-2">Switch between organizations from the menu under the Monitoring logo.</p>
+      </div>
+      <div>
+        <div className="section-title mb-2">Create an organization</div>
+        <form
+          className="flex gap-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            createOrg.mutate();
+          }}
+        >
+          <input
+            className="input flex-1"
+            placeholder="Organization name"
+            maxLength={150}
+            value={newOrgName}
+            onChange={(e) => setNewOrgName(e.target.value)}
+            data-testid="new-org-name"
+          />
+          <button className="btn-primary" disabled={createOrg.isPending || !newOrgName.trim()} data-testid="create-org">
+            Create
+          </button>
+        </form>
+      </div>
+      <div>
+        <div className="section-title mb-2">Join with an invite</div>
+        <form
+          className="flex gap-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            joinOrg.mutate();
+          }}
+        >
+          <input
+            className="input flex-1 mono"
+            placeholder="Paste an invite link or token"
+            value={joinToken}
+            onChange={(e) => setJoinToken(e.target.value)}
+            data-testid="join-token"
+          />
+          <button className="btn" disabled={joinOrg.isPending || !joinToken.trim()} data-testid="join-org">
+            Join
+          </button>
+        </form>
+      </div>
+      {err && (
+        <p role="alert" className="text-alert text-sm">
+          {err}
+        </p>
+      )}
+    </div>
+  );
+}
+
 export function OrgSettings() {
   const qc = useQueryClient();
   const params = new URLSearchParams(useSearch());
@@ -113,6 +208,37 @@ export function OrgSettings() {
     onSettled: () => setEmail(""),
   });
   const delInvite = useMutation(inv((id: number) => api(`/ui/org/invites/${id}`, { method: "DELETE" })));
+  const setRole = useMutation({
+    ...inv((v: { id: string; role: string }) => api(`/ui/org/members/${encodeURIComponent(v.id)}`, { method: "PATCH", body: { role: v.role } })),
+    onError: (e: any) => setErr(e.message),
+  });
+  const removeMember = useMutation({
+    ...inv((id: string) => api(`/ui/org/members/${encodeURIComponent(id)}`, { method: "DELETE" })),
+    onError: (e: any) => setErr(e.message),
+  });
+  const [newOrgName, setNewOrgName] = useState("");
+  const createOrg = useMutation({
+    mutationFn: () => api("/ui/orgs", { body: { name: newOrgName.trim() } }),
+    onError: (e: any) => setErr(e.message),
+    onSuccess: () => {
+      setNewOrgName("");
+      setErr(null);
+      qc.invalidateQueries({ queryKey: ["auth"] });
+    },
+  });
+  const [joinToken, setJoinToken] = useState("");
+  const joinOrg = useMutation({
+    mutationFn: () => {
+      const m = joinToken.trim().match(/(?:\/invite\/)?([A-Za-z0-9]+)$/) ?? [];
+      return api("/ui/org/invites/accept", { body: { token: m[1] ?? "" } });
+    },
+    onError: (e: any) => setErr(e.message),
+    onSuccess: () => {
+      setJoinToken("");
+      setErr(null);
+      qc.invalidateQueries({ queryKey: ["auth"] });
+    },
+  });
   const [ch, setCh] = useState({ kind: "webhook", name: "", url: "" });
   const addCh = useMutation({
     ...inv(() => api("/ui/channels", { body: ch })),
@@ -129,6 +255,7 @@ export function OrgSettings() {
     ["api-keys", "API Keys"],
     ["app-keys", "Application Keys"],
     ["users", "Users"],
+    ["organizations", "Organizations"],
     ["integrations", "Webhooks & Slack"],
     ["sample", "Sample Data"],
   ];
@@ -264,6 +391,7 @@ export function OrgSettings() {
                       <th>Email</th>
                       <th>Role</th>
                       <th>Joined</th>
+                      {isAdmin && <th></th>}
                     </tr>
                   </thead>
                   <tbody>
@@ -271,8 +399,37 @@ export function OrgSettings() {
                       <tr key={m.id}>
                         <td>{m.name || "—"}</td>
                         <td>{m.email}</td>
-                        <td className="capitalize">{m.role}</td>
+                        <td className="capitalize">
+                          {isAdmin ? (
+                            <select
+                              className="input h-7 text-xs"
+                              value={m.role}
+                              disabled={setRole.isPending}
+                              onChange={(e) => setRole.mutate({ id: m.id, role: e.target.value })}
+                              data-testid={`role-${m.email}`}
+                            >
+                              <option value="member">member</option>
+                              <option value="admin">admin</option>
+                            </select>
+                          ) : (
+                            m.role
+                          )}
+                        </td>
                         <td className="text-ink-2">{fmtAgo(new Date(m.created_at).getTime())}</td>
+                        {isAdmin && (
+                          <td>
+                            <button
+                              className="text-alert text-xs"
+                              disabled={removeMember.isPending}
+                              onClick={() => {
+                                if (window.confirm(`Remove ${m.email} from this organization?`)) removeMember.mutate(m.id);
+                              }}
+                              data-testid={`remove-${m.email}`}
+                            >
+                              Remove
+                            </button>
+                          </td>
+                        )}
                       </tr>
                     ))}
                   </tbody>
@@ -319,6 +476,17 @@ export function OrgSettings() {
                 </div>
               )}
             </div>
+          )}
+          {tab === "organizations" && (
+            <OrganizationsPanel
+              createOrg={createOrg}
+              newOrgName={newOrgName}
+              setNewOrgName={setNewOrgName}
+              joinOrg={joinOrg}
+              joinToken={joinToken}
+              setJoinToken={setJoinToken}
+              err={err}
+            />
           )}
           {tab === "sample" && (
             <div className="card p-5 max-w-2xl space-y-3">
@@ -659,6 +827,13 @@ export function Login({ restricted, email }: { restricted?: boolean; email?: str
       window.location.href = "/";
     },
   });
+  // Signed-in users joining another organization through an invite link.
+  const accept = useMutation({
+    mutationFn: () => api("/ui/org/invites/accept", { body: { token } }),
+    onSuccess: () => {
+      window.location.href = "/";
+    },
+  });
   return (
     <div className="min-h-full flex items-center justify-center bg-brand-900 py-8">
       <div className="bg-white rounded-lg shadow-2xl p-8 w-[400px] text-center">
@@ -674,7 +849,32 @@ export function Login({ restricted, email }: { restricted?: boolean; email?: str
             {invite.error.message}
           </p>
         )}
-        {restricted ? (
+        {token && data?.signedIn ? (
+          invite.data && (
+            <>
+              <p className="text-sm text-ink-2 mb-4 text-left">
+                Signed in as <b>{data.email}</b>.
+              </p>
+              {invite.data.email.toLowerCase() === (data.email ?? "").toLowerCase() ? (
+                <button className="btn-primary w-full justify-center h-10" disabled={accept.isPending} onClick={() => accept.mutate()} data-testid="accept-invite">
+                  {accept.isPending ? "Please wait…" : "Join this organization"}
+                </button>
+              ) : (
+                <div className="card bg-panel p-3 text-xs text-ink-2 mb-4 text-left">
+                  This invite is for <b>{invite.data.email}</b>. Sign in with that email address to use it, or ask your admin for an invite to <b>{data.email}</b>.
+                </div>
+              )}
+              {accept.isError && (
+                <p role="alert" className="text-alert text-sm mt-3">
+                  {accept.error.message}
+                </p>
+              )}
+              <button className="btn w-full justify-center mt-3" onClick={logout}>
+                Sign in with a different account
+              </button>
+            </>
+          )
+        ) : restricted ? (
           <>
             <div className="card bg-panel p-3 text-xs text-ink-2 mb-4 text-left">
               Monitoring is invite-only right now. <b>{email}</b> doesn't have access yet. Ask a Monitoring admin to invite you, then open the invite link.

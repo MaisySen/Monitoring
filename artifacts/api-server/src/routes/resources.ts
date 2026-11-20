@@ -1,12 +1,13 @@
 import { Router, type Request, type Response } from "express";
 import { h, HttpError, rangeOf, parseTime, pageLimit, encodeCursor, decodeCursor, nextLink } from "../lib/http";
 import crypto from "crypto";
-import { pool, db, apiKeysTable, invitesTable, usersTable, orgsTable } from "@workspace/db";
+import { pool, db, apiKeysTable, invitesTable, usersTable, orgsTable, orgMembershipsTable } from "@workspace/db";
 import { getOrigin } from "../lib/config";
 import { and, eq } from "drizzle-orm";
 import { requireOrg, requireAdmin, requireAdminOrKeys } from "../middlewares/authMiddleware";
 import { checkWebhookUrl, checkWebhookHeaders } from "../lib/safeHttp";
-import { newKey, invalidateKey } from "../lib/org";
+import { newKey, invalidateKey, listMemberships, addMembership, countOrgAdmins } from "../lib/org";
+import { getSession, getSessionId, updateSession } from "../lib/auth";
 import { evaluateMonitor, validateMonitorQuery } from "../jobs/monitors";
 import { startSampleData, stopSampleData, sampleRunning } from "../jobs/sample";
 import { intakeStats } from "../lib/intakeStats";
@@ -386,7 +387,18 @@ router.get(
   h(async (req, res) => {
     const [org] = await db.select().from(orgsTable).where(eq(orgsTable.id, req.orgId!));
     const keys = (await db.select().from(apiKeysTable).where(eq(apiKeysTable.orgId, req.orgId!))).filter((k) => !k.revoked);
-    const members = await db.select().from(usersTable).where(eq(usersTable.orgId, req.orgId!));
+    const members = await db
+      .select({
+        id: usersTable.id,
+        email: usersTable.email,
+        firstName: usersTable.firstName,
+        lastName: usersTable.lastName,
+        createdAt: usersTable.createdAt,
+        role: orgMembershipsTable.role,
+      })
+      .from(orgMembershipsTable)
+      .innerJoin(usersTable, eq(usersTable.id, orgMembershipsTable.userId))
+      .where(eq(orgMembershipsTable.orgId, req.orgId!));
     const invites = await db.select().from(invitesTable).where(eq(invitesTable.orgId, req.orgId!));
     res.json({
       org,
@@ -498,6 +510,103 @@ router.get(
   "/ui/org/sample-data",
   h(async (req, res) => res.json({ running: sampleRunning(req.orgId!) })),
 );
+// ---------- Organizations: create, switch, join, member management ----------
+
+// A signed-in user creates another organization and becomes its first admin.
+router.post(
+  "/ui/orgs",
+  requireOrg,
+  h(async (req, res) => {
+    const name = String(req.body?.name ?? "").trim();
+    if (!name || name.length > 150) throw new HttpError(400, "Enter an organization name (up to 150 characters)");
+    const [org] = await db.insert(orgsTable).values({ name }).returning();
+    await addMembership(req.sessionUser!.id, org.id, "admin");
+    res.json({ org: { id: org.id, name: org.name } });
+  }),
+);
+
+// Switch the session's active organization; the user must be a member of it.
+router.post(
+  "/ui/org/select",
+  requireOrg,
+  h(async (req, res) => {
+    const orgId = intId(req.body?.orgId, "organization");
+    const memberships = await listMemberships(req.sessionUser!.id);
+    if (!memberships.some((m) => m.orgId === orgId)) throw new HttpError(403, "Not a member of that organization");
+    const sid = getSessionId(req);
+    const session = sid ? await getSession(sid) : null;
+    if (sid && session) await updateSession(sid, { ...session, activeOrgId: orgId });
+    res.json({ ok: true });
+  }),
+);
+
+// A signed-in user accepts an invite addressed to their own email and joins that organization.
+router.post(
+  "/ui/org/invites/accept",
+  requireOrg,
+  h(async (req, res) => {
+    const token = String(req.body?.token ?? "");
+    const [inv] = token.length >= 24 ? await db.select().from(invitesTable).where(eq(invitesTable.token, token)) : [];
+    if (!inv || inv.acceptedAt || Date.now() - inv.createdAt.getTime() > 30 * 86400_000)
+      throw new HttpError(404, "This invite is invalid, used, or expired. Ask your admin for a new one.");
+    const email = (req.sessionUser?.email ?? "").toLowerCase();
+    if (!email || inv.email.toLowerCase() !== email) throw new HttpError(403, "This invite is for a different email address");
+    await db.transaction(async (tx) => {
+      await tx
+        .insert(orgMembershipsTable)
+        .values({ userId: req.sessionUser!.id, orgId: inv.orgId, role: inv.role })
+        .onConflictDoNothing();
+      await tx.update(invitesTable).set({ acceptedAt: new Date() }).where(eq(invitesTable.id, inv.id));
+    });
+    res.json({ ok: true, orgId: inv.orgId });
+  }),
+);
+
+async function memberOf(orgId: number, userId: string) {
+  const [m] = await db
+    .select()
+    .from(orgMembershipsTable)
+    .where(and(eq(orgMembershipsTable.orgId, orgId), eq(orgMembershipsTable.userId, userId)));
+  return m;
+}
+
+// Change a member's role in the active organization. The last admin cannot be demoted.
+router.patch(
+  "/ui/org/members/:userId",
+  requireAdmin,
+  h(async (req, res) => {
+    const userId = String(req.params.userId);
+    const role = req.body?.role === "admin" ? "admin" : "member";
+    const m = await memberOf(req.orgId!, userId);
+    if (!m) throw new HttpError(404, "Member not found");
+    if (m.role === "admin" && role !== "admin" && (await countOrgAdmins(req.orgId!)) <= 1)
+      throw new HttpError(400, "An organization must keep at least one admin");
+    await db
+      .update(orgMembershipsTable)
+      .set({ role })
+      .where(and(eq(orgMembershipsTable.orgId, req.orgId!), eq(orgMembershipsTable.userId, userId)));
+    res.json({ ok: true });
+  }),
+);
+
+// Remove a member from the active organization (their account and other memberships are untouched).
+// The last admin cannot be removed.
+router.delete(
+  "/ui/org/members/:userId",
+  requireAdmin,
+  h(async (req, res) => {
+    const userId = String(req.params.userId);
+    const m = await memberOf(req.orgId!, userId);
+    if (!m) throw new HttpError(404, "Member not found");
+    if (m.role === "admin" && (await countOrgAdmins(req.orgId!)) <= 1)
+      throw new HttpError(400, "An organization must keep at least one admin");
+    await db
+      .delete(orgMembershipsTable)
+      .where(and(eq(orgMembershipsTable.orgId, req.orgId!), eq(orgMembershipsTable.userId, userId)));
+    res.json({ ok: true });
+  }),
+);
+
 router.post(
   "/ui/org/sample-data",
   h(async (req, res) => {

@@ -37,7 +37,7 @@ export async function authMiddleware(req: Request, res: Response, next: NextFunc
         await clearSession(res, sid);
       } else {
         req.sessionUser = session.user;
-        req.authUser = await resolveMembership(session.user);
+        req.authUser = await resolveMembership(session.user, session.activeOrgId ?? null);
         if (req.authUser) req.orgId = req.authUser.orgId;
       }
     }

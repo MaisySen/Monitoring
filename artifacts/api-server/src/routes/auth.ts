@@ -1,8 +1,9 @@
-import { db, usersTable, invitesTable, orgsTable } from "@workspace/db";
+import { db, usersTable, invitesTable, orgsTable, orgMembershipsTable } from "@workspace/db";
 import { Router, type IRouter, type Request, type Response } from "express";
 import { eq, sql } from "drizzle-orm";
 import { clearSession, createSession, getSessionId, setSessionCookie, hashPassword, verifyPassword, type SessionData } from "../lib/auth";
 import { getOrigin } from "../lib/config";
+import { listMemberships } from "../lib/org";
 import crypto from "node:crypto";
 
 // First-run setup creates the first admin and always needs the setup token: MONITORING_SETUP_TOKEN if set, otherwise a
@@ -48,6 +49,9 @@ router.get("/auth/user", async (req: Request, res: Response) => {
     email: req.sessionUser?.email ?? null,
     setupRequired: !existing,
     setupTokenRequired: !existing,
+    // Every organization the signed-in user belongs to and the one currently active.
+    orgs: req.sessionUser ? await listMemberships(req.sessionUser.id) : [],
+    activeOrgId: req.orgId ?? null,
   });
 });
 
@@ -149,11 +153,10 @@ router.post("/auth/setup", async (req, res) => {
       .values({
         email: c.email,
         passwordHash,
-        orgId: org.id,
-        role: "admin",
         firstName: c.email.split("@")[0],
       })
       .returning();
+    await tx.insert(orgMembershipsTable).values({ userId: created.id, orgId: org.id, role: "admin" });
     return created;
   });
   if (!user) {
@@ -205,17 +208,17 @@ router.post("/auth/invites/:token", async (req, res) => {
       .select()
       .from(usersTable)
       .where(sql`lower(${usersTable.email}) = ${c.email}`);
-    if (existing) return { error: "An account already exists for this email. Sign in or contact your admin." };
+    if (existing)
+      return { error: "An account already exists for this email. Sign in, then open the invite link again to join." };
     const [user] = await tx
       .insert(usersTable)
       .values({
         email: c.email,
         passwordHash,
-        orgId: inv.orgId,
-        role: inv.role,
         firstName: c.email.split("@")[0],
       })
       .returning();
+    await tx.insert(orgMembershipsTable).values({ userId: user.id, orgId: inv.orgId, role: inv.role });
     await tx.update(invitesTable).set({ acceptedAt: new Date() }).where(eq(invitesTable.id, inv.id));
     return { user };
   });
