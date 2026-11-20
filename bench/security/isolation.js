@@ -66,6 +66,16 @@ function otlpLog(service, message, attrs = []) {
 }
 const otlpMetric = (service, name) => ({ resourceMetrics: [{ resource: { attributes: [{ key: 'service.name', value: { stringValue: service } }, { key: 'host.name', value: { stringValue: `${service}-host` } }] }, scopeMetrics: [{ scope: { name: 'iso' }, metrics: [{ name, gauge: { dataPoints: [{ timeUnixNano: nowNs(), asDouble: 42 }] } }] }] }] });
 
+function otlpErrorTrace(service, traceId) {
+  const t = otlpTrace(service, traceId);
+  const sp = t.resourceSpans[0].scopeSpans[0].spans[0];
+  sp.status = { code: 2 };
+  sp.events = [{ name: 'exception', attributes: [
+    { key: 'exception.type', value: { stringValue: 'IsoError' } },
+    { key: 'exception.message', value: { stringValue: `iso failure for ${service}` } }] }];
+  return t;
+}
+
 async function ingest(org, service) {
   const traceId = crypto.randomBytes(16).toString('hex');
   const h = { 'DC-API-KEY': org.key };
@@ -132,6 +142,17 @@ async function ingest(org, service) {
   const ownA = json(await req('POST', `/api/ui/apm/spans?${q}`, { query: `service:${svcA}` }, as(A)));
   check('isolation', 'org A sees its own spans (sanity)', '>=1', (ownA?.spans || []).length, (ownA?.spans || []).length >= 1);
   // direct object access by id across orgs
+  // error groups: intake-derived rows must obey the same org boundary
+  const errTrace = crypto.randomBytes(16).toString('hex');
+  const er = await req('POST', '/otlp/v1/traces', otlpErrorTrace(svcA, errTrace), { 'DC-API-KEY': A.key });
+  await sleep(4000);
+  const groupsA = json(await req('GET', `/api/ui/errors?service=${svcA}`, null, as(A)));
+  const fpA = groupsA?.groups?.[0]?.fingerprint;
+  check('isolation', 'org A sees its own error group (sanity)', '>=1 group with fingerprint', `${groupsA?.groups?.length ?? 0} groups`, (groupsA?.groups || []).length >= 1 && !!fpA);
+  const groupsB = json(await req('GET', `/api/ui/errors?service=${svcA}`, null, as(B)));
+  check('isolation', "org B error-groups list hides org A's groups", '0 groups', `${groupsB?.groups?.length ?? 'n/a'} groups`, (groupsB?.groups || []).length === 0);
+  const detailB = await req('GET', `/api/ui/errors/${fpA}/spans`, null, as(B));
+  check('isolation', "org B cannot read org A's error-group detail", '404', `${detailB.status}`, detailB.status === 404);
   const byId = [];
   const m1 = await req('GET', `/api/v1/monitor/${monA.id}`, null, as(B)); if (m1.status === 200) byId.push(`GET monitor ${m1.status}`);
   const m2 = await req('PUT', `/api/v1/monitor/${monA.id}`, { name: 'hijacked', type: 'metric alert', query: monA.query }, as(B)); if (m2.status === 200 && json(await req('GET', `/api/v1/monitor/${monA.id}`, null, as(A)))?.name === 'hijacked') byId.push('PUT monitor changed it');

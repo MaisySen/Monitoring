@@ -513,3 +513,8 @@ produced an independent row under the same fingerprint hash, count=1, while org 
 untouched (its count moved 9 -> 10 only because the first harness attempt, before the
 org-select fix, seeded one span into org A by mistake - accounted for, not leakage).
 Harness lesson recorded: /ui/orgs does not switch the session; /ui/org/select is required.
+
+### Isolation suite extended (this commit): 16/16
+bench/security/isolation.js now covers error groups: org A's groups invisible in org B's
+list, cross-org group detail 404, plus org-A sanity. Ran against a fresh server+database:
+16/16 pass (was 13/13 before error groups; +3 new checks).
