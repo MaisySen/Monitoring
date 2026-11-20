@@ -1121,9 +1121,15 @@ interface ErrorGroupDetailData {
   scanned: number;
   scanTruncated: boolean;
   versionCorrelation: {
-    errorsByVersion: { version: string; count: number }[];
-    trafficByVersion: { version: string; count: number }[];
-    windowDays: number;
+    rows: { env: string; version: string; errors: number; operations: number }[];
+    coverage: {
+      matchedTotal: number;
+      groupCount: number;
+      scanned: number;
+      scanTruncated: boolean;
+      windowDays: number;
+      denominator: "entry_spans";
+    };
   };
 }
 
@@ -1146,39 +1152,42 @@ export function ErrorGroupDetail() {
             <div className="text-ink-2">Environments observed in this group: {g.envs.length ? g.envs.join(", ") : "no env tag"}</div>
           </div>
         )}
-        {d.data && d.data.versionCorrelation.errorsByVersion.length > 0 && (
+        {d.data && d.data.versionCorrelation.rows.length > 0 && (
           <div className="card p-4">
             <div className="section-title mb-2">Version correlation (hypothesis only)</div>
-            <div className="text-[12px] text-ink-2 mb-2">
-              Where this group's errors and the service's overall traffic fell in the last {d.data.versionCorrelation.windowDays} days. A
-              concentration is a lead to investigate, not proof a version caused the errors.
-            </div>
             <table className="w-full text-[12px]">
               <thead>
                 <tr className="text-left text-ink-3 border-b border-line">
+                  <th className="py-1 font-medium">environment</th>
                   <th className="py-1 font-medium">version</th>
                   <th className="py-1 font-medium">errors in this group</th>
-                  <th className="py-1 font-medium">all spans (traffic)</th>
+                  <th className="py-1 font-medium">operations (entry spans)</th>
                 </tr>
               </thead>
               <tbody>
-                {(() => {
-                  const traffic = new Map(d.data.versionCorrelation.trafficByVersion.map((t) => [t.version, t.count]));
-                  const versions = [...new Set([...d.data.versionCorrelation.errorsByVersion.map((e) => e.version), ...traffic.keys()])];
-                  return versions.map((v) => {
-                    const errs = d.data!.versionCorrelation.errorsByVersion.find((e) => e.version === v)?.count ?? 0;
-                    const all = traffic.get(v) ?? 0;
-                    return (
-                      <tr key={v} className="border-b border-line">
-                        <td className="py-1 mono">{v}</td>
-                        <td className="py-1">{errs}</td>
-                        <td className="py-1">{all}</td>
-                      </tr>
-                    );
-                  });
-                })()}
+                {d.data.versionCorrelation.rows.map((r) => (
+                  <tr key={r.env + "|" + r.version} className="border-b border-line">
+                    <td className="py-1">{r.env}</td>
+                    <td className="py-1 mono">{r.version}</td>
+                    <td className="py-1">{r.errors}</td>
+                    <td className="py-1">{r.operations}</td>
+                  </tr>
+                ))}
               </tbody>
             </table>
+            <div className="text-[11px] text-ink-3 mt-2 space-y-1">
+              <div>
+                Errors counted over {fmtNum(d.data.versionCorrelation.coverage.matchedTotal)} of {fmtNum(d.data.versionCorrelation.coverage.groupCount)} recorded
+                occurrences, from a scan of {fmtNum(d.data.versionCorrelation.coverage.scanned)} recent error spans
+                {d.data.versionCorrelation.coverage.scanTruncated ? " - scan limit reached, older occurrences are not covered" : ""}. Operations are counted over all
+                entry spans in the same {d.data.versionCorrelation.coverage.windowDays}-day window.
+              </div>
+              <div>
+                Entry spans approximate operations, not requests, and instrumentation depth can differ between versions. Rows are split by
+                environment so a staging-only version does not read as a production regression. A concentration is a lead to investigate,
+                not proof a version caused the errors.
+              </div>
+            </div>
           </div>
         )}
         <div className="card">

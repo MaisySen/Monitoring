@@ -107,3 +107,76 @@ export async function upsertErrorGroupsTx(c: { query: (q: string, v?: any[]) => 
     vals,
   );
 }
+
+// ---------- Version/environment correlation assembly (hypothesis aid only) ----------
+// Comparability rules baked in here (product direction):
+// - The error numerator comes from a BOUNDED scan and can be truncated; coverage is carried
+//   explicitly (matchedTotal vs groupCount, scanned, scanTruncated) and must be shown wherever
+//   the table is read.
+// - The traffic denominator is ENTRY SPANS ONLY (operations), because raw span counts are
+//   instrumentation volume: a version with deeper nested instrumentation would inflate its
+//   denominator and fake a lower error concentration.
+// - Both sides are grouped by (env, version) so a version deployed only in staging cannot
+//   quietly read as a production regression.
+
+export interface CorrelationMatch {
+  env: string;
+  version: string; // "" when untagged
+}
+
+export interface CorrelationTrafficRow {
+  env: string;
+  version: string;
+  operations: number;
+}
+
+export interface VersionCorrelation {
+  rows: { env: string; version: string; errors: number; operations: number }[];
+  coverage: {
+    matchedTotal: number;
+    groupCount: number;
+    scanned: number;
+    scanTruncated: boolean;
+    windowDays: number;
+    denominator: "entry_spans";
+  };
+}
+
+export const UNTAGGED = "(no version tag)";
+export const NO_ENV = "(no env tag)";
+
+export function buildVersionCorrelation(
+  matches: CorrelationMatch[],
+  traffic: CorrelationTrafficRow[],
+  coverage: { groupCount: number; scanned: number; scanTruncated: boolean; windowDays: number },
+): VersionCorrelation {
+  const rows = new Map<string, { env: string; version: string; errors: number; operations: number }>();
+  const key = (env: string, version: string) => `${env}${version}`;
+  for (const m of matches) {
+    const env = m.env || NO_ENV;
+    const version = m.version || UNTAGGED;
+    const k = key(env, version);
+    const r = rows.get(k) ?? { env, version, errors: 0, operations: 0 };
+    r.errors += 1;
+    rows.set(k, r);
+  }
+  for (const t of traffic) {
+    const env = t.env || NO_ENV;
+    const version = t.version || UNTAGGED;
+    const k = key(env, version);
+    const r = rows.get(k) ?? { env, version, errors: 0, operations: 0 };
+    r.operations += t.operations;
+    rows.set(k, r);
+  }
+  return {
+    rows: [...rows.values()].sort((a, b) => b.errors - a.errors || b.operations - a.operations),
+    coverage: {
+      matchedTotal: matches.length,
+      groupCount: coverage.groupCount,
+      scanned: coverage.scanned,
+      scanTruncated: coverage.scanTruncated,
+      windowDays: coverage.windowDays,
+      denominator: "entry_spans",
+    },
+  };
+}

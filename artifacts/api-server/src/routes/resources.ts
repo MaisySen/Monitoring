@@ -11,7 +11,7 @@ import { newKey, invalidateKey, listMemberships, addMembership, countOrgAdmins }
 import { getSession, getSessionId, updateSession } from "../lib/auth";
 import { evaluateMonitor, validateMonitorQuery } from "../jobs/monitors";
 import { computeServiceHealth } from "../query/serviceHealth";
-import { fingerprintFor, normalizeMessage } from "../query/errorGroups";
+import { fingerprintFor, normalizeMessage, buildVersionCorrelation } from "../query/errorGroups";
 import { startSampleData, stopSampleData, sampleRunning } from "../jobs/sample";
 import { intakeStats } from "../lib/intakeStats";
 import { getQuotas, setQuotas, parseQuotas, usageToday, bytesThisMinute, seriesCount } from "../lib/quotas";
@@ -458,25 +458,24 @@ router.get(
       ])
     ).rows[0];
     if (!g) throw new HttpError(404, "error group not found");
-    const SCAN_LIMIT = 5000;
+    const SCAN_LIMIT = Math.max(10, Number(process.env.MONITORING_ERROR_SCAN_LIMIT ?? 5000) || 5000);
     const sinceMs = Date.now() - 7 * 24 * 3600_000;
     const cand = (
       await pool.query(
-        `select trace_id, span_id, start_ms, duration, meta from spans
+        `select trace_id, span_id, start_ms, duration, env, meta from spans
          where org_id=$1 and service=$2 and error=1 and start_ms >= $3
          order by start_ms desc limit ${SCAN_LIMIT}`,
         [req.orgId, g.service, sinceMs],
       )
     ).rows;
     const matched = [];
-    const errByVersion = new Map<string, number>();
+    const corrMatches: { env: string; version: string }[] = [];
     for (const s of cand) {
       const meta = (s.meta ?? {}) as Record<string, string>;
       const sfp = fingerprintFor(g.service, (meta["error.type"] ?? "").slice(0, 200), normalizeMessage(meta["error.message"] ?? ""));
       if (sfp !== fp) continue;
-      const v = meta["version"] || "(no version tag)";
-      errByVersion.set(v, (errByVersion.get(v) ?? 0) + 1);
-      // The version histogram counts every match in the scan; only the returned list is capped.
+      corrMatches.push({ env: s.env ?? "", version: meta["version"] ?? "" });
+      // The correlation counts every match in the scan; only the returned list is capped.
       if (matched.length < 50)
         matched.push({
           traceId: s.trace_id,
@@ -488,22 +487,22 @@ router.get(
           version: meta["version"] ?? "",
         });
     }
-    // Base rate for honest correlation: how the service's overall traffic splits across
-    // versions in the same window. Without this, "most errors are on version X" can simply
-    // mean "most traffic is on version X".
-    const allByVersion = (
+    // Base rate: ENTRY SPANS (operations) per (env, version) over the full window. Raw span
+    // counts are instrumentation volume and would penalize versions with deeper nesting.
+    const trafficRows = (
       await pool.query(
-        `select coalesce(nullif(meta->>'version',''), '(no version tag)') as v, count(*)::int as c
-         from spans where org_id=$1 and service=$2 and start_ms >= $3 group by 1 order by 2 desc limit 20`,
+        `select env, coalesce(nullif(meta->>'version',''), '') as v, count(*)::int as c
+         from spans where org_id=$1 and service=$2 and start_ms >= $3 and is_top_level=1
+         group by 1, 2 order by 3 desc limit 40`,
         [req.orgId, g.service, sinceMs],
       )
     ).rows;
     res.json({
-      versionCorrelation: {
-        errorsByVersion: [...errByVersion.entries()].map(([version, count]) => ({ version, count })).sort((a, b) => b.count - a.count),
-        trafficByVersion: allByVersion.map((r: any) => ({ version: r.v, count: Number(r.c) })),
-        windowDays: 7,
-      },
+      versionCorrelation: buildVersionCorrelation(
+        corrMatches,
+        trafficRows.map((r: any) => ({ env: r.env ?? "", version: r.v ?? "", operations: Number(r.c) })),
+        { groupCount: Number(g.count), scanned: cand.length, scanTruncated: cand.length >= SCAN_LIMIT, windowDays: 7 },
+      ),
       group: {
         fingerprint: fp,
         service: g.service,

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { aggregateErrorGroups, fingerprintFor, normalizeMessage } from "../src/query/errorGroups";
+import { aggregateErrorGroups, fingerprintFor, normalizeMessage, buildVersionCorrelation } from "../src/query/errorGroups";
 
 const span = (over: Partial<Parameters<typeof aggregateErrorGroups>[0][number]>) => ({
   service: "billing",
@@ -74,4 +74,50 @@ test("message example is truncated and fingerprint separates messages only by sh
   const groups = aggregateErrorGroups([span({ meta: { "error.type": "E", "error.message": long } })]);
   assert.equal(groups.length, 1);
   assert.ok(groups[0].messageExample.length <= 500);
+});
+
+test("buildVersionCorrelation keeps env scope, untagged labels, and explicit coverage", () => {
+  const c = buildVersionCorrelation(
+    [
+      { env: "prod", version: "1.4.0" },
+      { env: "prod", version: "1.4.0" },
+      { env: "staging", version: "1.4.0" },
+      { env: "", version: "" },
+    ],
+    [
+      { env: "prod", version: "1.4.0", operations: 4 },
+      { env: "prod", version: "1.3.0", operations: 26 },
+      { env: "staging", version: "1.4.0", operations: 3 },
+    ],
+    { groupCount: 20, scanned: 5000, scanTruncated: true, windowDays: 7 },
+  );
+  // env never merges across rows: prod/1.4.0 and staging/1.4.0 are separate
+  const prod14 = c.rows.find((r) => r.env === "prod" && r.version === "1.4.0")!;
+  assert.equal(prod14.errors, 2);
+  assert.equal(prod14.operations, 4);
+  const stag14 = c.rows.find((r) => r.env === "staging" && r.version === "1.4.0")!;
+  assert.equal(stag14.errors, 1);
+  assert.equal(stag14.operations, 3);
+  // traffic-only versions still appear with zero errors
+  const prod13 = c.rows.find((r) => r.env === "prod" && r.version === "1.3.0")!;
+  assert.equal(prod13.errors, 0);
+  assert.equal(prod13.operations, 26);
+  // untagged is labeled, not dropped
+  assert.ok(c.rows.some((r) => r.env === "(no env tag)" && r.version === "(no version tag)"));
+  // coverage exposes the truncated numerator honestly
+  assert.equal(c.coverage.matchedTotal, 4);
+  assert.equal(c.coverage.groupCount, 20);
+  assert.equal(c.coverage.scanTruncated, true);
+  assert.equal(c.coverage.denominator, "entry_spans");
+});
+
+test("buildVersionCorrelation without truncation reports full coverage", () => {
+  const c = buildVersionCorrelation([{ env: "prod", version: "1.0.0" }], [], {
+    groupCount: 1,
+    scanned: 3,
+    scanTruncated: false,
+    windowDays: 7,
+  });
+  assert.equal(c.coverage.matchedTotal, 1);
+  assert.equal(c.coverage.scanTruncated, false);
 });

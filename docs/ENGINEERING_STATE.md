@@ -528,3 +528,15 @@ both columns: "A concentration is a lead to investigate, not proof a version cau
 errors." Live verify: seeded 4 errors on v1.4.0 + 26 clean spans on v1.3.0 -> card shows
 1.4.0: 4 errors / 4 spans vs 1.3.0: 0 / 26, making the concentration visibly real rather than
 traffic-proportional. Version source: OTLP service.version (already parsed at intake).
+
+## 2026-11-21 07:14 AEDT - Correlation comparability fixes (this commit)
+
+Parent review found the first correlation card non-comparable. Fixed:
+- Numerator/denominator comparability: coverage is explicit and shown beside the card
+  (matchedTotal of groupCount, scanned, scanTruncated). Live truncation test with
+  MONITORING_ERROR_SCAN_LIMIT=10: coverage read 9 of 14, scanned=10, scanTruncated=true.
+- Denominator is now ENTRY SPANS (operations), not raw spans, so instrumentation depth does
+  not distort exposure; card says entry spans approximate operations, not requests.
+- Rows are split by (env, version) on both sides so a staging-only version cannot read as a
+  production regression. buildVersionCorrelation extracted to query/errorGroups.ts; unit
+  76/76 (env separation, traffic-only rows, untagged labels, truncated + full coverage).
