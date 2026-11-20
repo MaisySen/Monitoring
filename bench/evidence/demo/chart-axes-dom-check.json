@@ -1,0 +1,46 @@
+{
+ "classes": [
+  "recharts-wrapper",
+  "recharts-surface",
+  "recharts-cartesian-grid",
+  "recharts-cartesian-grid-horizontal",
+  "recharts-layer recharts-cartesian-axis recharts-xAxis xAxis",
+  "recharts-cartesian-axis-line",
+  "recharts-cartesian-axis-ticks",
+  "recharts-layer recharts-cartesian-axis-tick",
+  "recharts-text recharts-cartesian-axis-tick-value",
+  "recharts-layer recharts-cartesian-axis recharts-yAxis yAxis",
+  "recharts-layer recharts-line",
+  "recharts-curve recharts-line-curve",
+  "recharts-layer",
+  "recharts-layer recharts-reference-dot",
+  "recharts-dot recharts-reference-dot-dot",
+  "recharts-text recharts-label",
+  "recharts-tooltip-wrapper recharts-tooltip-wrapper-right recharts-tooltip-wrapper-bottom",
+  "recharts-default-tooltip",
+  "recharts-tooltip-label"
+ ],
+ "svgChildren": [
+  "title.",
+  "desc.",
+  "defs.",
+  "g.recharts-cartesian-grid",
+  "g.recharts-layer recharts-cartesian-axis recharts-xAxis xAxis",
+  "g.recharts-layer recharts-cartesian-axis recharts-yAxis yAxis",
+  "g.recharts-layer recharts-line",
+  "g.recharts-layer recharts-reference-dot",
+  "g.recharts-layer recharts-reference-dot"
+ ],
+ "texts": [
+  "02:21",
+  "02:33",
+  "02:45",
+  "0",
+  "50",
+  "100",
+  "150",
+  "200",
+  "194",
+  "196"
+ ]
+}

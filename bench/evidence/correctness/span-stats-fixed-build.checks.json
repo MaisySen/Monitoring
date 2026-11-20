@@ -1,0 +1,67 @@
+{
+ "suite": "span-stats-once",
+ "total": 10,
+ "failed": 0,
+ "results": [
+  {
+   "name": "stats-a-693350 raw rows",
+   "expected": "traces+children=60",
+   "actual": 60,
+   "pass": true
+  },
+  {
+   "name": "stats-a-693350 raw roots",
+   "expected": 40,
+   "actual": 40,
+   "pass": true
+  },
+  {
+   "name": "stats-a-693350 rollup hits == roots (counted once)",
+   "expected": 40,
+   "actual": 40,
+   "pass": true
+  },
+  {
+   "name": "stats-a-693350 rollup errors == raw error roots",
+   "expected": 5,
+   "actual": "5 (raw 5)",
+   "pass": true
+  },
+  {
+   "name": "stats-b-693350 raw rows",
+   "expected": "traces+children=25",
+   "actual": 25,
+   "pass": true
+  },
+  {
+   "name": "stats-b-693350 raw roots",
+   "expected": 25,
+   "actual": 25,
+   "pass": true
+  },
+  {
+   "name": "stats-b-693350 rollup hits == roots (counted once)",
+   "expected": 25,
+   "actual": 25,
+   "pass": true
+  },
+  {
+   "name": "stats-b-693350 rollup errors == raw error roots",
+   "expected": 3,
+   "actual": "3 (raw 3)",
+   "pass": true
+  },
+  {
+   "name": "stats-a-693350 rollup stable after another flush",
+   "expected": 40,
+   "actual": 40,
+   "pass": true
+  },
+  {
+   "name": "stats-b-693350 rollup stable after another flush",
+   "expected": 25,
+   "actual": 25,
+   "pass": true
+  }
+ ]
+}

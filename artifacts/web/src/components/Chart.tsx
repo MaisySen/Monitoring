@@ -88,9 +88,8 @@ export function TimeseriesChart({
     data,
     margin: { top: 6, right: 8, left: 0, bottom: 0 },
   };
-  const axes = (
-    <>
-      <CartesianGrid stroke="#eceef2" strokeDasharray="0" vertical={false} />
+  const axesEls = [
+      <CartesianGrid key="grid" stroke="#eceef2" strokeDasharray="0" vertical={false} />,
       <XAxis
         dataKey="t"
         type="number"
@@ -101,16 +100,16 @@ export function TimeseriesChart({
         axisLine={{ stroke: "#e2e5ea" }}
         tickLine={false}
         minTickGap={40}
-      />
-      <YAxis tickFormatter={(v) => yFormat(v)} tick={{ fontSize: 10, fill: "#7d8b96" }} axisLine={false} tickLine={false} width={44} />
+      />,
+      <YAxis key="y" tickFormatter={(v) => yFormat(v)} tick={{ fontSize: 10, fill: "#7d8b96" }} axisLine={false} tickLine={false} width={44} />,
       <Tooltip
         isAnimationActive={false}
         labelFormatter={(t) => fmtTime(Number(t), true)}
         formatter={(v: any, name: any) => [yFormat(Number(v)), keys.find((k) => k.key === name)?.label ?? name]}
         contentStyle={{ fontSize: 11, padding: "6px 8px", borderRadius: 4, border: "1px solid #e2e5ea" }}
         itemStyle={{ padding: 0 }}
-      />
-      {thresholds?.map((th, i) => (
+      />,
+      ...(thresholds?.map((th, i) => (
         <ReferenceLine
           key={i}
           y={th.value}
@@ -118,27 +117,26 @@ export function TimeseriesChart({
           strokeDasharray="4 3"
           label={th.label ? { value: th.label, fontSize: 10, fill: th.color, position: "insideTopRight" } : undefined}
         />
-      ))}
-      {thresholds
-        ?.filter((t) => t.above !== undefined)
+      )) ?? []),
+      ...((thresholds ?? [])
+        .filter((t) => t.above !== undefined)
         .map((th, i) => (
           <ReferenceArea key={`a${i}`} y1={th.above ? th.value : undefined} y2={th.above ? undefined : th.value} fill={th.color} fillOpacity={0.06} />
-        ))}
-    </>
-  );
+        ))),
+  ];
   return (
     <div style={{ height }} className="w-full">
       <ResponsiveContainer width="100%" height={showLegend ? "82%" : "100%"}>
         {type === "bars" ? (
           <BarChart {...common}>
-            {axes}
+            {axesEls}
             {keys.map((k) => (
               <Bar key={k.key} dataKey={k.key} fill={k.color} stackId={stacked ? "a" : undefined} isAnimationActive={false} />
             ))}
           </BarChart>
         ) : type === "area" ? (
           <AreaChart {...common}>
-            {axes}
+            {axesEls}
             {keys.map((k) => (
               <Area
                 key={k.key}
@@ -156,7 +154,7 @@ export function TimeseriesChart({
           </AreaChart>
         ) : (
           <LineChart {...common} margin={{ top: peakPts.length ? 16 : 6, right: 8, left: 0, bottom: 0 }}>
-            {axes}
+            {axesEls}
             {keys.map((k) => (
               <Line key={k.key} dataKey={k.key} stroke={k.color} strokeWidth={1.5} dot={false} isAnimationActive={false} connectNulls />
             ))}

@@ -1,0 +1,10 @@
+ok   stats-a-2250e2 raw rows: expected traces+children=60, got 60
+ok   stats-a-2250e2 raw roots: expected 40, got 40
+FAIL stats-a-2250e2 rollup hits == roots (counted once): expected 40, got 80
+FAIL stats-a-2250e2 rollup errors == raw error roots: expected 5, got 10 (raw 5)
+ok   stats-b-2250e2 raw rows: expected traces+children=25, got 25
+ok   stats-b-2250e2 raw roots: expected 25, got 25
+FAIL stats-b-2250e2 rollup hits == roots (counted once): expected 25, got 50
+FAIL stats-b-2250e2 rollup errors == raw error roots: expected 3, got 6 (raw 3)
+FAIL stats-a-2250e2 rollup stable after another flush: expected 40, got 80
+FAIL stats-b-2250e2 rollup stable after another flush: expected 25, got 50
