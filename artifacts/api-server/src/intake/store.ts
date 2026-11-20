@@ -25,6 +25,7 @@ import { pool } from "@workspace/db";
 import { createHash } from "node:crypto";
 import { logger } from "../lib/logger";
 import { aggregateSpanStats, insertSpanStatsTx, startStatsTimer, ensureSpanStats } from "../query/apmStats";
+import { ensureServiceMonitors } from "../jobs/autoMonitors";
 import { useClickHouse } from "../lib/storage";
 import { chInsert, ensureChSchema } from "../lib/ch";
 import { getQuotas, admitDaily, seriesCount, QuotaExceeded } from "../lib/quotas";
@@ -608,6 +609,11 @@ export async function writeSpans(orgId: number, spans: SpanIn[]) {
   }
   const stored = useClickHouse ? spans : fresh;
   await recordHostServices(orgId, stored);
+  // First-seen services get default monitors (sustained errors, silence). Fire and forget:
+  // monitor creation must never block or fail intake.
+  for (const svc of new Set(stored.map((s) => s.service).filter((x) => x && x !== "unnamed-service"))) {
+    ensureServiceMonitors(orgId, svc).catch(() => undefined);
+  }
   // Per-minute APM rollups for the PostgreSQL path are inserted in the intake transaction above.
   // With ClickHouse a materialized view on spans maintains them (lib/ch.ts).
   // trace.* metrics on the PostgreSQL path were inserted in the intake transaction above. The

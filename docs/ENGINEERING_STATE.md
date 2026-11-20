@@ -427,3 +427,21 @@ queue). 100 spans/s, 60s runs, fault at 20s. Evidence: bench/evidence/recovery/s
 - Both interruption boundaries now verified for transactional trace.* points (precommit SIGKILL
   30k batch + postcommit lost response). The round-5 disclosure "trace.* can undercount one batch
   in the postcommit-crash window" is resolved on the PG path.
+
+## 2026-11-21 05:55 - P0 backend: auto default monitors + /ui/now
+- jobs/autoMonitors.ts: first time a service sends spans, two default monitors are created
+  (advisory-locked, tagged monitoring.auto:true + auto:service:<svc>, never blocks intake):
+  "Errors in <svc>" (trace-analytics, >=5 error spans/10m, message says the threshold is an
+  untuned starting point) and "<svc> stopped sending data" (trace count < 0, never true with
+  data, notify_no_data + 10m timeframe -> OK while receiving, No Data when silent).
+- GET /api/ui/now: honest service health (ok / degraded with raw counts and baseline /
+  low = too little traffic to judge / quiet = no data 10m+, "silence is not proof of failure"),
+  firing-monitor problems feed (service + auto tags), intake status for onboarding detection.
+- Verified on the production build, fresh DB: empty org -> receiving:false, zero services,
+  zero problems (no invented health). Seeded shop-api (300 spans, 0 errors) + billing
+  (120 spans, 12 errors): 4 auto monitors created; "Errors in billing" Alert, others OK;
+  /ui/now: billing degraded "12 errors in 120 requests (10.0%)", shop-api ok. Unit 63/63.
+- Found and fixed in testing: first silence-monitor query (>= 0) alerted while data flowed -
+  inverted comparator bug caught by the live check, fixed to < 0.
+- Pending: silence monitor actually firing after 10m quiet (needs a timed soak); Now page UI;
+  onboarding flow UI. Harness: /tmp/p0-verify.js.

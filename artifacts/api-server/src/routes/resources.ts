@@ -17,7 +17,7 @@ import { logger } from "../lib/logger";
 
 const router: Router = Router();
 router.use(
-  ["/v1/dashboard", "/v1/monitor", "/v1/events", "/ui/org", "/ui/events", "/ui/channels", "/ui/monitors", "/v1/integration/webhooks", "/v1/intake"],
+  ["/v1/dashboard", "/v1/monitor", "/v1/events", "/ui/org", "/ui/events", "/ui/channels", "/ui/monitors", "/ui/now", "/v1/integration/webhooks", "/v1/intake"],
   requireOrg,
 );
 
@@ -332,6 +332,97 @@ router.get(
     res.json({
       events: events.map((e) => ({ ...e, ts: Number(e.ts), id: String(e.id) })),
       notifications: notifs.map((n) => ({ ...n, ts: Number(n.ts), id: String(n.id) })),
+    });
+  }),
+);
+
+// ---------- Now (answers-first home; see docs/PRODUCT-PLAN.md) ----------
+// Service health is derived only from what the data shows: silence is reported as "quiet"
+// (Monitoring cannot tell idle from down), sparse traffic as "low" (not judged), and error
+// rates come with their raw counts. Nothing here invents health certainty.
+router.get(
+  "/ui/now",
+  h(async (req, res) => {
+    const orgId = req.orgId;
+    const nowS = Math.floor(Date.now() / 1000);
+    const w5 = nowS - 5 * 60;
+    const prev60Start = nowS - 65 * 60;
+    const day = nowS - 24 * 3600;
+
+    let services: unknown[] = [];
+    const hasStats = (await pool.query("select to_regclass('span_stats') is not null as e")).rows[0].e;
+    if (hasStats) {
+      const stats = (
+        await pool.query(
+          `select service, max(bucket) as last_bucket,
+                  coalesce(sum(case when bucket >= $2 then hits end),0) as hits5,
+                  coalesce(sum(case when bucket >= $2 then errors end),0) as errors5,
+                  coalesce(sum(case when bucket >= $3 and bucket < $2 then hits end),0) as hits_prev,
+                  coalesce(sum(case when bucket >= $3 and bucket < $2 then errors end),0) as errors_prev
+           from span_stats where org_id=$1 and bucket >= $4 group by service order by service`,
+          [orgId, w5, prev60Start, day],
+        )
+      ).rows;
+      services = stats.map((r: any) => {
+        const hits5 = Number(r.hits5);
+        const errors5 = Number(r.errors5);
+        const hitsPrev = Number(r.hits_prev);
+        const errorsPrev = Number(r.errors_prev);
+        const lastActiveS = Number(r.last_bucket) + 60;
+        const quietMin = Math.floor((nowS - lastActiveS) / 60);
+        let state = "ok";
+        let note = "No errors in the last 5 minutes";
+        if (quietMin >= 10) {
+          state = "quiet";
+          note = `No data for ${quietMin} minutes - the service may be idle or stopped; silence alone is not proof of failure`;
+        } else if (hits5 < 20) {
+          state = "low";
+          note = `Only ${hits5} requests in the last 5 minutes - too little traffic to judge health`;
+        } else if (errors5 > 0) {
+          const rate = errors5 / hits5;
+          const baseRate = hitsPrev >= 100 ? errorsPrev / hitsPrev : null;
+          note = `${errors5} errors in ${hits5} requests (${(rate * 100).toFixed(1)}%) in the last 5 minutes`;
+          if (rate >= 0.02 && (baseRate === null ? errors5 >= 5 : rate >= 3 * baseRate)) {
+            state = "degraded";
+            if (baseRate !== null) note += ` - previous-hour baseline ${(baseRate * 100).toFixed(2)}%`;
+          }
+        }
+        return { service: r.service, state, note, hits5, errors5, lastActiveAt: lastActiveS * 1000 };
+      });
+    }
+
+    const problems = (
+      await pool.query(
+        `select id, name, type, query, overall_state, last_triggered_at, tags from monitors
+         where org_id=$1 and overall_state in ('Alert','Warn','No Data') order by coalesce(last_triggered_at,0) desc limit 50`,
+        [orgId],
+      )
+    ).rows.map((m: any) => ({
+      monitorId: m.id,
+      name: m.name,
+      state: m.overall_state,
+      service: (m.tags ?? []).find((t: string) => t.startsWith("service:"))?.slice(8) ?? null,
+      auto: (m.tags ?? []).includes("monitoring.auto:true"),
+      since: m.last_triggered_at ? Number(m.last_triggered_at) : null,
+      query: m.query,
+    }));
+
+    const totals = (
+      await pool.query(
+        `select (select count(*) from spans where org_id=$1) as spans,
+                (select max(start_ms) from spans where org_id=$1) as last_span_ms,
+                (select count(*) from logs where org_id=$1) as logs`,
+        [orgId],
+      )
+    ).rows[0];
+
+    res.json({
+      now: Date.now(),
+      receiving: Number(totals.last_span_ms ?? 0) > Date.now() - 5 * 60_000,
+      lastDataAt: totals.last_span_ms ? Number(totals.last_span_ms) : null,
+      totals: { spans: Number(totals.spans), logs: Number(totals.logs) },
+      services,
+      problems,
     });
   }),
 );
