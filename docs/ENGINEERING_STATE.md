@@ -644,3 +644,16 @@ Unit: 76/76. CI greens through 43f64b9.
   version's first prod span (first_seen == group first_seen) -> versionTiming null. Without
   env scoping the staging row would have passed strict-before and produced a false claim.
   Screenshot version-timing-now.png.
+
+## 2026-11-21: Now-page density fix (parent review)
+
+- Parent: screen too text-dense; keep evidence/caveats accessible without a diagnostic
+  paragraph per row. Restructure (web only, no API change): incident/monitor/uptime rows
+  are one line of measured facts + workflow actions; all evidence (envs, versions observed,
+  full version-timing sentence with caveats, endpoints, next-step guidance) moves into a
+  collapsed per-row "Evidence & caveats" / "Next step" disclosure. Version timing, when the
+  rule passes, keeps a compact inline chip ("v3.0.2 · prod · observed before first sighting")
+  whose hover title carries the full sentence including "not a deployment record, not proof
+  of cause". Measured vs workflow distinction preserved inline (counts/first-seen measured;
+  acknowledge/mute/resolve + resolved-by workflow).
+- Screenshots: dense-now.png (collapsed), dense-now-open.png (one disclosure open).

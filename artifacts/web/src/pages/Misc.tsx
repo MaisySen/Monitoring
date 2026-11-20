@@ -1018,21 +1018,32 @@ export function Home() {
               monitor →
             </Link>
           )}
+          {x.versionTiming && (
+            <span
+              className="mono text-[10px] px-1.5 py-0.5 rounded bg-[#eef2fc] text-ink-2 shrink-0"
+              title={`All ${x.coverage.matchedTotal} matched spans in env ${x.versionTiming.env} carry version ${x.versionTiming.version}, first observed in ${x.versionTiming.env} ${fmtAgo(x.versionTiming.versionFirstSeen)}, strictly before this exception's first sighting. Version-observation timing, not a deployment record and not proof of cause.`}
+            >
+              v{x.versionTiming.version} · {x.versionTiming.env} · observed before first sighting
+            </span>
+          )}
           <span className="ml-auto text-xs text-ink-3 shrink-0">
             {fmtNum(x.count)}× · first seen {fmtAgo(x.firstSeen)}
           </span>
           <ProblemActions kind="error_group" refId={x.fingerprint} eff={x.effective} onSet={(v) => setStatus.mutate(v)} pending={setStatus.isPending} />
         </div>
-        <div className="text-[11px] text-ink-3 mt-1 ml-1">
-          {x.effective.reopened && "New occurrences after this was marked resolved. "}
-          {x.envs.length ? `Environments: ${x.envs.join(", ")}. ` : ""}
-          {x.versionsObserved.length ? `Observed in versions: ${x.versionsObserved.join(", ")} (among matched spans). ` : ""}
-          {x.versionTiming
-            ? `All ${x.coverage.matchedTotal} matched spans in env ${x.versionTiming.env} carry version ${x.versionTiming.version}, first observed in ${x.versionTiming.env} ${fmtAgo(x.versionTiming.versionFirstSeen)}, strictly before this exception's first sighting. Version-observation timing, not a deployment record and not proof of cause. `
-            : ""}
-          {x.topEndpoints.length ? `Mostly in: ${x.topEndpoints.map((e) => `${e.name} (${e.count}×)`).join(", ")}. ` : ""}
-          {guide && guideFor({ x })}
-        </div>
+        <details className="text-[11px] text-ink-3 mt-1 ml-1">
+          <summary className="cursor-pointer select-none text-ink-3 hover:text-ink-2">Evidence & caveats</summary>
+          <div className="mt-1">
+            {x.effective.reopened && "New occurrences after this was marked resolved. "}
+            {x.envs.length ? `Environments: ${x.envs.join(", ")}. ` : ""}
+            {x.versionsObserved.length ? `Observed in versions: ${x.versionsObserved.join(", ")} (among matched spans). ` : ""}
+            {x.versionTiming
+              ? `All ${x.coverage.matchedTotal} matched spans in env ${x.versionTiming.env} carry version ${x.versionTiming.version}, first observed in ${x.versionTiming.env} ${fmtAgo(x.versionTiming.versionFirstSeen)}, strictly before this exception's first sighting. Version-observation timing, not a deployment record and not proof of cause. `
+              : ""}
+            {x.topEndpoints.length ? `Mostly in: ${x.topEndpoints.map((e) => `${e.name} (${e.count}×)`).join(", ")}. ` : ""}
+            {guide && guideFor({ x })}
+          </div>
+        </details>
       </div>
     );
   };
@@ -1060,7 +1071,12 @@ export function Home() {
         {p.since && <span className="ml-auto text-xs text-ink-3">{fmtAgo(p.since)}</span>}
         <ProblemActions kind="monitor" refId={String(p.monitorId)} eff={p.effective} onSet={(v) => setStatus.mutate(v)} pending={setStatus.isPending} />
       </div>
-      {guide && <div className="text-[11px] text-ink-3 mt-1 ml-1">{guideFor({ p })}</div>}
+      {guide && (
+        <details className="text-[11px] text-ink-3 mt-1 ml-1">
+          <summary className="cursor-pointer select-none text-ink-3 hover:text-ink-2">Next step</summary>
+          <div className="mt-1">{guideFor({ p })}</div>
+        </details>
+      )}
     </div>
   );
 
@@ -1080,12 +1096,17 @@ export function Home() {
         </span>
         <ProblemActions kind="uptime" refId={String(u.checkId)} eff={u.effective} onSet={(v) => setStatus.mutate(v)} pending={setStatus.isPending} />
       </div>
-      <div className="text-[11px] text-ink-3 mt-1 ml-1">
-        {u.effective.reopened && "New failures after this was marked resolved. "}
-        {u.lastError ? `Last failure: ${u.lastError}. ` : ""}
-        {guide &&
-          "Next step: open Uptime to see every probe of this target and confirm the URL is reachable from this server. Monitoring reports what its probes measure, not why the target fails."}
-      </div>
+      {(u.lastError || guide) && (
+        <details className="text-[11px] text-ink-3 mt-1 ml-1">
+          <summary className="cursor-pointer select-none text-ink-3 hover:text-ink-2">Evidence & caveats</summary>
+          <div className="mt-1">
+            {u.effective.reopened && "New failures after this was marked resolved. "}
+            {u.lastError ? `Last failure: ${u.lastError}. ` : ""}
+            {guide &&
+              "Next step: open Uptime to see every probe of this target and confirm the URL is reachable from this server. Monitoring reports what its probes measure, not why the target fails."}
+          </div>
+        </details>
+      )}
     </div>
   );
 
