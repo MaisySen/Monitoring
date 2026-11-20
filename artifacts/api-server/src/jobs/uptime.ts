@@ -52,7 +52,7 @@ async function tick(): Promise<void> {
     await pool.query(
       `select id from (select id, row_number() over (partition by org_id order by next_run_at) rn
          from uptime_checks where enabled and next_run_at <= $1) t
-       where rn <= $2 order by id limit $3`,
+       where rn <= $2 order by next_run_at, id limit $3`,
       [now, MAX_CHECKS_CLAIMED_PER_ORG_PER_TICK, CLAIM_LIMIT],
     )
   ).rows.map((r: any) => Number(r.id));

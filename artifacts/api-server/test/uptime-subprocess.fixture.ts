@@ -19,6 +19,9 @@ const server = http.createServer((req, res) => {
   } else if (url === "/loop") {
     res.writeHead(302, { location: "/loop" });
     res.end();
+  } else if (url === "/redir-private") {
+    res.writeHead(302, { location: "http://127.0.0.1:1/x" });
+    res.end();
   } else if (url === "/credredir") {
     res.writeHead(302, { location: `http://user:pass@127.0.0.1:${port}/ok` });
     res.end();
@@ -79,6 +82,15 @@ r = await probeUptime(`${base}/ftp`, {});
 assert.equal(r.ok, false);
 assert.match(r.error ?? "", /redirect refused/);
 out.redirectRefused = r;
+
+// A redirect to a private target IS followed here (override set), proving the hop executes
+// and lands on the redirect target - paired with the unit-level refusal of the same hop when
+// the override is unset (test/uptime.test.ts nextHopUrl matrix).
+r = await probeUptime(`${base}/redir-private`, {});
+assert.equal(r.ok, false);
+assert.equal(r.redirects, 1);
+assert.match(r.error ?? "", /ECONNREFUSED/);
+out.redirectPrivateFollowed = r;
 
 // A redirect carrying credentials is refused at the hop even with the private override set.
 r = await probeUptime(`${base}/credredir`, {});
