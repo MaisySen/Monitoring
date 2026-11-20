@@ -27,6 +27,8 @@ import { logger } from "../lib/logger";
 import { recordSpanStats } from "../query/apmStats";
 import { useClickHouse } from "../lib/storage";
 import { chInsert, ensureChSchema } from "../lib/ch";
+import { getQuotas, admitDaily, seriesCount } from "../lib/quotas";
+import { recordDrop } from "../lib/intakeStats";
 
 export interface PointIn {
   metric: string;
@@ -66,7 +68,11 @@ function normTags(tags: string[]): string[] {
  * (sorted by key so concurrent requests take row locks in the same order), instead of one awaited
  * round trip per new series — high-cardinality tags (e.g. a customer id) create thousands at once.
  */
-async function seriesIds(orgId: number, list: PointIn[], now: number): Promise<number[]> {
+// Series refused by the organization's max_series cap, remembered for a minute so a burst of new
+// high-cardinality series does not turn into a count query per request.
+const seriesRefused = new Map<string, number>();
+
+async function seriesIds(orgId: number, list: PointIn[], now: number, maxSeries: number | null): Promise<number[]> {
   const keys: string[] = [];
   const missing = new Map<string, { metric: string; host: string; tags: string[]; tags_key: string; type: string; unit: string | null }>();
   for (const p of list) {
@@ -74,8 +80,20 @@ async function seriesIds(orgId: number, list: PointIn[], now: number): Promise<n
     const tagsKey = tags.join(",");
     const key = `${orgId}|${p.metric}|${p.host}|${tagsKey}`;
     keys.push(key);
+    const refusedAt = seriesRefused.get(key);
+    if (refusedAt && Date.now() - refusedAt < 60_000) continue;
     if (!seriesCache.has(key) && !missing.has(key))
       missing.set(key, { metric: p.metric, host: p.host ?? "", tags, tags_key: tagsKey, type: p.type, unit: p.unit ?? null });
+  }
+  if (missing.size && maxSeries != null) {
+    const room = Math.max(0, maxSeries - (await seriesCount(orgId)));
+    const allowed = new Set([...missing.keys()].sort().slice(0, room));
+    for (const k of missing.keys()) {
+      if (!allowed.has(k)) {
+        missing.delete(k);
+        seriesRefused.set(k, Date.now());
+      }
+    }
   }
   if (missing.size) {
     const sorted = [...missing.entries()].sort((a, b) => (a[0] < b[0] ? -1 : 1));
@@ -177,6 +195,12 @@ async function writeMetricsCh(orgId: number, series: PointIn[]) {
 }
 
 export async function writeMetrics(orgId: number, series: PointIn[]) {
+  const quotas = await getQuotas(orgId);
+  const pointCount = series.reduce((n, s) => n + (s.points?.length ?? 0), 0);
+  if (!(await admitDaily(orgId, "points", pointCount, quotas.maxPointsPerDay))) {
+    recordDrop(orgId, "metrics", pointCount, "quota:points_per_day");
+    return;
+  }
   if (useClickHouse) return writeMetricsCh(orgId, series);
   const now = Math.floor(Date.now() / 1000);
   const vals: any[] = [];
@@ -184,7 +208,12 @@ export async function writeMetrics(orgId: number, series: PointIn[]) {
   const stmts: [string, any[]][] = [];
   const hosts = new Set<string>();
   const valid = series.filter((s) => s.metric && s.points?.length);
-  const ids = await seriesIds(orgId, valid, now);
+  const ids = await seriesIds(orgId, valid, now, quotas.maxSeries);
+  if (quotas.maxSeries != null) {
+    let refused = 0;
+    for (let i = 0; i < valid.length; i++) if (ids[i] === undefined) refused += valid[i].points.length;
+    if (refused) recordDrop(orgId, "metrics", refused, "quota:max_series");
+  }
   // last_seen is refreshed at most every 5 minutes per series, in one statement per request
   const touch: number[] = [];
   for (let i = 0; i < valid.length; i++) {
@@ -324,6 +353,11 @@ let logSeq = 0;
 const nextLogId = () => Date.now() * 4096 + (logSeq = (logSeq + 1) % 4096);
 
 export async function writeLogs(orgId: number, logs: LogIn[]) {
+  const quotas = await getQuotas(orgId);
+  if (!(await admitDaily(orgId, "logs", logs.length, quotas.maxLogsPerDay))) {
+    recordDrop(orgId, "logs", logs.length, "quota:logs_per_day");
+    return;
+  }
   // Sensitive data is masked before anything is stored (intake/redact.ts).
   for (const l of logs) {
     if (typeof l.message === "string") l.message = cut(stripAnsi(l.message), MAX_MESSAGE);
@@ -406,6 +440,11 @@ export function markTopLevel(spans: SpanIn[]) {
 
 export async function writeSpans(orgId: number, spans: SpanIn[]) {
   if (!spans.length) return;
+  const quotas = await getQuotas(orgId);
+  if (!(await admitDaily(orgId, "spans", spans.length, quotas.maxSpansPerDay))) {
+    recordDrop(orgId, "traces", spans.length, "quota:spans_per_day");
+    return;
+  }
   // service/env are normalized to lowercase so searches can compare exactly and use indexes.
   for (const s of spans) {
     limitValues(s.meta);

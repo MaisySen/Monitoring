@@ -3,6 +3,7 @@ import { decompress, parseJson, apiKeyFrom, tagValue, normalizeTraceId } from ".
 import { MetricPayload, SketchPayload, decodeProto } from "./proto";
 import { agentPayloadToSpans, decodeAgentPayload } from "./agentTraces";
 import { recordDrop, recordStored, splitPoints } from "../lib/intakeStats";
+import { getQuotas, checkByteRate } from "../lib/quotas";
 import { writeMetrics, touchHost, writeLogs, writeSpans, type PointIn, type LogIn } from "./store";
 import { orgForApiKey } from "../lib/org";
 import { decodeOtlp, encodeEmptyResponse, otlpToSpans, otlpToLogs, otlpToMetrics, type OtlpSignal } from "./otlp";
@@ -77,6 +78,14 @@ async function withOrg(req: Request, res: Response, next: NextFunction) {
     return;
   }
   req.orgId = orgId;
+  // Per-organization ingest rate limit on request bytes, checked once per intake call.
+  const quotas = await getQuotas(orgId);
+  const bytes = Number(req.headers["content-length"] ?? 0);
+  if (!checkByteRate(orgId, bytes, quotas.maxIngestBytesPerMinute)) {
+    recordDrop(orgId, intakePath(req.path), 1, "quota:ingest_bytes_per_minute");
+    res.status(429).json({ errors: ["Organization ingest rate limit reached; slow down or raise the limit"], status: "error" });
+    return;
+  }
   next();
 }
 

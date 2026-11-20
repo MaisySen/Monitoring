@@ -105,6 +105,19 @@ INSERT INTO org_memberships (user_id, org_id, role)
  SELECT id, org_id, role FROM users WHERE org_id IS NOT NULL
  ON CONFLICT (user_id, org_id) DO NOTHING;
 `,
+  // 5: per-organization ingestion quotas (NULL = unlimited) and daily usage metering
+  `
+CREATE TABLE IF NOT EXISTS org_quotas (
+ org_id integer PRIMARY KEY,
+ max_series integer, max_points_per_day integer, max_logs_per_day integer, max_spans_per_day integer,
+ max_ingest_bytes_per_minute integer, updated_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS org_usage_daily (
+ org_id integer NOT NULL, day date NOT NULL,
+ points bigint NOT NULL DEFAULT 0, logs bigint NOT NULL DEFAULT 0, spans bigint NOT NULL DEFAULT 0,
+ PRIMARY KEY (org_id, day)
+);
+`,
 ];
 
 export async function migrateDatabase() {

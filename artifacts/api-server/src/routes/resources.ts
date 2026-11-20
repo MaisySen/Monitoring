@@ -11,6 +11,7 @@ import { getSession, getSessionId, updateSession } from "../lib/auth";
 import { evaluateMonitor, validateMonitorQuery } from "../jobs/monitors";
 import { startSampleData, stopSampleData, sampleRunning } from "../jobs/sample";
 import { intakeStats } from "../lib/intakeStats";
+import { getQuotas, setQuotas, parseQuotas, usageToday, bytesThisMinute, seriesCount } from "../lib/quotas";
 import { logger } from "../lib/logger";
 
 const router: Router = Router();
@@ -502,6 +503,32 @@ router.patch(
         .set({ name: String(req.body.name) })
         .where(eq(orgsTable.id, req.orgId!));
     res.json({ ok: true });
+  }),
+);
+
+// ---------- Ingestion quotas and usage ----------
+router.get(
+  "/ui/org/quotas",
+  h(async (req, res) => {
+    res.json({
+      quotas: await getQuotas(req.orgId!),
+      usage: {
+        ...(await usageToday(req.orgId!)),
+        series: await seriesCount(req.orgId!),
+        bytesThisMinute: bytesThisMinute(req.orgId!),
+      },
+      intake: intakeStats(req.orgId!),
+    });
+  }),
+);
+router.put(
+  "/ui/org/quotas",
+  requireAdmin,
+  h(async (req, res) => {
+    const parsed = parseQuotas(req.body);
+    if (typeof parsed === "string") throw new HttpError(400, parsed);
+    await setQuotas(req.orgId!, parsed);
+    res.json({ ok: true, quotas: await getQuotas(req.orgId!) });
   }),
 );
 
