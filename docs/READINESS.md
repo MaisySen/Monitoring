@@ -36,7 +36,8 @@ anything without one is listed under Not yet verified. Dates are 2026-11-20 (Syd
     duplicates, fresh data visible 14ms after recovery (pg pool error handling, fixed 2026-11-20);
   - server down 45s at 100 spans/s (past the 30s client retry budget): 52/11,000 spans lost (0.47%),
     zero duplicates, 1,880/5,500 logs lost (stock OTEL log exporter), fresh data 13ms after recovery.
-    This is the bounded app-side loss the agent's disk queue exists to absorb (agent layer untested here).
+    This is measured app-side loss without the agent; what the agent layer changes about it is untested
+    here (no agent binary - see gaps).
 - Alerting journey (dashboard -> alert -> webhook -> recovery): 14/14.
 - Unit suite: 63/63.
 
