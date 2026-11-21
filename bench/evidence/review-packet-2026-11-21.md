@@ -1,3 +1,5 @@
+> Historical packet for ed300a0. Independent review found F1-F4; see `review-fixes-2026-11-21/README.md`. Do not use this packet as safety approval.
+
 # Review packet: metric retry + intake batch idempotency (2026-11-21, develop 47fa01e)
 
 Everything below is committed in-repo; nothing rests on scrolled-off terminal output. This packet
@@ -17,9 +19,7 @@ default OFF) pending reviewed end-to-end safety; this packet is the review input
 ## Component inventory (each its own commit)
 
 CI is green through 5ee8190. The last two rows are evidence/doc commits whose runs were in
-progress at packet time (both dispatched; check run status at review time — a red run there would
-be infrastructure noise, as neither changes product code beyond the SDK gate in 47fa01e, whose
-local suites are 27/27).
+progress at packet time (both dispatched; a red run requires investigation regardless of local test results).
 
 | Commit | Concern | CI |
 |--------|---------|----|

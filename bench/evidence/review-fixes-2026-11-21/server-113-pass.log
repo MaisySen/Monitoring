@@ -1,0 +1,708 @@
+
+> @workspace/api-server@0.0.0 test
+> DATABASE_URL=${DATABASE_URL:-postgres://unused@127.0.0.1:1/unused} node --import tsx --test test/*.test.ts
+
+TAP version 13
+# Subtest: Agent 7.85 payloads (idxTracerPayloads) decode to spans
+ok 1 - Agent 7.85 payloads (idxTracerPayloads) decode to spans
+  ---
+  duration_ms: 24.80718
+  type: 'test'
+  ...
+# Subtest: Agent 7.5x/7.6x payloads (tracerPayloads) still decode
+ok 2 - Agent 7.5x/7.6x payloads (tracerPayloads) still decode
+  ---
+  duration_ms: 20.315982
+  type: 'test'
+  ...
+# Subtest: a payload with chunks but no readable spans is detected, not silently accepted
+ok 3 - a payload with chunks but no readable spans is detected, not silently accepted
+  ---
+  duration_ms: 3.279796
+  type: 'test'
+  ...
+# (node:1990) DeprecationWarning: Calling client.query() when the client is already executing a query is deprecated and will be removed in pg@9.0. Use async/await or an external async flow control mechanism instead.
+# (Use `node --trace-deprecation ...` to show where the warning was created)
+# Subtest: metrics batch idempotency: dedup, conflict, org isolation, concurrency, rollback, expiry
+ok 4 - metrics batch idempotency: dedup, conflict, org isolation, concurrency, rollback, expiry
+  ---
+  duration_ms: 11566.05205
+  type: 'test'
+  ...
+# (node:2019) DeprecationWarning: Calling client.query() when the client is already executing a query is deprecated and will be removed in pg@9.0. Use async/await or an external async flow control mechanism instead.
+# (Use `node --trace-deprecation ...` to show where the warning was created)
+# {"F1":{"queryValue":7,"discoveryFresh":true,"hostAppLinked":true,"clockShiftSeconds":3600},"F2":{"protobufStoredSum":11,"jsonDuplicate":"200 application/json {}","protobufDuplicate":"200 application/x-protobuf empty valid response"},"F4":{"exactGzipRetry":200,"equivalentPayloadDifferentGzipEnvelope":409},"F3":{"concurrentResults":[0,"duplicate","duplicate"],"usageAfterConcurrent":1,"ingestFailureQuotaRolledBack":true,"refusedClaimRolledBack":true,"retryAfterQuotaRaised":true}}
+# Subtest: F1-F4: warm-cache query/discovery/hosts, encoded duplicate ACK, concurrent quota, raw compressed hash
+ok 5 - F1-F4: warm-cache query/discovery/hosts, encoded duplicate ACK, concurrent quota, raw compressed hash
+  ---
+  duration_ms: 2576.474827
+  type: 'test'
+  ...
+# Subtest: cumulative counters: a failed store and retry keep the increment (reference applied on commit)
+ok 6 - cumulative counters: a failed store and retry keep the increment (reference applied on commit)
+  ---
+  duration_ms: 6.849118
+  type: 'test'
+  ...
+# Subtest: cumulative counters: stream key includes the instance and ignores attribute order; older samples are ignored
+ok 7 - cumulative counters: stream key includes the instance and ignores attribute order; older samples are ignored
+  ---
+  duration_ms: 0.695946
+  type: 'test'
+  ...
+# Subtest: exponential histograms keep negative buckets in ascending order
+ok 8 - exponential histograms keep negative buckets in ascending order
+  ---
+  duration_ms: 0.279086
+  type: 'test'
+  ...
+# Subtest: disk usage keeps the device tag
+ok 9 - disk usage keeps the device tag
+  ---
+  duration_ms: 0.617214
+  type: 'test'
+  ...
+# Subtest: ClickHouse insert and connection failures are storage errors (503); data errors are not
+ok 10 - ClickHouse insert and connection failures are storage errors (503); data errors are not
+  ---
+  duration_ms: 0.420877
+  type: 'test'
+  ...
+# Subtest: sketch bins become weighted points; counts and percentiles hold
+ok 11 - sketch bins become weighted points; counts and percentiles hold
+  ---
+  duration_ms: 0.458401
+  type: 'test'
+  ...
+# Subtest: formulas combine only matching groups; one-sided groups are kept for + and -
+ok 12 - formulas combine only matching groups; one-sided groups are kept for + and -
+  ---
+  duration_ms: 0.796413
+  type: 'test'
+  ...
+# Subtest: monitor aggregations: percentile(N), change and pct_change
+ok 13 - monitor aggregations: percentile(N), change and pct_change
+  ---
+  duration_ms: 7.601119
+  type: 'test'
+  ...
+# Subtest: log aggregate: totals and timeseries are separate passes, merged per group
+ok 14 - log aggregate: totals and timeseries are separate passes, merged per group
+  ---
+  duration_ms: 5.065821
+  type: 'test'
+  ...
+# Subtest: normalizeMessage collapses occurrence-varying fragments
+ok 15 - normalizeMessage collapses occurrence-varying fragments
+  ---
+  duration_ms: 1.139478
+  type: 'test'
+  ...
+# Subtest: fingerprint is stable and separates distinct shapes
+ok 16 - fingerprint is stable and separates distinct shapes
+  ---
+  duration_ms: 0.246808
+  type: 'test'
+  ...
+# Subtest: aggregateErrorGroups groups recurring errors and keeps counts and time bounds
+ok 17 - aggregateErrorGroups groups recurring errors and keeps counts and time bounds
+  ---
+  duration_ms: 0.461935
+  type: 'test'
+  ...
+# Subtest: errors without type/message still group generically per service
+ok 18 - errors without type/message still group generically per service
+  ---
+  duration_ms: 0.197995
+  type: 'test'
+  ...
+# Subtest: one group can span environments and tracks every env seen
+ok 19 - one group can span environments and tracks every env seen
+  ---
+  duration_ms: 0.77585
+  type: 'test'
+  ...
+# Subtest: message example is truncated and fingerprint separates messages only by shape
+ok 20 - message example is truncated and fingerprint separates messages only by shape
+  ---
+  duration_ms: 0.216593
+  type: 'test'
+  ...
+# Subtest: buildVersionCorrelation keeps env scope, untagged labels, and explicit coverage
+ok 21 - buildVersionCorrelation keeps env scope, untagged labels, and explicit coverage
+  ---
+  duration_ms: 0.362272
+  type: 'test'
+  ...
+# Subtest: buildVersionCorrelation without truncation reports full coverage
+ok 22 - buildVersionCorrelation without truncation reports full coverage
+  ---
+  duration_ms: 0.130089
+  type: 'test'
+  ...
+# Subtest: parseTime accepts seconds, milliseconds, ISO and date math
+ok 23 - parseTime accepts seconds, milliseconds, ISO and date math
+  ---
+  duration_ms: 3.525842
+  type: 'test'
+  ...
+# Subtest: page limits and cursors are validated
+ok 24 - page limits and cursors are validated
+  ---
+  duration_ms: 0.812623
+  type: 'test'
+  ...
+# Subtest: aggregate requests: computes, group_by and limits
+ok 25 - aggregate requests: computes, group_by and limits
+  ---
+  duration_ms: 0.849184
+  type: 'test'
+  ...
+# Subtest: host filter, sort and paging
+ok 26 - host filter, sort and paging
+  ---
+  duration_ms: 17.785129
+  type: 'test'
+  ...
+# Subtest: metric queries accept 'by{host}' without spaces and percentile aggregators
+ok 27 - metric queries accept 'by{host}' without spaces and percentile aggregators
+  ---
+  duration_ms: 833.835868
+  type: 'test'
+  ...
+# Subtest: incident matches its own group's spans only, ranks endpoints, lists observed versions
+ok 28 - incident matches its own group's spans only, ranks endpoints, lists observed versions
+  ---
+  duration_ms: 2.313966
+  type: 'test'
+  ...
+# Subtest: isNew is false for groups first seen over an hour ago
+ok 29 - isNew is false for groups first seen over an hour ago
+  ---
+  duration_ms: 0.240403
+  type: 'test'
+  ...
+# Subtest: negative control: an empty scan never fabricates endpoints, versions or matches
+ok 30 - negative control: an empty scan never fabricates endpoints, versions or matches
+  ---
+  duration_ms: 0.179552
+  type: 'test'
+  ...
+# Subtest: version list is capped and notes overflow
+ok 31 - version list is capped and notes overflow
+  ---
+  duration_ms: 0.448527
+  type: 'test'
+  ...
+# Subtest: incidents sort by lastSeen descending
+ok 32 - incidents sort by lastSeen descending
+  ---
+  duration_ms: 0.258112
+  type: 'test'
+  ...
+# Subtest: version timing: all gates pass -> env-scoped observation timing
+ok 33 - version timing: all gates pass -> env-scoped observation timing
+  ---
+  duration_ms: 0.26732
+  type: 'test'
+  ...
+# Subtest: negative control: truncated scan forbids the line
+ok 34 - negative control: truncated scan forbids the line
+  ---
+  duration_ms: 0.131972
+  type: 'test'
+  ...
+# Subtest: negative control: one untagged matched span forbids the line
+ok 35 - negative control: one untagged matched span forbids the line
+  ---
+  duration_ms: 0.138072
+  type: 'test'
+  ...
+# Subtest: negative control: two observed versions forbid the line
+ok 36 - negative control: two observed versions forbid the line
+  ---
+  duration_ms: 0.268167
+  type: 'test'
+  ...
+# Subtest: negative control: matched spans across two environments forbid the line
+ok 37 - negative control: matched spans across two environments forbid the line
+  ---
+  duration_ms: 0.351358
+  type: 'test'
+  ...
+# Subtest: negative control: a staging-only observation record says nothing about prod
+ok 38 - negative control: a staging-only observation record says nothing about prod
+  ---
+  duration_ms: 0.181901
+  type: 'test'
+  ...
+# Subtest: negative control: no matched spans forbid the line
+ok 39 - negative control: no matched spans forbid the line
+  ---
+  duration_ms: 0.115829
+  type: 'test'
+  ...
+# Subtest: negative control: missing observation record forbids the line
+ok 40 - negative control: missing observation record forbids the line
+  ---
+  duration_ms: 0.099439
+  type: 'test'
+  ...
+# Subtest: negative control: version first observed at or after the group's first sighting cannot be ordered, no line
+ok 41 - negative control: version first observed at or after the group's first sighting cannot be ordered, no line
+  ---
+  duration_ms: 0.102316
+  type: 'test'
+  ...
+# Subtest: buildIncidents exposes the uncapped observation state the rule consumes
+ok 42 - buildIncidents exposes the uncapped observation state the rule consumes
+  ---
+  duration_ms: 0.269525
+  type: 'test'
+  ...
+# Subtest: aggregateServiceVersions: first/last per (service, env, version), untagged spans skipped
+ok 43 - aggregateServiceVersions: first/last per (service, env, version), untagged spans skipped
+  ---
+  duration_ms: 0.258137
+  type: 'test'
+  ...
+# Subtest: trace ids normalize to the low 64 bits in decimal
+ok 44 - trace ids normalize to the low 64 bits in decimal
+  ---
+  duration_ms: 0.869299
+  type: 'test'
+  ...
+# Subtest: OTLP spans map to services, resources, errors and durations
+ok 45 - OTLP spans map to services, resources, errors and durations
+  ---
+  duration_ms: 0.876794
+  type: 'test'
+  ...
+# Subtest: OTLP logs keep severity, message and trace correlation
+ok 46 - OTLP logs keep severity, message and trace correlation
+  ---
+  duration_ms: 0.443186
+  type: 'test'
+  ...
+# Subtest: OTLP metrics: tags and agent version from resource attributes
+ok 47 - OTLP metrics: tags and agent version from resource attributes
+  ---
+  duration_ms: 1.180343
+  type: 'test'
+  ...
+# Subtest: log messages: terminal color codes are removed
+ok 48 - log messages: terminal color codes are removed
+  ---
+  duration_ms: 0.457135
+  type: 'test'
+  ...
+# Subtest: parses aggregator, metric, filter, group-by and functions
+ok 49 - parses aggregator, metric, filter, group-by and functions
+  ---
+  duration_ms: 6.301492
+  type: 'test'
+  ...
+# Subtest: rejects text that is not a metric query
+ok 50 - rejects text that is not a metric query
+  ---
+  duration_ms: 0.31438
+  type: 'test'
+  ...
+# Subtest: filters support OR, IN, NOT and globs, case-insensitively
+ok 51 - filters support OR, IN, NOT and globs, case-insensitively
+  ---
+  duration_ms: 0.40522
+  type: 'test'
+  ...
+# Subtest: extracts inline queries from formulas
+ok 52 - extracts inline queries from formulas
+  ---
+  duration_ms: 0.398775
+  type: 'test'
+  ...
+# Subtest: picks rollup intervals that keep about 180 points
+ok 53 - picks rollup intervals that keep about 180 points
+  ---
+  duration_ms: 0.203028
+  type: 'test'
+  ...
+# Subtest: formulas combine series point by point
+ok 54 - formulas combine series point by point
+  ---
+  duration_ms: 0.943725
+  type: 'test'
+  ...
+# Subtest: formula functions: abs, cumsum, per_second
+ok 55 - formula functions: abs, cumsum, per_second
+  ---
+  duration_ms: 4.170007
+  type: 'test'
+  ...
+# Subtest: reducers
+ok 56 - reducers
+  ---
+  duration_ms: 2.414859
+  type: 'test'
+  ...
+# (node:2103) DeprecationWarning: Calling client.query() when the client is already executing a query is deprecated and will be removed in pg@9.0. Use async/await or an external async flow control mechanism instead.
+# (Use `node --trace-deprecation ...` to show where the warning was created)
+# psql:/tmp/mig-SW9NfS/m4.sql:5: NOTICE:  relation "org_memberships" already exists, skipping
+# psql:/tmp/mig-SW9NfS/m4.sql:6: NOTICE:  relation "org_memberships_org" already exists, skipping
+# Subtest: migration 4 backfills legacy single-org users into org_memberships
+ok 57 - migration 4 backfills legacy single-org users into org_memberships
+  ---
+  duration_ms: 311.145657
+  type: 'test'
+  ...
+# psql:/tmp/migtail-o6oYX6/m9.sql:2: NOTICE:  column "attributes" of relation "logs" already exists, skipping
+# psql:/tmp/migtail-o6oYX6/m9.sql:3: NOTICE:  column "trace_id" of relation "logs" already exists, skipping
+# psql:/tmp/migtail-o6oYX6/m13.sql:2: NOTICE:  column "envs" of relation "error_groups" already exists, skipping
+# Subtest: appending migrations upgrades an install already at N-1
+ok 58 - appending migrations upgrades an install already at N-1
+  ---
+  duration_ms: 11530.004766
+  type: 'test'
+  ...
+# Subtest: monitor queries must not be empty and must end with a comparison
+ok 59 - monitor queries must not be empty and must end with a comparison
+  ---
+  duration_ms: 5.181481
+  type: 'test'
+  ...
+# Subtest: partial success encodes valid protobuf with rejected count and message
+ok 60 - partial success encodes valid protobuf with rejected count and message
+  ---
+  duration_ms: 4.692069
+  type: 'test'
+  ...
+# Subtest: partial success encodes OTLP/JSON with the signal-specific field name
+ok 61 - partial success encodes OTLP/JSON with the signal-specific field name
+  ---
+  duration_ms: 0.697091
+  type: 'test'
+  ...
+# Subtest: empty responses are unchanged
+ok 62 - empty responses are unchanged
+  ---
+  duration_ms: 0.154473
+  type: 'test'
+  ...
+# Subtest: no record: active, no workflow
+ok 63 - no record: active, no workflow
+  ---
+  duration_ms: 0.734629
+  type: 'test'
+  ...
+# Subtest: acknowledged stays active with the badge
+ok 64 - acknowledged stays active with the badge
+  ---
+  duration_ms: 0.149151
+  type: 'test'
+  ...
+# Subtest: resolved moves to the resolved section when nothing new happened
+ok 65 - resolved moves to the resolved section when nothing new happened
+  ---
+  duration_ms: 0.114952
+  type: 'test'
+  ...
+# Subtest: new occurrences after a resolution re-surface the problem as active + reopened
+ok 66 - new occurrences after a resolution re-surface the problem as active + reopened
+  ---
+  duration_ms: 0.170035
+  type: 'test'
+  ...
+# Subtest: resolved with no further data at all (null activity) stays resolved
+ok 67 - resolved with no further data at all (null activity) stays resolved
+  ---
+  duration_ms: 0.11322
+  type: 'test'
+  ...
+# Subtest: muted stays muted; new activity is flagged, never silently dropped
+ok 68 - muted stays muted; new activity is flagged, never silently dropped
+  ---
+  duration_ms: 0.119984
+  type: 'test'
+  ...
+# Subtest: negative control: activity exactly at status time is not 'new'
+ok 69 - negative control: activity exactly at status time is not 'new'
+  ---
+  duration_ms: 0.156597
+  type: 'test'
+  ...
+# Subtest: masks card numbers that pass the Luhn check, and leaves other numbers
+ok 70 - masks card numbers that pass the Luhn check, and leaves other numbers
+  ---
+  duration_ms: 1.512367
+  type: 'test'
+  ...
+# Subtest: masks bearer tokens, AWS keys, JWTs, secret pairs and private keys
+ok 71 - masks bearer tokens, AWS keys, JWTs, secret pairs and private keys
+  ---
+  duration_ms: 0.400873
+  type: 'test'
+  ...
+# Subtest: leaves ordinary log lines untouched
+ok 72 - leaves ordinary log lines untouched
+  ---
+  duration_ms: 0.128245
+  type: 'test'
+  ...
+# Subtest: masks secret-named attributes and tags but keeps token counts
+ok 73 - masks secret-named attributes and tags but keeps token counts
+  ---
+  duration_ms: 0.956682
+  type: 'test'
+  ...
+# Subtest: masks secrets in span resources and metadata
+ok 74 - masks secrets in span resources and metadata
+  ---
+  duration_ms: 0.242214
+  type: 'test'
+  ...
+# Subtest: empty and wildcard queries match everything
+ok 75 - empty and wildcard queries match everything
+  ---
+  duration_ms: 1.303787
+  type: 'test'
+  ...
+# Subtest: service is compared exactly and lowercased so the index applies
+ok 76 - service is compared exactly and lowercased so the index applies
+  ---
+  duration_ms: 1.024174
+  type: 'test'
+  ...
+# Subtest: free text becomes parameterized ILIKEs, never inline SQL
+ok 77 - free text becomes parameterized ILIKEs, never inline SQL
+  ---
+  duration_ms: 0.365382
+  type: 'test'
+  ...
+# Subtest: quoted phrases keep their spaces
+ok 78 - quoted phrases keep their spaces
+  ---
+  duration_ms: 0.14281
+  type: 'test'
+  ...
+# Subtest: AND, OR, NOT and negation compose with the right precedence
+ok 79 - AND, OR, NOT and negation compose with the right precedence
+  ---
+  duration_ms: 0.375292
+  type: 'test'
+  ...
+# Subtest: grouped values expand to OR
+ok 80 - grouped values expand to OR
+  ---
+  duration_ms: 0.309521
+  type: 'test'
+  ...
+# Subtest: wildcards use ILIKE and escape LIKE metacharacters
+ok 81 - wildcards use ILIKE and escape LIKE metacharacters
+  ---
+  duration_ms: 0.33945
+  type: 'test'
+  ...
+# Subtest: unknown plain keys search tags
+ok 82 - unknown plain keys search tags
+  ---
+  duration_ms: 0.226619
+  type: 'test'
+  ...
+# Subtest: exact attribute matches use JSON containment for the GIN index
+ok 83 - exact attribute matches use JSON containment for the GIN index
+  ---
+  duration_ms: 0.555823
+  type: 'test'
+  ...
+# Subtest: span status maps to the error flag and duration units convert to nanoseconds
+ok 84 - span status maps to the error flag and duration units convert to nanoseconds
+  ---
+  duration_ms: 0.593766
+  type: 'test'
+  ...
+# Subtest: every bound parameter is referenced in the SQL (Postgres rejects unused parameters)
+ok 85 - every bound parameter is referenced in the SQL (Postgres rejects unused parameters)
+  ---
+  duration_ms: 0.920202
+  type: 'test'
+  ...
+# Subtest: email check: same answers as the old pattern, and linear on long input
+ok 86 - email check: same answers as the old pattern, and linear on long input
+  ---
+  duration_ms: 5.194375
+  type: 'test'
+  ...
+# Subtest: DogStatsD lines parse like before, and a long line with a carriage return is fast
+ok 87 - DogStatsD lines parse like before, and a long line with a carriage return is fast
+  ---
+  duration_ms: 7.011853
+  type: 'test'
+  ...
+# Subtest: tag globs match like the old regular expressions, and many wildcards are fast or refused
+ok 88 - tag globs match like the old regular expressions, and many wildcards are fast or refused
+  ---
+  duration_ms: 14.903329
+  type: 'test'
+  ...
+# Subtest: metric intervals must be positive and are widened to a bounded number of buckets
+ok 89 - metric intervals must be positive and are widened to a bounded number of buckets
+  ---
+  duration_ms: 11.325055
+  type: 'test'
+  ...
+# Subtest: raw session ids are not accepted as Bearer tokens
+ok 90 - raw session ids are not accepted as Bearer tokens
+  ---
+  duration_ms: 3.298404
+  type: 'test'
+  ...
+# Subtest: alert recipients come from the monitor template, not from telemetry values
+ok 91 - alert recipients come from the monitor template, not from telemetry values
+  ---
+  duration_ms: 2.334271
+  type: 'test'
+  ...
+# Subtest: private-key redaction is linear and still masks real blocks
+ok 92 - private-key redaction is linear and still masks real blocks
+  ---
+  duration_ms: 30.679202
+  type: 'test'
+  ...
+# Subtest: secret-named keys are masked for every value type; names and short Basic credentials too
+ok 93 - secret-named keys are masked for every value type; names and short Basic credentials too
+  ---
+  duration_ms: 2.448015
+  type: 'test'
+  ...
+# Subtest: webhook filter refuses private IPv4 addresses inside IPv6 forms
+ok 94 - webhook filter refuses private IPv4 addresses inside IPv6 forms
+  ---
+  duration_ms: 13.849957
+  type: 'test'
+  ...
+# Subtest: webhook headers cannot set connection or framing headers
+ok 95 - webhook headers cannot set connection or framing headers
+  ---
+  duration_ms: 2.98203
+  type: 'test'
+  ...
+# Subtest: logout returnTo accepts only same-origin paths
+ok 96 - logout returnTo accepts only same-origin paths
+  ---
+  duration_ms: 0.994365
+  type: 'test'
+  ...
+# Subtest: low traffic with observed errors shows the errors alongside the uncertainty
+ok 97 - low traffic with observed errors shows the errors alongside the uncertainty
+  ---
+  duration_ms: 0.994286
+  type: 'test'
+  ...
+# Subtest: low traffic without errors does not invent errors
+ok 98 - low traffic without errors does not invent errors
+  ---
+  duration_ms: 0.199786
+  type: 'test'
+  ...
+# Subtest: quiet is reported as unknowable, never as failure or health
+ok 99 - quiet is reported as unknowable, never as failure or health
+  ---
+  duration_ms: 0.142586
+  type: 'test'
+  ...
+# Subtest: degraded requires enough traffic, an error rate, and volume or baseline lift
+ok 100 - degraded requires enough traffic, an error rate, and volume or baseline lift
+  ---
+  duration_ms: 0.134518
+  type: 'test'
+  ...
+# Subtest: errors below the degraded threshold still show counts
+ok 101 - errors below the degraded threshold still show counts
+  ---
+  duration_ms: 0.206513
+  type: 'test'
+  ...
+# Subtest: checkUptimeUrl accepts a plain public http(s) URL
+ok 102 - checkUptimeUrl accepts a plain public http(s) URL
+  ---
+  duration_ms: 5.372367
+  type: 'test'
+  ...
+# Subtest: checkUptimeUrl rejects non-http(s) schemes
+ok 103 - checkUptimeUrl rejects non-http(s) schemes
+  ---
+  duration_ms: 0.75062
+  type: 'test'
+  ...
+# Subtest: checkUptimeUrl rejects credentials in the URL
+ok 104 - checkUptimeUrl rejects credentials in the URL
+  ---
+  duration_ms: 0.227087
+  type: 'test'
+  ...
+# Subtest: checkUptimeUrl rejects private, loopback and link-local address literals
+ok 105 - checkUptimeUrl rejects private, loopback and link-local address literals
+  ---
+  duration_ms: 1.066183
+  type: 'test'
+  ...
+# Subtest: checkUptimeUrl rejects local hostnames
+ok 106 - checkUptimeUrl rejects local hostnames
+  ---
+  duration_ms: 0.211476
+  type: 'test'
+  ...
+# Subtest: probeUptime refuses a loopback target while the override is unset
+ok 107 - probeUptime refuses a loopback target while the override is unset
+  ---
+  duration_ms: 3.062916
+  type: 'test'
+  ...
+# Subtest: probe paths against a live disposable target (child process with the test-only override)
+ok 108 - probe paths against a live disposable target (child process with the test-only override)
+  ---
+  duration_ms: 1189.95684
+  type: 'test'
+  ...
+# (node:2242) DeprecationWarning: Calling client.query() when the client is already executing a query is deprecated and will be removed in pg@9.0. Use async/await or an external async flow control mechanism instead.
+# (Use `node --trace-deprecation ...` to show where the warning was created)
+# Subtest: runUptimeCheck records the result and increments consecutive_failures
+ok 109 - runUptimeCheck records the result and increments consecutive_failures
+  ---
+  duration_ms: 830.072988
+  type: 'test'
+  ...
+# Subtest: redirect hops are re-validated: private targets and credentials are refused
+ok 110 - redirect hops are re-validated: private targets and credentials are refused
+  ---
+  duration_ms: 1.06989
+  type: 'test'
+  ...
+# Subtest: mixed resolution results are refused: any blocked address blocks the hostname
+ok 111 - mixed resolution results are refused: any blocked address blocks the hostname
+  ---
+  duration_ms: 3.378988
+  type: 'test'
+  ...
+# Subtest: manual-run rate limiter: fixed window per key
+ok 112 - manual-run rate limiter: fixed window per key
+  ---
+  duration_ms: 0.991249
+  type: 'test'
+  ...
+# Subtest: a receiver that trickles bytes is cut off at the total time limit
+ok 113 - a receiver that trickles bytes is cut off at the total time limit
+  ---
+  duration_ms: 823.96728
+  type: 'test'
+  ...
+1..113
+# tests 113
+# suites 0
+# pass 113
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 81007.510706
+
+SERVER_TEST_EXIT=0
