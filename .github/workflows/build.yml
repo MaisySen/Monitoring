@@ -97,7 +97,7 @@ jobs:
           MONITORING_UPTIME_ALLOW_PRIVATE: "true"
         run: |
           nohup node --enable-source-maps ./dist/index.mjs > /tmp/ci-server.log 2>&1 &
-          ok=""; for i in $(seq 1 30); do sleep 1; curl -sf http://127.0.0.1:4730/healthz >/dev/null && { ok=1; break; }; done
+          ok=""; for i in $(seq 1 30); do sleep 1; curl -sf http://127.0.0.1:4730/api/healthz >/dev/null && { ok=1; break; }; done
           [ -n "$ok" ] || { tail -20 /tmp/ci-server.log; exit 1; }
       - name: Create regression org and keys
         run: |
