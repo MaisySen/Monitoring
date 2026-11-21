@@ -33,6 +33,27 @@ const ORG = Number(sh(`PATH=/usr/lib/postgresql/14/bin:$PATH psql "${DBURL}" -tA
 const append = (f, o) => fs.appendFileSync(path.join(OUT, f), JSON.stringify(o) + '\n');
 const TICK = Number(sh('getconf CLK_TCK')) || 100;
 
+// ---- resource guard: stop at first pressure and record the observed limit, never a universal capacity claim ----
+let activeChild = null;
+let pressure = null;
+const memAvailMb = () => Number(/MemAvailable:\s+(\d+)/.exec(fs.readFileSync('/proc/meminfo', 'utf8'))?.[1] || 0) / 1024;
+const diskFreeMb = () => Number(sh(`df -m --output=avail ${__dirname} | tail -1`)) || 0;
+const MEM_FLOOR_MB = Number(process.env.SOAK_MEM_FLOOR_MB || 350);
+const DISK_FLOOR_MB = Number(process.env.SOAK_DISK_FLOOR_MB || 2048);
+function checkPressure() {
+  if (pressure) return pressure;
+  const m = memAvailMb(), d = diskFreeMb();
+  if (m < MEM_FLOOR_MB) pressure = `memory: MemAvailable ${Math.round(m)}MB below floor ${MEM_FLOOR_MB}MB`;
+  else if (d < DISK_FLOOR_MB) pressure = `disk: ${Math.round(d)}MB free below floor ${DISK_FLOOR_MB}MB`;
+  if (pressure && activeChild) { try { activeChild.kill('SIGTERM'); } catch {} }
+  return pressure;
+}
+// never leave an orphaned loadgen behind (an earlier kill of just the parent did)
+const killChild = () => { if (activeChild) { try { activeChild.kill('SIGTERM'); } catch {} } };
+process.on('exit', killChild);
+process.on('SIGTERM', () => { killChild(); process.exit(143); });
+process.on('SIGINT', () => { killChild(); process.exit(130); });
+
 function req(method, url, body, headers = {}) {
   return new Promise((resolve) => {
     const u = new URL(url); const data = body ? JSON.stringify(body) : null;
@@ -64,6 +85,7 @@ function sample(extra = {}) {
   const stale = psql("select coalesce(max(extract(epoch from now())*1000 - last_evaluated_at),0)::bigint from monitors where name like 'soak %'");
   const s = { t: new Date(now).toISOString(), elapsed_min: Math.round((now - t0) / 60000),
     server_rss_mb: Math.round(rssMb(server)), pg_rss_mb: Math.round(rssMb(pg)),
+    mem_available_mb: Math.round(memAvailMb()), disk_free_mb: Math.round(diskFreeMb()),
     db_size_mb: Math.round(Number(psql("select pg_database_size(current_database())")) / 1048576),
     monitor_eval_staleness_s: Math.round(Number(stale) / 1000), rows_inserted_total: Number(ins), ...extra };
   if (prev) {
@@ -81,10 +103,11 @@ function loadgen(run, tps, seconds) {
   const p = spawn('node', [path.join(__dirname, '..', 'scale', 'loadgen.js')], {
     env: { ...process.env, MONITORING_API_KEY: KEY, RUN: run, TRACES_PER_S: String(tps), SECONDS: String(seconds), CONCURRENCY: '8' }, stdio: ['ignore', 'pipe', 'pipe'],
   });
+  activeChild = p;
   let final = '', lastStat = null;
   p.stdout.on('data', (d) => (final += d));
   p.stderr.on('data', (d) => { for (const l of String(d).split('\n').filter(Boolean)) { try { const j = JSON.parse(l); if (j.t !== undefined) { lastStat = j; append(`loadgen-${run}.jsonl`, { ...j, wall: new Date().toISOString() }); } } catch { append(`loadgen-${run}.jsonl`, { msg: l }); } } });
-  return { proc: p, done: new Promise((r) => p.on('exit', () => r(JSON.parse(final.trim().split('\n').pop() || '{}')))), last: () => lastStat };
+  return { proc: p, done: new Promise((r) => p.on('exit', () => { activeChild = null; r(JSON.parse(final.trim().split('\n').pop() || '{}')); })), last: () => lastStat };
 }
 
 async function createMonitors() {
@@ -117,12 +140,13 @@ let t0 = Date.now();
     t0 = Date.now();
     const lg = loadgen(RUN, Number(process.env.TPS || 400), Math.round(HOURS * 3600));
     sample();
-    const iv = setInterval(() => { const l = lg.last(); append('samples.jsonl', sample(l ? { intake_p50_ms: l.intake_p50_ms, intake_p99_ms: l.intake_p99_ms, loadgen_errors: l.errors, loadgen_inflight: l.inflight } : {})); }, 60000);
+    const iv = setInterval(() => { checkPressure(); const l = lg.last(); append('samples.jsonl', sample(l ? { intake_p50_ms: l.intake_p50_ms, intake_p99_ms: l.intake_p99_ms, loadgen_errors: l.errors, loadgen_inflight: l.inflight } : {})); }, 60000);
     const probe = async () => { const out = sh(`bash ${path.join(__dirname, '..', 'scale', 'query-probe.sh')} t${Math.round((Date.now() - t0) / 60000)}`, 240000); for (const l of out.split('\n').filter(Boolean)) { try { append('probes.jsonl', JSON.parse(l)); } catch {} } };
     const pv = setInterval(probe, 300000); setTimeout(probe, 120000);
     const sent = await lg.done;
     clearInterval(iv); clearInterval(pv);
     summary.sent = sent;
+    if (pressure) summary.pressure = pressure;
     // monitor stability: state changes recorded during the soak
     const evs = psql(`select m.name, count(e.*) from monitors m left join events e on e.monitor_id = m.id and e.ts >= ${t0} where m.name like 'soak %' group by 1 order by 1`);
     summary.monitor_events = Object.fromEntries(evs.split('\n').filter(Boolean).map((l) => { const [n, c] = l.split('|'); return [n, Number(c)]; }));
@@ -139,13 +163,15 @@ let t0 = Date.now();
   const steps = (process.env.RAMP || '400,800,1200,1600,2400,3200,4800').split(',').map(Number);
   summary.ramp = [];
   for (const tps of steps) {
+    if (pressure) { summary.ramp.push({ skipped: tps, reason: pressure }); break; }
     const run = `${RUN}-ramp${tps}`;
     prev = null; sample();
     const lg = loadgen(run, tps, 180);
     const samples = [];
-    const iv = setInterval(() => samples.push(sample()), 30000);
+    const iv = setInterval(() => { checkPressure(); samples.push(sample()); }, 30000);
     const sent = await lg.done;
     clearInterval(iv);
+    if (pressure) { const st = { traces_per_s_target: tps, stopped_by: pressure, errors: sent.errors }; summary.ramp.push(st); append('ramp.jsonl', st); break; }
     const stats = fs.readFileSync(path.join(OUT, `loadgen-${run}.jsonl`), 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l)).filter((j) => j.t !== undefined && j.t >= 30);
     // sustained p99: the 90th percentile of the 10-second p99 windows (one stalled batch does not end the ramp); worst window kept too
     const w = stats.map((s) => s.intake_p99_ms).sort((a, b) => a - b);
@@ -164,6 +190,7 @@ let t0 = Date.now();
     if (step.achieved_ratio < 0.95 || p99 > Number(process.env.RAMP_P99_LIMIT || 2000) || sent.errors > 0) { step.breaking = true; break; }
     await sleep(30000);
   }
+  if (pressure) summary.pressure = pressure;
   fs.writeFileSync(path.join(OUT, 'summary.json'), JSON.stringify(summary, null, 2));
   console.log(JSON.stringify(summary, null, 2));
   process.exit(0);
