@@ -1,0 +1,91 @@
+{
+  "run": "shakedown-1157",
+  "hours": 0.03,
+  "monitors": 20,
+  "sent": {
+    "run": "shakedown-1157",
+    "seconds": 108,
+    "sent": {
+      "spans": 65443,
+      "logs": 11010,
+      "metric_points": 34800
+    },
+    "rate": {
+      "spans_per_s": 606,
+      "logs_per_s": 102
+    },
+    "requests": 907,
+    "errors": 0
+  },
+  "monitor_events": {
+    "soak cpu by host": 0,
+    "soak errors by service": 0,
+    "soak expected ALERT": 0,
+    "soak expected OK": 0,
+    "soak host load by host": 0,
+    "soak log errors svc-00": 0,
+    "soak log errors svc-01": 0,
+    "soak log errors svc-02": 0,
+    "soak log errors svc-03": 0,
+    "soak logs volume": 0,
+    "soak orders by plan": 0,
+    "soak spans volume": 0,
+    "soak trace errors svc-00": 0,
+    "soak trace errors svc-01": 0,
+    "soak trace errors svc-02": 0,
+    "soak trace errors svc-03": 0,
+    "soak trace errors svc-04": 0,
+    "soak trace errors svc-05": 0,
+    "soak trace errors svc-06": 0,
+    "soak trace errors svc-07": 0
+  },
+  "monitor_states": {
+    "soak cpu by host": "OK",
+    "soak errors by service": "OK",
+    "soak expected ALERT": "Alert",
+    "soak expected OK": "OK",
+    "soak host load by host": "OK",
+    "soak log errors svc-00": "OK",
+    "soak log errors svc-01": "OK",
+    "soak log errors svc-02": "OK",
+    "soak log errors svc-03": "OK",
+    "soak logs volume": "OK",
+    "soak orders by plan": "No Data",
+    "soak spans volume": "OK",
+    "soak trace errors svc-00": "OK",
+    "soak trace errors svc-01": "OK",
+    "soak trace errors svc-02": "OK",
+    "soak trace errors svc-03": "OK",
+    "soak trace errors svc-04": "OK",
+    "soak trace errors svc-05": "OK",
+    "soak trace errors svc-06": "OK",
+    "soak trace errors svc-07": "OK"
+  },
+  "stored": {
+    "spans": 65443,
+    "logs": 11010
+  },
+  "loss": {
+    "spans": 0,
+    "logs": 0
+  },
+  "ramp": [
+    {
+      "traces_per_s_target": 50,
+      "spans_per_s_achieved": 315,
+      "logs_per_s_achieved": 53,
+      "achieved_vs_target_traces": 6.3,
+      "intake_p99_ms_sustained": 374,
+      "intake_p99_ms_worst_window": 729,
+      "intake_p50_ms_median": 14,
+      "errors": 0,
+      "machine_cpu_pct_max": 14,
+      "cores": 1,
+      "server_cpu_pct_max": 0,
+      "pg_cpu_pct_max": 3,
+      "monitor_staleness_s_max": 30,
+      "traces_per_s_achieved": 52,
+      "achieved_ratio": 1.04
+    }
+  ]
+}

@@ -27,7 +27,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const sh = (c, t = 120000) => { try { return execSync(c, { encoding: 'utf8', timeout: t, stdio: ['ignore', 'pipe', 'pipe'] }).trim(); } catch { return ''; } };
 // psql reads the same DATABASE_URL the server uses, so the soak runs against any deployment.
 const DBURL = env.databaseUrl();
-const psql = (q, t) => sh(`PATH=/usr/lib/postgresql/14/bin:$PATH psql "${DBURL}" -tAc "${q.replace(/"/g, '\\"')}"`, t);
+const psql = (q, t) => sh(`PATH=/usr/lib/postgresql/14/bin:$PATH psql "${DBURL}" -tAc "set jit=off; ${q.replace(/"/g, '\\"')}"`, t);
 // Org owning the intake key: loss counts must be scoped to it, never to a hardcoded org id.
 const ORG = Number(sh(`PATH=/usr/lib/postgresql/14/bin:$PATH psql "${DBURL}" -tAc "select org_id from api_keys where key = '${env.apiKey()}'"`)) || 1;
 const append = (f, o) => fs.appendFileSync(path.join(OUT, f), JSON.stringify(o) + '\n');

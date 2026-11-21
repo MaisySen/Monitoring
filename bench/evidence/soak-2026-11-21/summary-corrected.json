@@ -1,0 +1,119 @@
+{
+  "run": "soak-1349",
+  "hours": 0.25,
+  "monitors": 20,
+  "sent": {
+    "run": "soak-1349",
+    "seconds": 900,
+    "sent": {
+      "spans": 2164312,
+      "logs": 365573,
+      "metric_points": 276000
+    },
+    "rate": {
+      "spans_per_s": 2404,
+      "logs_per_s": 406
+    },
+    "requests": 7492,
+    "errors": 6
+  },
+  "monitor_events": {
+    "soak cpu by host": 0,
+    "soak errors by service": 0,
+    "soak expected ALERT": 1,
+    "soak expected OK": 0,
+    "soak host load by host": 0,
+    "soak log errors svc-00": 0,
+    "soak log errors svc-01": 0,
+    "soak log errors svc-02": 0,
+    "soak log errors svc-03": 0,
+    "soak logs volume": 0,
+    "soak orders by plan": 0,
+    "soak spans volume": 0,
+    "soak trace errors svc-00": 0,
+    "soak trace errors svc-01": 0,
+    "soak trace errors svc-02": 0,
+    "soak trace errors svc-03": 0,
+    "soak trace errors svc-04": 0,
+    "soak trace errors svc-05": 0,
+    "soak trace errors svc-06": 0,
+    "soak trace errors svc-07": 0
+  },
+  "monitor_states": {
+    "soak cpu by host": "OK",
+    "soak errors by service": "OK",
+    "soak expected ALERT": "Alert",
+    "soak expected OK": "OK",
+    "soak host load by host": "OK",
+    "soak log errors svc-00": "OK",
+    "soak log errors svc-01": "OK",
+    "soak log errors svc-02": "OK",
+    "soak log errors svc-03": "OK",
+    "soak logs volume": "OK",
+    "soak orders by plan": "OK",
+    "soak spans volume": "OK",
+    "soak trace errors svc-00": "OK",
+    "soak trace errors svc-01": "OK",
+    "soak trace errors svc-02": "OK",
+    "soak trace errors svc-03": "OK",
+    "soak trace errors svc-04": "OK",
+    "soak trace errors svc-05": "OK",
+    "soak trace errors svc-06": "OK",
+    "soak trace errors svc-07": "OK"
+  },
+  "stored": {
+    "spans": 0,
+    "logs": 365167
+  },
+  "loss": {
+    "spans": 2164312,
+    "logs": 406
+  },
+  "ramp": [
+    {
+      "traces_per_s_target": 400,
+      "spans_per_s_achieved": 2410,
+      "logs_per_s_achieved": 407,
+      "achieved_vs_target_traces": 6.03,
+      "intake_p99_ms_sustained": 875,
+      "intake_p99_ms_worst_window": 982,
+      "intake_p50_ms_median": 70,
+      "errors": 0,
+      "machine_cpu_pct_max": 48,
+      "cores": 1,
+      "server_cpu_pct_max": 0,
+      "pg_cpu_pct_max": 16,
+      "monitor_staleness_s_max": 1037,
+      "traces_per_s_achieved": 399,
+      "achieved_ratio": 1
+    },
+    {
+      "traces_per_s_target": 800,
+      "spans_per_s_achieved": 4749,
+      "logs_per_s_achieved": 802,
+      "achieved_vs_target_traces": 5.94,
+      "intake_p99_ms_sustained": 2413,
+      "intake_p99_ms_worst_window": 4296,
+      "intake_p50_ms_median": 131,
+      "errors": 4,
+      "machine_cpu_pct_max": 87,
+      "cores": 1,
+      "server_cpu_pct_max": 0,
+      "pg_cpu_pct_max": 21,
+      "monitor_staleness_s_max": 1247,
+      "traces_per_s_achieved": 786,
+      "achieved_ratio": 0.98,
+      "breaking": true
+    }
+  ],
+  "stored_corrected": {
+    "spans": 2163064,
+    "logs": 365167
+  },
+  "loss_corrected": {
+    "spans": 1248,
+    "logs": 406,
+    "explanation": "gap matches the 6 ECONNRESET request failures recorded by loadgen; original stored count read 0 because the count query hit the missing llvmjit library (bench env issue, fixed with jit=off)"
+  },
+  "observed_limit": "800 traces/s (~4,750 spans/s) sustained p99 2.4s on 1 core; 400 traces/s clean (p99 875ms); this box, not a universal claim"
+}

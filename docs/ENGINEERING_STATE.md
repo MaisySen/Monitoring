@@ -767,3 +767,13 @@ Unit: 76/76. CI greens through 43f64b9.
 - soak.js portability fix: psql now uses DATABASE_URL (was hardcoded db/port), loss check org resolved from the API key (was org_id=1), db size uses current_database(). Shakedown run first: 65443/65443 spans, 11010/11010 logs stored, zero loss, ramp step clean (evidence: bench/evidence/soak-shakedown-2026-11-21/).
 - Soak UI user soak@bench.example created in e2e regression org (id 15) — e2e only, demo org untouched.
 - 2-hour soak at 400 traces/s + ramp launched detached (own_start soak-2h, out: bench/soak/out/soak-1203/). Results recorded on completion.
+
+## 2026-11-21 12:50 — sandbox restart recovery
+- Sandbox restarted ~12:07, killing PG, both servers and the soak 1 minute in (soak-1205 discarded). Restored via owned-process records: PG (pg_ctl), valrun :4731 and e2e :4730 servers (both 200), soak relaunched (RUN=soak-1249, ETA ~15:20 incl. ramp). Ownership records under $HOME/monitoring-owned survived the restart as designed; no source or data lost.
+
+## 2026-11-21 14:14 — bounded soak + ramp (soak-1349), observed limits
+- Sandbox restarted twice (12:07, ~13:48), killing two earlier soak attempts; background processes do not survive between agent runs here, so a multi-hour continuous soak is not achievable in this environment. Bounded run instead: 15 min at 400 traces/s + ramp, fully inside one run.
+- Soak: 2,163,064/2,164,312 spans and 365,167/365,573 logs stored (99.94%); the 1,248-span/406-log gap is fully accounted for by 6 ECONNRESET request failures out of 7,492 recorded by the generator. Not zero-loss: explained, bounded, evidence in bench/evidence/soak-2026-11-21/.
+- Ramp (observed limits on this 1-core box, not capacity claims): 400 traces/s clean (achieved ratio 1.00, intake p99 875ms, 0 errors); 800 traces/s is the breaking point (ratio 0.98, p99 2,413ms > 2s limit, 4 errors) — ramp stopped there by design. No memory/disk pressure stop (floors never hit; mem stayed above 900MB).
+- Monitors under load: expected-state controls correct all run (expected ALERT=Alert, expected OK=OK); evaluation staleness grew to ~700s under 2,400 spans/s on 1 core — observed scheduler lag, recorded.
+- Bench tooling bug found: span/log count queries can hit the sandbox's missing llvmjit library and silently return 0 (sh() swallows errors). soak.js count queries now run with jit=off; original summary kept, corrected numbers in summary-corrected.json.

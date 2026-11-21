@@ -68,8 +68,12 @@ bench/regression/run-all.sh — 7 checks, ALL PASS against a live server
   systemd VM/container before claiming it.
 - Local Go build of the agent: blocked by this box's RAM (known). CI builds;
   distribution uses the fetch script.
-- Long-run soak beyond the recorded runs: bench evidence covers bounded soak
-  and resilience scenarios (6/6 zero-loss), not weeks of operation.
+- Long-run soak beyond bounded runs: this sandbox restarts between agent
+  runs (observed twice on 2026-11-21), killing background processes, so a
+  continuous multi-hour soak is not achievable here. Bounded evidence:
+  15-min soak at 400 traces/s (99.94% stored, gap fully explained by 6
+  generator-recorded ECONNRESETs) and a ramp finding 800 traces/s as this
+  box's breaking point. Not weeks of operation.
 
 ## Held (authority)
 
