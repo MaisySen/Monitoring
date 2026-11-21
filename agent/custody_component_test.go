@@ -315,6 +315,13 @@ func TestCustodyComponentPayloadBoundAndAtomicExpiryFailure(t *testing.T) {
 	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(503); fmt.Fprint(w, `{}`) }))
 	defer backend.Close()
 	a, base := startCustodyTest(t, filepath.Join(t.TempDir(), "payload-journal"), backend.URL)
+	// This test manually drives the real sweep and rewrites expiry in the journal.
+	// Stop the background worker first, including any in-flight backend/save, so
+	// a pre-injection snapshot cannot overwrite the deliberately changed expiry.
+	close(a.stop)
+	<-a.done
+	a.stop = make(chan struct{})
+	// done is already closed; Shutdown still closes the fresh stop and HTTP server.
 	body := strings.Repeat("x", 1024*1024)
 	ids := []string{}
 	for i := 0; i < 16; i++ {
