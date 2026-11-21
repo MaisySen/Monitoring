@@ -68,7 +68,7 @@ function init(options = {}) {
   const { OTLPMetricExporter } = require('@opentelemetry/exporter-metrics-otlp-proto');
   const { OTLPLogExporter } = require('@opentelemetry/exporter-logs-otlp-proto');
   const { RetryingLogExporter } = require('./lib/retry-log-exporter');
-  const { RetryingMetricExporter } = require('./lib/retry-metric-exporter');
+  const { RetryingMetricExporter, MetricBatchTracker } = require('./lib/retry-metric-exporter');
   const { PeriodicExportingMetricReader, AggregationTemporality } = require('@opentelemetry/sdk-metrics');
   const { BatchLogRecordProcessor } = require('@opentelemetry/sdk-logs');
   const { ParentBasedSampler, TraceIdRatioBasedSampler } = require('@opentelemetry/sdk-trace');
@@ -91,14 +91,17 @@ function init(options = {}) {
     traceExporter: c.exporter === 'otel' ? new OTLPTraceExporter(exporter('traces')) : new MonitoringSpanExporter(exporter('traces')),
     sampler: c.sampleRateOverride ? new ParentBasedSampler({ root: new TraceIdRatioBasedSampler(c.sampleRate) }) : undefined,
     metricReaders: [new PeriodicExportingMetricReader({
-      // Metric export retry is OPT-IN (MONITORING_METRICS_RETRY=true) until server-side
-      // idempotency lands: metric_points has no (series_id, ts) guard, so a retry after an
-      // ambiguous delivery (stored server-side, response lost) would duplicate DELTA sums.
-      // Default stays the stock drop-on-error behavior - lossy but never double-counting.
-      // See lib/retry-metric-exporter.js for the full exposure note.
-      exporter: process.env.MONITORING_METRICS_RETRY === 'true'
-        ? new RetryingMetricExporter(new OTLPMetricExporter({ ...exporter('metrics'), temporalityPreference: AggregationTemporality.DELTA }))
-        : new OTLPMetricExporter({ ...exporter('metrics'), temporalityPreference: AggregationTemporality.DELTA }),
+      // Metric export retry is OPT-IN (MONITORING_METRICS_RETRY=true) pending end-to-end safety
+      // review. The opt-in path pairs the retry wrapper with MetricBatchTracker: every batch gets
+      // one x-monitoring-batch-id across every resend, so a server with intake batch idempotency
+      // (migration 20) dedups retries instead of double-counting; backends that ignore the header
+      // behave exactly as before. See lib/retry-metric-exporter.js for the exposure note.
+      exporter: (() => {
+        const mk = (headers) => new OTLPMetricExporter({ ...exporter('metrics'), headers, temporalityPreference: AggregationTemporality.DELTA });
+        if (process.env.MONITORING_METRICS_RETRY !== 'true') return mk(c.headers);
+        const tracker = new MetricBatchTracker(c.headers);
+        return new RetryingMetricExporter(mk(tracker.headers), { tracker });
+      })(),
       exportIntervalMillis: c.metricInterval,
     })],
     // sdk-logs 3.x takes an options object

@@ -81,3 +81,33 @@ test('an export after shutdown fails immediately without touching the inner expo
   assert.equal(res.code, 1);
   assert.equal(inner.calls, 0);
 });
+
+test('batch tracker: one id per batch, stable across resends, fresh per batch, headers carry statics', async () => {
+  const { MetricBatchTracker } = require('../lib/retry-metric-exporter');
+  const tracker = new MetricBatchTracker({ 'dc-api-key': 'k' });
+  // no batch begun: no header
+  assert.deepEqual(await tracker.headers(), { 'dc-api-key': 'k' });
+  tracker.beginBatch();
+  const h1 = await tracker.headers();
+  const h2 = await tracker.headers();
+  assert.equal(h1['x-monitoring-batch-id'], h2['x-monitoring-batch-id'], 'stable across resends of one batch');
+  assert.equal(h1['dc-api-key'], 'k');
+  tracker.beginBatch();
+  const h3 = await tracker.headers();
+  assert.notEqual(h3['x-monitoring-batch-id'], h1['x-monitoring-batch-id'], 'fresh id for the next batch');
+});
+
+test('the wrapper begins a new batch per export() call', async () => {
+  const { MetricBatchTracker } = require('../lib/retry-metric-exporter');
+  const tracker = new MetricBatchTracker();
+  const seen = [];
+  const inner = {
+    export(_m, cb) { tracker.headers().then((h) => { seen.push(h['x-monitoring-batch-id']); cb({ code: 0 }); }); },
+    async shutdown() {},
+  };
+  const exp = new RetryingMetricExporter(inner, { retrySeconds: 10, tracker });
+  await new Promise((r) => exp.export({}, r));
+  await new Promise((r) => exp.export({}, r));
+  assert.equal(seen.length, 2);
+  assert.ok(seen[0] && seen[1] && seen[0] !== seen[1], 'each export got its own batch id');
+});

@@ -1,13 +1,14 @@
 'use strict';
 // Retrying wrapper for the stock OTLP metric exporter. OPT-IN ONLY (MONITORING_METRICS_RETRY=true)
-// until server-side intake idempotency is implemented and verified: see "Ambiguous delivery" below.
-// Not the default: a wrong double-count is worse than a dropped batch.
+// until end-to-end safety review passes: see "Ambiguous delivery" below. Not the default: a wrong
+// double-count is worse than a dropped batch.
 //
-// The stock OTLPMetricExporter reports a batch as failed on the first transport error and the
-// PeriodicExportingMetricReader then DROPS it - a keep-alive reset race, a brief server outage or
-// an agent backpressure window silently loses every metric point generated in it. Spans
-// (lib/span-exporter.js) and logs (lib/retry-log-exporter.js) already retry; metrics remain the
-// weak signal when this is off.
+// What the stock exporter already does (otlp-exporter-base 0.301.1, retrying-transport): every
+// export retries retryable failures up to 5 times with 1s..5s backoff INSIDE the export timeout
+// (timeoutMillis, default 10s), then reports the batch failed and PeriodicExportingMetricReader
+// DROPS it. This wrapper extends that horizon to MONITORING_EXPORT_RETRY_SECONDS (default 30s)
+// for outages longer than one export timeout - agent backpressure, server restart seconds. Spans
+// (lib/span-exporter.js) and logs (lib/retry-log-exporter.js) already retry on that horizon.
 //
 // This wrapper re-exports the SAME batch with exponential backoff (250 ms .. 5 s, jittered) for
 // up to MONITORING_EXPORT_RETRY_SECONDS (default 30), mirroring the span/log paths. Non-retryable
@@ -25,9 +26,14 @@
 // avg/min/max/last rollups are unaffected by an identical duplicate point, but ANY sum or
 // count rollup double-counts it - including default `count`-type metrics (timeAgg sum) and
 // DELTA sums. There is no aggregation under which duplicates are universally safe, which is
-// why this wrapper is opt-in until intake idempotency exists. A server-side idempotent
-// insert (batch-level idempotency key, not a naive (series_id, ts) uniqueness that would
-// drop legitimate same-timestamp samples from distinct batches) is the follow-up.
+// why this wrapper is opt-in and why the server now offers intake batch idempotency
+// (migration 20): send x-monitoring-batch-id and retries of one batch dedup server-side.
+// BatchTracker below gives every export batch a stable id across EVERY resend (the stock
+// transport calls the headers function per HTTP send, verified in
+// otlp-exporter-base/dist/platform/node/transport/http-exporter-transport.js) - so retries are
+// safe against servers that implement the header, and unchanged against backends that ignore
+// it (ClickHouse intake, older servers: no dedup, same as before this header existed).
+// A server-side idempotent insert for paths without the header remains a separate question.
 const SUCCESS = 0;
 
 function statusOf(error) {
@@ -37,14 +43,36 @@ function statusOf(error) {
   return typeof c === 'number' ? c : 0;
 }
 
+// One id per export BATCH, stable across every resend of that batch (stock-transport retries and
+// wrapper retries), fresh for the next batch. The stock HTTP transport invokes the headers
+// function per send, so passing tracker.headers to the exporter constructor puts the current
+// batch id on every request. PeriodicExportingMetricReader serializes exports, so a single
+// mutable cell is safe; beginBatch() runs before any send of that batch can start.
+class MetricBatchTracker {
+  constructor(staticHeaders = {}) {
+    this.staticHeaders = staticHeaders;
+    this.current = null;
+    this.headers = async () => ({
+      ...this.staticHeaders,
+      ...(this.current ? { 'x-monitoring-batch-id': this.current } : {}),
+    });
+  }
+  beginBatch() {
+    this.current = require('node:crypto').randomUUID();
+    return this.current;
+  }
+}
+
 class RetryingMetricExporter {
   constructor(inner, opts = {}) {
     this.inner = inner;
     this.retryMs = Number(opts.retrySeconds ?? process.env.MONITORING_EXPORT_RETRY_SECONDS ?? 30) * 1000;
     this.stopped = false;
+    this.tracker = opts.tracker || null;
   }
   export(metrics, resultCallback) {
     if (this.stopped) return resultCallback({ code: 1, error: new Error('exporter shut down') });
+    if (this.tracker) this.tracker.beginBatch();
     const deadline = Date.now() + this.retryMs;
     const attempt = (n) => {
       this.inner.export(metrics, (res) => {
@@ -73,4 +101,4 @@ class RetryingMetricExporter {
   }
 }
 
-module.exports = { RetryingMetricExporter };
+module.exports = { RetryingMetricExporter, MetricBatchTracker };
