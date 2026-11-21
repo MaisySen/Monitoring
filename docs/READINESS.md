@@ -132,19 +132,17 @@ bench/regression/run-all.sh — 9 checks, ALL PASS against a live server
 
 ## Unverified (recorded, not claimed)
 
-- Default privileged/systemd install path: prefix-relocated validation covers
-  download/checksum/install/config but NOT root install or systemd unit
-  registration. No systemd exists in this environment. Verify in a disposable
-  systemd VM/container before claiming it.
-- Local Go build of the agent: blocked by this box's RAM (known). CI builds;
-  distribution uses the fetch script.
-- Long-run soak beyond bounded runs: this sandbox restarts between agent
-  runs (observed twice on 2026-11-21), killing background processes, so a
-  continuous multi-hour soak is not achievable here. Bounded evidence:
-  15-min soak at 400 traces/s (99.94% stored, gap fully explained by 6
-  generator-recorded ECONNRESETs; race reproduced at the default idle-close
-  boundary since - see keep-alive note above) and a ramp finding 800 traces/s as this
-  box's breaking point. Not weeks of operation.
+- Actual VM reboot, service persistence after reboot, and weeks-long operation remain unverified.
+  Default-path root installation and systemd start/stop/start/restart were verified separately in
+  the disposable VM run44881122584; no longer an open install-lifecycle gap.
+- Local Go build remains RAM-limited. Exact-source CI build and verified artifacts cover the
+  tested distributable, not a local source-build claim.
+- Three-hour bounded acceptance at20traces/s is complete for product0c558e3, but is not a
+  capacity/latency SLO or leak-proof result. Historical high-load failures remain part of the
+  record. Metric point sent/stored reconciliation was not implemented in that harness.
+- Extra metric retries remain defaultOFF/test-only. Postcommit metadata repair, quota-row
+  contention, strict compressed-byte identity, retention configuration compatibility and
+  already-in-flight completion limits remain explicit in the current acceptance section.
 
 ## Held (authority)
 
