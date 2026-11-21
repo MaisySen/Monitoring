@@ -91,9 +91,14 @@ function init(options = {}) {
     traceExporter: c.exporter === 'otel' ? new OTLPTraceExporter(exporter('traces')) : new MonitoringSpanExporter(exporter('traces')),
     sampler: c.sampleRateOverride ? new ParentBasedSampler({ root: new TraceIdRatioBasedSampler(c.sampleRate) }) : undefined,
     metricReaders: [new PeriodicExportingMetricReader({
-      // Same retry discipline as spans and logs: the stock exporter drops a batch on the first
-      // transport error, and PeriodicExportingMetricReader then discards it.
-      exporter: new RetryingMetricExporter(new OTLPMetricExporter({ ...exporter('metrics'), temporalityPreference: AggregationTemporality.DELTA })),
+      // Metric export retry is OPT-IN (MONITORING_METRICS_RETRY=true) until server-side
+      // idempotency lands: metric_points has no (series_id, ts) guard, so a retry after an
+      // ambiguous delivery (stored server-side, response lost) would duplicate DELTA sums.
+      // Default stays the stock drop-on-error behavior - lossy but never double-counting.
+      // See lib/retry-metric-exporter.js for the full exposure note.
+      exporter: process.env.MONITORING_METRICS_RETRY === 'true'
+        ? new RetryingMetricExporter(new OTLPMetricExporter({ ...exporter('metrics'), temporalityPreference: AggregationTemporality.DELTA }))
+        : new OTLPMetricExporter({ ...exporter('metrics'), temporalityPreference: AggregationTemporality.DELTA }),
       exportIntervalMillis: c.metricInterval,
     })],
     // sdk-logs 3.x takes an options object
