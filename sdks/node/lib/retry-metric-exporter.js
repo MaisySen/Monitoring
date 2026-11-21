@@ -78,10 +78,24 @@ class MetricBatchTracker {
 // (MONITORING_EXPORT_RETRY_QUEUE, default 10). Overflow fails fast (the reader drops that batch,
 // same as any failed export) rather than growing memory through a long outage; shutdown fails
 // every pending batch immediately so process exit is never held up.
+//
+// Maximum age (enforced, not sampled): server-side dedup only lasts until the claim row is swept
+// (MONITORING_BATCH_RETENTION_HOURS, default 48). A retry arriving after that double-counts, so a
+// batch must never be sent once it is too old - and a measured "typical" age is no bound at all:
+// host suspension, event-loop stalls, operator-set retry budgets/queue sizes, and slow in-flight
+// sends all sit outside any sample. Every batch is therefore stamped (bornAt) at enqueue and the
+// wrapper refuses to START any send once age > maxAgeMs (MONITORING_EXPORT_MAX_AGE_SECONDS,
+// default 600). The check runs at activation and before every attempt, so a batch that sat in the
+// pending queue across a suspend, or whose backoff resumed late, expires instead of sending. Keep
+// max age comfortably below the server retention (defaults: 10 min vs 48 h); the client cannot
+// verify the server's retention setting, so that invariant remains operator responsibility.
+// Residual: a send already in flight when the host suspends can still complete after the cutoff
+// (its start was inside it); the cutoff gates send initiation, not completion.
 class RetryingMetricExporter {
   constructor(inner, opts = {}) {
     this.inner = inner;
     this.retryMs = Number(opts.retrySeconds ?? process.env.MONITORING_EXPORT_RETRY_SECONDS ?? 30) * 1000;
+    this.maxAgeMs = Number(opts.maxAgeSeconds ?? process.env.MONITORING_EXPORT_MAX_AGE_SECONDS ?? 600) * 1000;
     this.stopped = false;
     this.tracker = opts.tracker || null;
     this.maxQueue = Number(opts.maxQueue ?? process.env.MONITORING_EXPORT_RETRY_QUEUE ?? 10);
@@ -93,17 +107,25 @@ class RetryingMetricExporter {
     if (this.pending.length >= this.maxQueue) {
       return resultCallback({ code: 1, error: new Error(`metric retry queue full (${this.maxQueue}); dropping batch`) });
     }
-    this.pending.push({ metrics, resultCallback });
+    this.pending.push({ metrics, resultCallback, bornAt: Date.now() });
     setImmediate(() => this._drain());
+  }
+  _expired(item) {
+    const age = Date.now() - item.bornAt;
+    return age > this.maxAgeMs ? new Error(`metric batch expired (age ${Math.round(age / 1000)}s > max ${Math.round(this.maxAgeMs / 1000)}s); dropping`) : null;
   }
   _drain() {
     if (this.active) return;
     const item = this.pending.shift();
     if (!item) return;
     this.active = true;
+    const expired = this._expired(item);
+    if (expired) return this._finish(item, { code: 1, error: expired });
     if (this.tracker) this.tracker.beginBatch();
     const deadline = Date.now() + this.retryMs;
     const attempt = (n) => {
+      const tooOld = this._expired(item);
+      if (tooOld) return this._finish(item, { code: 1, error: tooOld });
       this.inner.export(item.metrics, (res) => {
         if (res.code === SUCCESS) return this._finish(item, res);
         const status = statusOf(res.error);

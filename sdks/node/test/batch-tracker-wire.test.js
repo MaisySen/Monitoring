@@ -42,6 +42,7 @@ function startWire(behavior) {
       const body = Buffer.concat(chunks);
       const rec = {
         seq: wire.sends.length + 1,
+        t: Date.now(),
         id: req.headers['x-monitoring-batch-id'] || null,
         bodyHash: crypto.createHash('sha256').update(body).digest('hex'),
       };
@@ -213,6 +214,56 @@ test('pending queue is bounded: overflow fails fast, queued exports keep distinc
     assert.equal(byHash.size, 3, 'exactly the three admitted payloads reached the wire');
     for (const [hash, ids] of byHash) assert.equal(ids.size, 1, `payload ${hash.slice(0, 8)} used ${ids.size} ids`);
     assert.equal(new Set([...byHash.values()].map((ids) => [...ids][0])).size, 3, 'all three batch ids distinct');
+    await exp.shutdown();
+  } finally {
+    await wire.stop();
+  }
+});
+
+test('pending batch that ages past the cutoff expires pre-activation: zero sends', async () => {
+  // Simulates a host/event-loop stall while a batch sits in the pending queue: batch B is born
+  // while batch A occupies the exporter for longer than the max age. B must never reach the wire.
+  const wire = await startWire((_n, _r, w) => (w.state.holdAll ? 'hold' : { status: 200 }));
+  try {
+    wire.state.holdAll = true;
+    const tracker = new MetricBatchTracker({});
+    const exp = new RetryingMetricExporter(mkExporter(wire, tracker, 400), { tracker, retrySeconds: 3, maxAgeSeconds: 1 });
+    const mA = await makeBatch(71);
+    const mB = await makeBatch(72);
+    const pA = runExport(exp, mA);
+    await wire.waitForSends(1);
+    const hashA = wire.sends[0].bodyHash;
+    const pB = runExport(exp, mB); // queued behind A; older than 1s by the time A finishes
+    await sleep(3500); // A retries into its own cutoff (~1s), B ages in the queue past it
+    wire.state.holdAll = false;
+    wire.releaseAll();
+    const [rA, rB] = await Promise.all([pA, pB]);
+    assert.equal(rA.code, 1, 'batch A hit its own age cutoff while the server was down');
+    assert.match(String(rA.error && rA.error.message), /expired/);
+    assert.ok(wire.sends.filter((s) => s.bodyHash === hashA).length >= 2, 'batch A retried within its age window');
+    assert.equal(rB.code, 1, 'batch B expired instead of sending');
+    assert.match(String(rB.error && rB.error.message), /expired/);
+    const sendsB = wire.sends.filter((s) => s.bodyHash !== hashA);
+    assert.equal(sendsB.length, 0, `stale batch B reached the wire ${sendsB.length} times`);
+    await exp.shutdown();
+  } finally {
+    await wire.stop();
+  }
+});
+
+test('age cutoff gates every retry attempt (late backoff resume sends nothing)', async () => {
+  // The check runs before every attempt, so a backoff timer firing after the cutoff - the same
+  // shape as a process paused mid-backoff - expires the batch rather than sending once more.
+  const wire = await startWire(() => ({ status: 500 }));
+  try {
+    const tracker = new MetricBatchTracker({});
+    const exp = new RetryingMetricExporter(mkExporter(wire, tracker, 500), { tracker, retrySeconds: 10, maxAgeSeconds: 1 });
+    const res = await runExport(exp, await makeBatch(81));
+    assert.equal(res.code, 1);
+    assert.match(String(res.error && res.error.message), /expired/);
+    assert.ok(wire.sends.length >= 2, 'retried within the age window');
+    const span = wire.sends[wire.sends.length - 1].t - wire.sends[0].t;
+    assert.ok(span <= 1200, `no send started after the 1s cutoff (last send at +${span}ms)`);
     await exp.shutdown();
   } finally {
     await wire.stop();

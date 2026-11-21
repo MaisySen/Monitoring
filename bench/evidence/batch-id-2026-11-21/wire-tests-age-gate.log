@@ -1,0 +1,59 @@
+TAP version 13
+# Subtest: stock transport resends carry one id, byte-identical bodies, headers fn invoked per send
+ok 1 - stock transport resends carry one id, byte-identical bodies, headers fn invoked per send
+  ---
+  duration_ms: 758.554256
+  type: 'test'
+  ...
+# Subtest: connection resets then recovery: wrapper retries keep one id and one payload
+ok 2 - connection resets then recovery: wrapper retries keep one id and one payload
+  ---
+  duration_ms: 1346.765121
+  type: 'test'
+  ...
+# Subtest: a new batch gets a fresh id (changed bytes never reuse an id)
+ok 3 - a new batch gets a fresh id (changed bytes never reuse an id)
+  ---
+  duration_ms: 4.594577
+  type: 'test'
+  ...
+# Subtest: overlapping exports (reader-timeout orphan) never share or swap a batch id
+ok 4 - overlapping exports (reader-timeout orphan) never share or swap a batch id
+  ---
+  duration_ms: 1525.201396
+  type: 'test'
+  ...
+# Subtest: pending queue is bounded: overflow fails fast, queued exports keep distinct ids
+ok 5 - pending queue is bounded: overflow fails fast, queued exports keep distinct ids
+  ---
+  duration_ms: 26.02347
+  type: 'test'
+  ...
+# Subtest: pending batch that ages past the cutoff expires pre-activation: zero sends
+ok 6 - pending batch that ages past the cutoff expires pre-activation: zero sends
+  ---
+  duration_ms: 3522.329478
+  type: 'test'
+  ...
+# Subtest: age cutoff gates every retry attempt (late backoff resume sends nothing)
+ok 7 - age cutoff gates every retry attempt (late backoff resume sends nothing)
+  ---
+  duration_ms: 1932.550773
+  type: 'test'
+  ...
+# Subtest: shutdown fails pending exports instead of holding them
+ok 8 - shutdown fails pending exports instead of holding them
+  ---
+  duration_ms: 5004.431298
+  type: 'test'
+  ...
+1..8
+# tests 8
+# suites 0
+# pass 8
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 14201.358056
+exit: 0

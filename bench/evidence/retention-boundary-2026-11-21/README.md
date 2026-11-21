@@ -46,10 +46,16 @@ Findings:
   hourly setInterval with no startup run (artifacts/api-server/src/jobs/monitors.ts), PG only;
   ClickHouse enforces retention by table TTL and its intake path ignores the batch header entirely.
 
-## Conclusion for the retry default question
+## Conclusion: observed defaults vs the enforced gate
 
-Measured max client retry age (this file) is on the order of minutes; the measured server boundary
-is 48 h. The gap is ~3 orders of magnitude, so a sweep-induced double-count requires an outage far
-beyond anything the client will actually retry across - with one exception already documented: a
-batch captured by an external replayer (as this test does deliberately) can replay past the
-boundary. Within the SDK itself there is no spool, so no retry survives process exit.
+The 297.3 s figure is a SAMPLE under observed defaults, not a maximum: host suspension, event-loop
+stalls, operator-set budgets/queue sizes, and slow in-flight sends all sit outside any sample. The
+actual guarantee is the enforced wall-clock gate added after this measurement (commit with
+MONITORING_EXPORT_MAX_AGE_SECONDS, default 600 s): every batch is stamped at enqueue and the
+wrapper refuses to START a send past the cutoff - checked at activation and before every attempt,
+so a batch queued across a suspend or resumed late from backoff expires instead of sending
+(wire-tested: stale pending batch sends zero times; late backoff resume sends nothing). Two limits
+stay explicit: the client cannot verify the server's retention setting, so max age << retention
+(defaults 10 min vs 48 h) remains OPERATOR RESPONSIBILITY, not enforced compatibility; and a send
+already in flight when the host suspends can still complete after the cutoff - the gate bounds
+send initiation, not completion. No 48 h run was performed and no universal maximum is claimed.
