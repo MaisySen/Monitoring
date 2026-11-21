@@ -15,6 +15,14 @@
 // Considered limit: unlike logs there is no disk spool here. Metric batches are aggregated
 // deltas/cumulatives whose serialization for spooling is lossy; the retry window covers the
 // observed transient classes (reset race, restart seconds). A longer outage still loses metrics.
+//
+// Ambiguous delivery: a retry after the SERVER stored the batch but the response was lost
+// (e.g. reset mid-response) lands the same points twice. Unlike spans
+// (intake dedups on (org_id, trace_id, span_id)) metric_points has no (series_id, ts)
+// uniqueness guard, so DELTA sums can double-count within one duplicate batch in that window.
+// Gauge/last-value aggregations are unaffected by an identical duplicate point. This matches
+// the log path's existing exposure; a server-side idempotent insert for metric points is a
+// candidate follow-up, not bundled here.
 const SUCCESS = 0;
 
 function statusOf(error) {

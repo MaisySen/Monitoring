@@ -64,3 +64,20 @@ test('aggregation temporality selection delegates to the inner exporter', () => 
   const exp = new RetryingMetricExporter(inner, { retrySeconds: 10 });
   assert.equal(exp.selectAggregationTemporality(3), 1);
 });
+
+test('forceFlush delegates to the inner exporter when it has one', async () => {
+  let flushed = 0;
+  const inner = { ...stub([]), async forceFlush() { flushed++; } };
+  const exp = new RetryingMetricExporter(inner, { retrySeconds: 10 });
+  await exp.forceFlush();
+  assert.equal(flushed, 1);
+});
+
+test('an export after shutdown fails immediately without touching the inner exporter', async () => {
+  const inner = stub([{ code: 0 }]);
+  const exp = new RetryingMetricExporter(inner, { retrySeconds: 10 });
+  await exp.shutdown();
+  const res = await new Promise((r) => exp.export({}, r));
+  assert.equal(res.code, 1);
+  assert.equal(inner.calls, 0);
+});
