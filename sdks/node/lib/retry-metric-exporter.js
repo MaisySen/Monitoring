@@ -46,8 +46,12 @@ function statusOf(error) {
 // One id per export BATCH, stable across every resend of that batch (stock-transport retries and
 // wrapper retries), fresh for the next batch. The stock HTTP transport invokes the headers
 // function per send, so passing tracker.headers to the exporter constructor puts the current
-// batch id on every request. PeriodicExportingMetricReader serializes exports, so a single
-// mutable cell is safe; beginBatch() runs before any send of that batch can start.
+// batch id on every request. beginBatch() is called by RetryingMetricExporter only when a batch
+// becomes ACTIVE; the wrapper's internal serialization (below) guarantees no second batch can
+// begin while a first is still being resent, so the mutable cell always names the batch actually
+// on the wire. PeriodicExportingMetricReader alone does NOT provide that guarantee: its
+// callWithTimeout can orphan an in-flight export (the reader moves on, the wrapper keeps
+// retrying), and the next collection would flip this cell mid-retry.
 class MetricBatchTracker {
   constructor(staticHeaders = {}) {
     this.staticHeaders = staticHeaders;
@@ -63,29 +67,59 @@ class MetricBatchTracker {
   }
 }
 
+// Serialization: the batch id is only sound if exactly one batch is on the wire at a time.
+// PeriodicExportingMetricReader can orphan an in-flight export when its callWithTimeout fires
+// (exportTimeoutMillis, clamped to the export interval), while this wrapper keeps retrying to
+// MONITORING_EXPORT_RETRY_SECONDS; the reader's next tick then starts a NEW export. Without a
+// mutex here, that second export's beginBatch() flips the tracker's id cell while the first
+// batch is still being resent - its payload goes out under the wrong id and server-side dedup
+// silently misattributes or double-counts. So export() queues: one active batch at a time, a new
+// id taken only when a batch becomes active, pending batches bounded by maxQueue
+// (MONITORING_EXPORT_RETRY_QUEUE, default 10). Overflow fails fast (the reader drops that batch,
+// same as any failed export) rather than growing memory through a long outage; shutdown fails
+// every pending batch immediately so process exit is never held up.
 class RetryingMetricExporter {
   constructor(inner, opts = {}) {
     this.inner = inner;
     this.retryMs = Number(opts.retrySeconds ?? process.env.MONITORING_EXPORT_RETRY_SECONDS ?? 30) * 1000;
     this.stopped = false;
     this.tracker = opts.tracker || null;
+    this.maxQueue = Number(opts.maxQueue ?? process.env.MONITORING_EXPORT_RETRY_QUEUE ?? 10);
+    this.pending = [];
+    this.active = false;
   }
   export(metrics, resultCallback) {
     if (this.stopped) return resultCallback({ code: 1, error: new Error('exporter shut down') });
+    if (this.pending.length >= this.maxQueue) {
+      return resultCallback({ code: 1, error: new Error(`metric retry queue full (${this.maxQueue}); dropping batch`) });
+    }
+    this.pending.push({ metrics, resultCallback });
+    setImmediate(() => this._drain());
+  }
+  _drain() {
+    if (this.active) return;
+    const item = this.pending.shift();
+    if (!item) return;
+    this.active = true;
     if (this.tracker) this.tracker.beginBatch();
     const deadline = Date.now() + this.retryMs;
     const attempt = (n) => {
-      this.inner.export(metrics, (res) => {
-        if (res.code === SUCCESS) return resultCallback(res);
+      this.inner.export(item.metrics, (res) => {
+        if (res.code === SUCCESS) return this._finish(item, res);
         const status = statusOf(res.error);
         const retryable = status === 0 || status === 408 || status === 429 || status >= 500;
         const remaining = deadline - Date.now();
-        if (!retryable || this.stopped || remaining <= 0) return resultCallback(res);
+        if (!retryable || this.stopped || remaining <= 0) return this._finish(item, res);
         const delay = Math.min(Math.min(5000, 250 * 2 ** n) * (0.8 + Math.random() * 0.4), remaining);
         setTimeout(() => attempt(n + 1), delay);
       });
     };
     attempt(0);
+  }
+  _finish(item, res) {
+    this.active = false;
+    item.resultCallback(res);
+    setImmediate(() => this._drain());
   }
   selectAggregationTemporality(instrumentType) {
     return this.inner.selectAggregationTemporality
@@ -94,6 +128,8 @@ class RetryingMetricExporter {
   }
   async shutdown() {
     this.stopped = true;
+    const err = { code: 1, error: new Error('exporter shut down') };
+    for (const item of this.pending.splice(0)) item.resultCallback(err);
     return this.inner.shutdown();
   }
   async forceFlush() {

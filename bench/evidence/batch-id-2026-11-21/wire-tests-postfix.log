@@ -1,0 +1,47 @@
+TAP version 13
+# Subtest: stock transport resends carry one id, byte-identical bodies, headers fn invoked per send
+ok 1 - stock transport resends carry one id, byte-identical bodies, headers fn invoked per send
+  ---
+  duration_ms: 730.658164
+  type: 'test'
+  ...
+# Subtest: connection resets then recovery: wrapper retries keep one id and one payload
+ok 2 - connection resets then recovery: wrapper retries keep one id and one payload
+  ---
+  duration_ms: 1244.671265
+  type: 'test'
+  ...
+# Subtest: a new batch gets a fresh id (changed bytes never reuse an id)
+ok 3 - a new batch gets a fresh id (changed bytes never reuse an id)
+  ---
+  duration_ms: 5.037268
+  type: 'test'
+  ...
+# Subtest: overlapping exports (reader-timeout orphan) never share or swap a batch id
+ok 4 - overlapping exports (reader-timeout orphan) never share or swap a batch id
+  ---
+  duration_ms: 1593.20364
+  type: 'test'
+  ...
+# Subtest: pending queue is bounded: overflow fails fast, queued exports keep distinct ids
+ok 5 - pending queue is bounded: overflow fails fast, queued exports keep distinct ids
+  ---
+  duration_ms: 25.739039
+  type: 'test'
+  ...
+# Subtest: shutdown fails pending exports instead of holding them
+ok 6 - shutdown fails pending exports instead of holding them
+  ---
+  duration_ms: 5003.966338
+  type: 'test'
+  ...
+1..6
+# tests 6
+# suites 0
+# pass 6
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 8685.614
+post-fix exit: 0

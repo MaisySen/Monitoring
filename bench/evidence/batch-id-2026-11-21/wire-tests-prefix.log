@@ -1,0 +1,82 @@
+TAP version 13
+# Subtest: stock transport resends carry one id, byte-identical bodies, headers fn invoked per send
+ok 1 - stock transport resends carry one id, byte-identical bodies, headers fn invoked per send
+  ---
+  duration_ms: 734.184419
+  type: 'test'
+  ...
+# Subtest: connection resets then recovery: wrapper retries keep one id and one payload
+ok 2 - connection resets then recovery: wrapper retries keep one id and one payload
+  ---
+  duration_ms: 1289.515414
+  type: 'test'
+  ...
+# Subtest: a new batch gets a fresh id (changed bytes never reuse an id)
+ok 3 - a new batch gets a fresh id (changed bytes never reuse an id)
+  ---
+  duration_ms: 5.354188
+  type: 'test'
+  ...
+# Subtest: overlapping exports (reader-timeout orphan) never share or swap a batch id
+not ok 4 - overlapping exports (reader-timeout orphan) never share or swap a batch id
+  ---
+  duration_ms: 1524.010665
+  type: 'test'
+  location: '/home/sandbox/monitoring/repo/sdks/node/test/batch-tracker-wire.test.js:149:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    send 2 carried a foreign id while batch A was in flight
+    + actual - expected
+    
+    + '83a5f6d2-1296-4f6f-b3d1-f447743c9656'
+    - '0df8ab49-0d09-4a98-8037-b2688bdfb71c'
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: '0df8ab49-0d09-4a98-8037-b2688bdfb71c'
+  actual: '83a5f6d2-1296-4f6f-b3d1-f447743c9656'
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (/home/sandbox/monitoring/repo/sdks/node/test/batch-tracker-wire.test.js:168:14)
+    async Test.run (node:internal/test_runner/test:1054:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: pending queue is bounded: overflow fails fast, queued exports keep distinct ids
+not ok 5 - pending queue is bounded: overflow fails fast, queued exports keep distinct ids
+  ---
+  duration_ms: 20327.795149
+  type: 'test'
+  location: '/home/sandbox/monitoring/repo/sdks/node/test/batch-tracker-wire.test.js:190:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    The input did not match the regular expression /queue full/. Input:
+    
+    'Request timed out'
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+  actual: 'Request timed out'
+  operator: 'match'
+  stack: |-
+    TestContext.<anonymous> (/home/sandbox/monitoring/repo/sdks/node/test/batch-tracker-wire.test.js:203:12)
+    process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    async Test.run (node:internal/test_runner/test:1054:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: shutdown fails pending exports instead of holding them
+ok 6 - shutdown fails pending exports instead of holding them
+  ---
+  duration_ms: 5024.158458
+  type: 'test'
+  ...
+1..6
+# tests 6
+# suites 0
+# pass 4
+# fail 2
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 28996.132713
+pre-fix exit: 1
