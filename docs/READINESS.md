@@ -41,8 +41,13 @@ workflow state and never upgrades one into the other.
   Shipped: keepAliveTimeout 65s / headersTimeout 66s (timeout hardening -
   moves the boundary; does not eliminate the race class for clients with no
   earlier client-side idle close), pinned by the keepalive-idle check (idle
-  socket must stay open >= 20s). Boundary behavior at non-default settings
-  unresolved (0 resets at 15s and ~66s windows). Calibrated detail and a
+  socket must stay open >= 20s). Boundary behavior now measured at non-default
+  settings: the race reproduces at the 15s boundary (20/4/2 of 300 over three
+  trials) and persists at the shipped 65s boundary at low observed rate (0/1 of
+  300 over two trials); the earlier 0/300 at 15s was a finite-sample draw, and
+  finite samples cannot show zero. The hardening relocates the boundary away
+  from common client idle-pool lifetimes; it does not eliminate the race class.
+  Calibrated detail and a
   correction to the first (vacuous) abort test:
   bench/evidence/soak-2026-11-21/RESET-MECHANISM.md.
 
