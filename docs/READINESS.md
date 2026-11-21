@@ -35,11 +35,16 @@ workflow state and never upgrades one into the other.
   the end of a ~7s, 111-monitor org chain; thresholds are test choices, not
   SLAs). Intake-abort fault test (with positive control): a complete request
   from the same client stores its spans, then a socket destroyed mid-body
-  stores 0 (transactional all-or-none at request level). Keep-alive:
-  server-side idle close measured ~6s after response (Node default
-  keepAliveTimeout), the reuse race behind the soak's 6 ECONNRESETs; fixed
-  with keepAliveTimeout 65s / headersTimeout 66s and pinned by the
-  keepalive-idle check (idle socket must stay open >= 20s).
+  stores 0 (transactional all-or-none at request level). Keep-alive: at the
+  Node-default idle close (measured ~6s after response) the reuse race was
+  REPRODUCED (9/300 timed reuses reset; the soak ran under this default).
+  Shipped: keepAliveTimeout 65s / headersTimeout 66s (timeout hardening -
+  moves the boundary; does not eliminate the race class for clients with no
+  earlier client-side idle close), pinned by the keepalive-idle check (idle
+  socket must stay open >= 20s). Boundary behavior at non-default settings
+  unresolved (0 resets at 15s and ~66s windows). Calibrated detail and a
+  correction to the first (vacuous) abort test:
+  bench/evidence/soak-2026-11-21/RESET-MECHANISM.md.
 
 ## Published-surface coverage (every copyable command verbatim-tested)
 
@@ -92,8 +97,8 @@ bench/regression/run-all.sh — 9 checks, ALL PASS against a live server
   runs (observed twice on 2026-11-21), killing background processes, so a
   continuous multi-hour soak is not achievable here. Bounded evidence:
   15-min soak at 400 traces/s (99.94% stored, gap fully explained by 6
-  generator-recorded ECONNRESETs; mechanism since identified and fixed -
-  see keep-alive note above) and a ramp finding 800 traces/s as this
+  generator-recorded ECONNRESETs; race reproduced at the default idle-close
+  boundary since - see keep-alive note above) and a ramp finding 800 traces/s as this
   box's breaking point. Not weeks of operation.
 
 ## Held (authority)

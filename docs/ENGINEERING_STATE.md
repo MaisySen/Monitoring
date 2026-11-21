@@ -797,9 +797,9 @@ Unit: 76/76. CI greens through 43f64b9.
 - UI rework after parent pixel review: single-line "Eval failing · last ok never" with expandable error detail (no more 4-line wrap); stale-only monitors show "last evaluated X ago". Verified at 1440px collapsed/expanded and 800px narrow (bench/evidence/validation-2026-11-21/mon-ui-*.png).
 - Socket-abort test scope recorded: proves that specific incomplete request stored nothing; the original 6 resets' outcome stays bounded by aggregate match + transactional intake, mechanism inferred (keepalive race), unknown preserved.
 
-## 2026-11-21 16:05 AEDT - ECONNRESET mechanism found and fixed; intake-abort vacuity corrected
+## 2026-11-21 16:05 AEDT - keep-alive hardening + intake-abort vacuity corrected (mechanism calibrated in 16:15 entry)
 
-- Mechanism (confirmed by construction + measurement, no longer inferred): the server never set
+- Mechanism (initially over-claimed as confirmed; calibrated in the 16:15 entry): the server never set
   keepAliveTimeout, so Node's ~5s default applied; measured: idle keep-alive socket closed by the
   server ~6s after a response. node:http keepAlive agents (the soak loadgen) have no client-side
   idle close, so a reuse decision racing the FIN writes into a dying socket = "read ECONNRESET".
@@ -818,3 +818,15 @@ Unit: 76/76. CI greens through 43f64b9.
   failing loudly (403) the moment it was added - the check now cannot pass vacuously.
 - The original 6 soak resets remain unknown-outcome events (bounded by aggregate match and
   transactional intake); the fixed abort test is not generalized to them.
+
+## 2026-11-21 16:15 AEDT - race REPRODUCED at default boundary; causation calibrated
+
+- Timed-reuse repro (bench/correctness/keepalive-race-repro.js, parallel staggered sockets):
+  at the Node-default setting the soak ran under, 9/300 reuses reset at the ~6s idle close.
+  At 15s setting: 0/300 at its 16s close. At the shipped 65s: 0/300 at the old 6s boundary,
+  0/100 at ~66s. Why the 5s boundary bites and the 15s one did not is UNRESOLVED.
+- Calibrated claim: the race class is demonstrated under the soak's actual condition; the
+  65s change is timeout hardening that moves the boundary, not an elimination (node:http
+  Agent has no client-side idle close). Six original soak resets: outcomes remain unknown.
+- Evidence table and the intake-abort vacuity correction recorded prominently in
+  bench/evidence/soak-2026-11-21/RESET-MECHANISM.md.
