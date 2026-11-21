@@ -1,3 +1,4 @@
 monitoring-agent-*
 *.tgz
 *.whl
+SHA256SUMS

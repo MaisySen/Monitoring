@@ -32,6 +32,9 @@ if ! node "$ROOT/scripts/pack-sdks.mjs" > "$WORK/pack.log" 2>&1; then
   rm -rf "$DL"; mv "$WORK/downloads.bak" "$DL"; exit 1
 fi
 grep -c 'sha256 verified' "$WORK/pack.log" | xargs echo "verified binaries packed:"
+# pack writes .gitignore itself; restore from backup if it is missing for any reason,
+# so a wiped downloads dir never leaks packed binaries into git.
+[ -f "$DL/.gitignore" ] || cp "$WORK/downloads.bak/.gitignore" "$DL/.gitignore" 2>/dev/null || true
 
 step "2. served artifact set integrity"
 SERVER_URL="$SERVER_URL" "$ROOT/bench/regression/downloads-artifacts.sh" || fail=1

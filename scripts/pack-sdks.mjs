@@ -10,6 +10,9 @@ import path from "node:path";
 const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..");
 const dest = path.join(root, "artifacts/api-server/downloads");
 fs.mkdirSync(dest, { recursive: true });
+// The downloads dir is generated content: keep its ignore rules with the pack so a wiped dir
+// (e.g. the installer clean-deploy check) never leaks packed binaries into git.
+fs.writeFileSync(path.join(dest, ".gitignore"), "monitoring-agent-*\n*.tgz\n*.whl\nSHA256SUMS\n");
 
 const tgz = execFileSync("npm", ["pack", "--silent", "--pack-destination", dest, path.join(root, "sdks/node")], {
   encoding: "utf8",
