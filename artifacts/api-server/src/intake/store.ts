@@ -223,6 +223,8 @@ async function writeMetricsCh(orgId: number, series: PointIn[]) {
 
 /** Stores the batch; returns the number of points refused by the series cap (0 when nothing was refused). */
 export async function writeMetrics(orgId: number, series: PointIn[], batch?: BatchIdempotency): Promise<number | typeof DUPLICATE_BATCH> {
+  // ClickHouse does not implement this PG-only protocol; preserve its normal quota path.
+  if (useClickHouse) batch = undefined;
   // Batch idempotency pre-check (cheap, non-transactional): a retry of an already-committed
   // batch must not consume quota or re-do series work. The authoritative dedup is the
   // in-transaction claim below, which also decides concurrent same-batch deliveries.
@@ -235,7 +237,10 @@ export async function writeMetrics(orgId: number, series: PointIn[], batch?: Bat
   }
   const quotas = await getQuotas(orgId);
   const pointCount = series.reduce((n, s) => n + (s.points?.length ?? 0), 0);
-  if (!(await admitDaily(orgId, "points", pointCount, quotas.maxPointsPerDay)))
+  // Batch traffic admits quota inside the claim transaction instead (below): a concurrent
+  // duplicate loser must not consume quota, and a quota refusal rolls the claim back so the
+  // batch can be retried when the window resets.
+  if (!batch && !(await admitDaily(orgId, "points", pointCount, quotas.maxPointsPerDay)))
     throw new QuotaExceeded("metrics", pointCount, "quota:points_per_day");
   if (useClickHouse) {
     await writeMetricsCh(orgId, series);
@@ -259,7 +264,7 @@ export async function writeMetrics(orgId: number, series: PointIn[], batch?: Bat
     const s = valid[i];
     const id = ids[i];
     if (id === undefined) continue;
-    if (now - (lastSeenTouched.get(id) ?? 0) > 300) {
+    if (!batch && now - (lastSeenTouched.get(id) ?? 0) > 300) {
       lastSeenTouched.set(id, now);
       touch.push(id);
     }
@@ -280,8 +285,12 @@ export async function writeMetrics(orgId: number, series: PointIn[], batch?: Bat
     // Claim the batch and insert its points in ONE transaction: a concurrent same-batch
     // delivery blocks on the primary key until this commits or rolls back, then dedups or
     // proceeds; a mid-ingest failure rolls the claim back with the points, so a later retry
-    // re-ingests from scratch. No partial batch can be marked seen.
-    return inTransaction(async (c) => {
+    // re-ingests from scratch. No partial batch can be marked seen. Quota admission happens
+    // after the claim, on the same transaction. Post-insert effects (last_seen refresh in the
+    // transaction, host/app discovery after commit) run exactly as on the non-batch path:
+    // header traffic must keep series query-visible and hosts linked. A duplicate refreshes
+    // nothing because it stored nothing; last_seen tracks freshly INGESTED data.
+    const result = await inTransaction(async (c) => {
       const claim = (await c.query(
         "insert into intake_batches (org_id, batch_id, body_sha256) values ($1,$2,$3) on conflict (org_id, batch_id) do nothing returning batch_id",
         [orgId, batch.id, batch.sha256],
@@ -291,9 +300,21 @@ export async function writeMetrics(orgId: number, series: PointIn[], batch?: Bat
         if (ex.rows[0]?.body_sha256 === batch.sha256) return DUPLICATE_BATCH;
         throw new BatchConflict(`intake batch id reused with different content (org ${orgId})`);
       }
+      if (!(await admitDaily(orgId, "points", pointCount, quotas.maxPointsPerDay, c)))
+        throw new QuotaExceeded("metrics", pointCount, "quota:points_per_day");
       for (const [q, v] of stmts) await c.query(q, v);
+      // Do not publish a process-local touch before commit. Concurrent deliveries may lose
+      // the claim or roll back, and must not suppress the winner's metadata refresh.
+      const freshIds = [...new Set(ids.filter((id) => id !== undefined))].sort((a, b) => a - b);
+      if (freshIds.length)
+        await c.query("update metric_series set last_seen=$1 where id = any($2::int[])", [now, freshIds]);
       return refused;
     });
+    if (result !== DUPLICATE_BATCH) {
+      const apps = newApps(orgId, valid);
+      for (const h of hosts) await touchHost(orgId, h, apps.has(h) ? { apps: apps.get(h) } : {}, apps.has(h));
+    }
+    return result;
   }
   await runAll(stmts);
   if (touch.length) {

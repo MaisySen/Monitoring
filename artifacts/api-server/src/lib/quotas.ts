@@ -95,24 +95,30 @@ export type UsageKind = keyof typeof USAGE_COLS;
  * Reserve n units of a daily quota in one atomic statement: concurrent batches in any process serialize
  * on the usage row, and the increment only lands when it fits the limit. Returns false when refused.
  */
-export async function admitDaily(orgId: number, kind: UsageKind, n: number, limit: number | null): Promise<boolean> {
+export async function admitDaily(
+  orgId: number,
+  kind: UsageKind,
+  n: number,
+  limit: number | null,
+  q: { query: (text: string, values?: unknown[]) => Promise<unknown> } = pool,
+): Promise<boolean> {
   if (n <= 0) return true;
   const col = USAGE_COLS[kind];
   if (limit == null) {
-    await pool.query(
+    await q.query(
       `insert into org_usage_daily (org_id, day, ${col}) values ($1, current_date, $2)
        on conflict (org_id, day) do update set ${col} = org_usage_daily.${col} + $2`,
       [orgId, n],
     );
     return true;
   }
-  const r = await pool.query(
+  const r = (await q.query(
     `insert into org_usage_daily (org_id, day, ${col}) values ($1, current_date, least($2::bigint, $3))
      on conflict (org_id, day) do update set ${col} = org_usage_daily.${col} + $2::bigint
      where org_usage_daily.${col} + $2::bigint <= $3
      returning ${col}`,
     [orgId, n, limit],
-  );
+  )) as { rowCount: number | null };
   // The update path only lands when the batch fits whole. The insert path charges least(n, limit):
   // a batch bigger than the whole limit is refused (and consumes the window, so oversized batches
   // cannot be retried through within the same window); anything else that landed fit whole.
