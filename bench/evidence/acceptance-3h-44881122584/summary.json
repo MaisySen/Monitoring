@@ -1,0 +1,54 @@
+{
+  "run_id": 44881122584,
+  "job_id": 136776415192,
+  "product_sha": "0c558e370abb9a883e8243e4df5f2255ca618450",
+  "harness_sha": "c59ff63f41aebd51eaf38a00233946918527ed86",
+  "result": {
+    "at": "2026-11-21T10:40:17.426Z",
+    "kind": "result",
+    "pass": true,
+    "source_sha": "0c558e370abb9a883e8243e4df5f2255ca618450",
+    "artifact_run": 44878114550,
+    "artifact_id": 14696432658,
+    "requested_minutes": 180,
+    "elapsed_s": 10831,
+    "sent": {
+      "spans": 1294576,
+      "logs": 220029,
+      "metric_points": 273320
+    },
+    "stored": {
+      "spans": 1294576,
+      "logs": 220029
+    },
+    "errors": 0,
+    "notes": "Bounded20traces/s synthetic test, not capacity proof; no reboot test."
+  },
+  "systemd": {
+    "kind": "systemd-lifecycle",
+    "stored": {
+      "points": 1286,
+      "series": 257
+    },
+    "installed_sha256": "4cd6f054e286f7030f42e99eaf3f22e5b319a18c0f4aee49647c2d154c9faf46",
+    "reboot_tested": false
+  },
+  "samples": 181,
+  "rss_mb": {
+    "min": 132,
+    "max": 199,
+    "first": 132,
+    "last": 199
+  },
+  "minimum_disk_free_mb": 86815,
+  "minimum_memory_available_mb": 14313,
+  "maximum_monitor_stale_seconds": 19.095735,
+  "cleanup_step": "success from live jobs API",
+  "limits": [
+    "20 traces/s bounded load, not capacity proof",
+    "metric point count emitted but not reconciled to storage",
+    "query and monitor functionality, no latency SLO assertion",
+    "no VM reboot",
+    "retry wrapper default OFF; opt-in remains TEST-ONLY"
+  ]
+}
