@@ -88,7 +88,9 @@ export function MonitorList() {
   const [recips, setRecips] = useState<string[]>([]);
   const [prios, setPrios] = useState<string[]>([]);
   const [sel, setSel] = useState<number[]>([]);
-  const [hide, setHide] = useState(false);
+  // Below ~1100px the facet panel squeezes the table past usability (name/status clip);
+  // start collapsed there. The Show/Hide Controls toggle remains for both directions.
+  const [hide, setHide] = useState(() => typeof window !== "undefined" && window.innerWidth < 1100);
   const mons = useQuery({ queryKey: ["monitors"], queryFn: () => api<Monitor[]>("/v1/monitor"), refetchInterval: 15_000 });
   const all = mons.data ?? [];
   const isMuted = (m: Monitor) => !!(m.muted_until && m.muted_until * 1000 > Date.now());
