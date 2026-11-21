@@ -51,3 +51,71 @@ jobs:
         env:
           DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/postgres
         run: npm test
+  live-regression:
+    # Runs the verbatim published-path regression suite (bench/regression/run-all.sh) against a
+    # real server booted from this commit, so a broken snippet/installer fails CI, not a user.
+    runs-on: ubuntu-latest
+    needs: [agent, server]
+    services:
+      postgres:
+        image: postgres:14
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ["5432:5432"]
+        options: --health-cmd "pg_isready" --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: "10.11.0"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Wheel build tooling for pack-sdks
+        run: pip install build
+      - name: Use the agent binaries built by the agent job
+        uses: actions/download-artifact@v4
+        with:
+          name: agent
+          path: agent/dist
+      - run: pnpm install --frozen-lockfile
+      - name: Pack SDKs + verified agent binaries into downloads
+        run: node scripts/pack-sdks.mjs
+      - name: Build server
+        working-directory: artifacts/api-server
+        run: pnpm run build
+      - name: Boot server
+        working-directory: artifacts/api-server
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/postgres
+          PORT: "4730"
+          MONITORING_SETUP_TOKEN: ci-regression-token
+          MONITORING_UPTIME_ALLOW_PRIVATE: "true"
+        run: |
+          nohup node --enable-source-maps ./dist/index.mjs > /tmp/ci-server.log 2>&1 &
+          ok=""; for i in $(seq 1 30); do sleep 1; curl -sf http://127.0.0.1:4730/healthz >/dev/null && { ok=1; break; }; done
+          [ -n "$ok" ] || { tail -20 /tmp/ci-server.log; exit 1; }
+      - name: Create regression org and keys
+        run: |
+          curl -sf -c /tmp/ci-cookie -X POST http://127.0.0.1:4730/api/auth/setup -H 'Content-Type: application/json' \
+            -d '{"email":"ci@regression.local","password":"ci-regression-password-99","orgName":"ci-regression","setupToken":"ci-regression-token"}'
+          for kind in api app; do
+            curl -sf -b /tmp/ci-cookie -X POST http://127.0.0.1:4730/api/ui/org/keys -H 'Content-Type: application/json' \
+              -d "{\"kind\":\"$kind\",\"name\":\"ci $kind key\"}" | python3 -c 'import json,sys; print(json.load(sys.stdin)["key"])' > /tmp/ci-$kind-key
+          done
+          test -s /tmp/ci-api-key && test -s /tmp/ci-app-key
+      - name: Run the live regression suite
+        env:
+          SERVER_URL: http://127.0.0.1:4730
+          PGDATABASE: postgres
+          PGHOST: 127.0.0.1
+          PGPORT: 5432
+          PGUSER: postgres
+          PGPASSWORD: postgres
+        run: |
+          export API_KEY=$(cat /tmp/ci-api-key) APP_KEY=$(cat /tmp/ci-app-key)
+          bench/regression/run-all.sh
