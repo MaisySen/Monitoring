@@ -1,5 +1,5 @@
 'use strict';
-// Retrying wrapper for the stock OTLP metric exporter. OPT-IN ONLY (MONITORING_METRICS_RETRY=true)
+// Retrying wrapper for the stock OTLP metric exporter. TEST-ONLY OPT-IN (MONITORING_METRICS_RETRY=true)
 // until end-to-end safety review passes: see "Ambiguous delivery" below. Not the default: a wrong
 // double-count is worse than a dropped batch.
 //

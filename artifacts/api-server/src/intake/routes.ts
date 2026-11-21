@@ -490,13 +490,22 @@ function otlpRoute(signal: OtlpSignal) {
         // identical points (legitimate same-timestamp samples) always land.
         const batchIdRaw = req.headers["x-monitoring-batch-id"];
         const batchId = typeof batchIdRaw === "string" && /^[A-Za-z0-9_-]{8,100}$/.test(batchIdRaw) ? batchIdRaw : undefined;
+        // Identity is strict RAW req.body bytes, including the compressed envelope.
+        // decompress(req) reads those bytes without mutating req.body. Resend the same wire
+        // body under the same id; even equivalent JSON/protobuf or a different gzip envelope
+        // conflicts (409). This deliberately does not canonicalize semantic content.
+        // SDK wire tests cover byte identity across tested stock and wrapper resends; other
+        // clients must honor the same contract. Changed content requires a new batch id.
         const batch = batchId
           ? { id: batchId, sha256: createHash("sha256").update(Buffer.isBuffer(req.body) ? req.body : Buffer.from(req.body ?? "")).digest("hex") }
           : undefined;
         try {
           const wm = await writeMetrics(orgId, points, batch);
           if (wm === DUPLICATE_BATCH) {
-            res.status(200).json({ code: 0, message: "duplicate batch ignored", partialSuccess: { rejectedDataPoints: 0 } });
+            // A duplicate is a success (the data is already stored), answered in the request's own
+            // encoding like any other success - protobuf clients get a protobuf response.
+            const dup = encodeEmptyResponse(ct);
+            res.status(200).type(dup.type).send(dup.body);
             return;
           }
           refused = wm;

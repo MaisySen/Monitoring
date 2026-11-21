@@ -87,3 +87,21 @@ Call `shutdown()` during your application's graceful signal handling, after clos
 ## Verification
 
 `npm test` runs configuration tests. `node test/verify.js` starts a temporary local OTLP sink, runs the sample as a child, decodes protobuf requests, and checks spans, correlated logs and DELTA metrics. `MONITORING_VERIFY_REMOTE=true MONITORING_URL=http://localhost:3000 MONITORING_API_KEY=... node test/verify.js` instead sends to Monitoring; check the service `monitoring-node-verify` in the database or UI.
+
+## Experimental metric retries, test use only
+
+Extra metric retries are OFF by default. `MONITORING_METRICS_RETRY=true` enables a test-only
+wrapper pending independent safety review. Do not treat the opt-in as production acceptance.
+The stock OTLP exporter still has its own retries when this option is off.
+
+The opt-in sends `x-monitoring-batch-id`. PostgreSQL intake with migration 20 dedups an exact
+wire-body resend under that id while the claim row remains retained. The hash covers RAW body
+bytes, including gzip envelope bytes. Re-encoding equivalent JSON/protobuf or recompressing into
+different bytes with the same id returns 409. Changed content needs a new id. There is no semantic
+canonicalization. Older servers and ClickHouse do not provide this batch dedup guarantee.
+
+The default client start-send age cutoff is 600 seconds. Keep it well below the server's batch
+retention (default 48 hours); this compatibility is operator responsibility, not a negotiated or
+enforced cross-service setting. A request already in flight can complete after the cutoff. There
+is no disk spool. These limits, the default-off setting, and a passing test suite are not a claim
+that the retry wrapper is safe to enable in production.
