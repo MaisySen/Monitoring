@@ -15,11 +15,26 @@ workflow state and never upgrades one into the other.
   and are never claimed (they need separately recorded deployment evidence).
 - P2: uptime checks; problem acknowledge/resolve/reopen. Multies-native
   delivery (chat/task/mail) is HELD — needs Multies-side bridge authority.
+- Monitor evaluation health: last_eval_error/last_eval_duration_ms recorded
+  per monitor (migration 19), exposed in /api/v1/monitor, shown in the
+  Monitors list (compact "Eval failing · last ok X" with expandable detail).
+  Negative control: invalid-query monitor reports the error; healthy monitors
+  null. UI verified in pixels at 1440px and 800px (facet panel auto-collapses
+  below 1100px; evidence bench/evidence/validation-2026-11-21/mon-*.png).
 - Unit suite 110/110. CI (Build checks, develop): green on every pushed
-  commit. A live-regression CI job runs the full verbatim suite against a
-  server booted from each commit (green since 742d356).
+  commit through e0dc0d1. A live-regression CI job runs the full verbatim
+  suite against a server booted from each commit (green since 742d356;
+  gate proven non-vacuous by a deliberate-break branch failing exactly at
+  the broken check).
 - Bounded soak (8 min, agent-compose path, current build): 948/948 spans,
   98/98 errors, zero duplicates (details in ENGINEERING_STATE).
+- Alert-evaluation timeliness (bench/regression/alert-timeliness.js, ALL
+  PASS): first eval 13ms after create; observed 0-26s staleness sawtooth at
+  5s sampling confirming fresh 30s-tick evaluations; max sampled staleness
+  7.5s at 400 traces/s and 7.7s at the 800 traces/s overload step (probe at
+  the end of a ~7s, 111-monitor org chain; thresholds are test choices, not
+  SLAs). Intake-abort fault test: client socket destroyed mid-body stores 0
+  spans (transactional all-or-none at request level).
 
 ## Published-surface coverage (every copyable command verbatim-tested)
 
@@ -80,6 +95,28 @@ bench/regression/run-all.sh — 7 checks, ALL PASS against a live server
 - Multies-native delivery (Beat 4): needs Multies-side bridge authority.
 - External webhook telemetry: no authority granted; probes stay local.
 - Multies repository and Fintex runbook: read-only.
+
+## Operating this environment (restart recovery)
+
+Sandbox restarts wipe processes and /tmp but keep home. To restore:
+- Postgres: PATH=$HOME/pgsql/usr/lib/postgresql/14/bin:$PATH pg_ctl -D
+  ~/pgdata -l ~/pg.log -o "-k /tmp -p 5433 -c listen_addresses='127.0.0.1'"
+  -w -t 90 start (psql also at /usr/lib/postgresql/14/bin)
+- Servers (from ~/monitoring, OWN_DIR=$HOME/monitoring-owned, bench/lib/
+  procs.sh own_start): valrun = DATABASE_URL=postgresql://monitoring@
+  127.0.0.1:5433/valrun PORT=4731 node --enable-source-maps
+  ./artifacts/api-server/dist/index.mjs; e2e = same with db e2e, PORT=4730,
+  MONITORING_UPTIME_ALLOW_PRIVATE=true. Never kill by port/pattern.
+- Regression credentials: /tmp/reg-key + /tmp/reg-appkey may be wiped.
+  Recover with psql on db e2e: select kind, key from api_keys where
+  org_id=15 -> kind 'api' is the intake key (API_KEY), kind 'app' is the
+  application key (APP_KEY). Soak/bench UI user soak@bench.example exists
+  in org 15; if its password is lost, recreate the user via SQL with a
+  scrypt hash (scrypt$<salt hex>$<64-byte hash hex>, see lib/auth.ts).
+- jit=off is set on e2e and valrun databases (this sandbox's relocated
+  Postgres lacks libLLVM; without it every JIT-planned query errors - the
+  2026-11-21 monitor staleness incident). Server pools must reconnect after
+  the ALTER. CI uses the stock postgres:14 image and is unaffected.
 
 ## Demo state
 
