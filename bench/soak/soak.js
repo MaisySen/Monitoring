@@ -25,7 +25,11 @@ const PASSWORD = env.password();
 const DC = env.url();
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const sh = (c, t = 120000) => { try { return execSync(c, { encoding: 'utf8', timeout: t, stdio: ['ignore', 'pipe', 'pipe'] }).trim(); } catch { return ''; } };
-const psql = (q, t) => sh(`PGPASSWORD=monitoring psql -h localhost -U monitoring monitoring -tAc "${q.replace(/"/g, '\\"')}"`, t);
+// psql reads the same DATABASE_URL the server uses, so the soak runs against any deployment.
+const DBURL = env.databaseUrl();
+const psql = (q, t) => sh(`PATH=/usr/lib/postgresql/14/bin:$PATH psql "${DBURL}" -tAc "${q.replace(/"/g, '\\"')}"`, t);
+// Org owning the intake key: loss counts must be scoped to it, never to a hardcoded org id.
+const ORG = Number(sh(`PATH=/usr/lib/postgresql/14/bin:$PATH psql "${DBURL}" -tAc "select org_id from api_keys where key = '${env.apiKey()}'"`)) || 1;
 const append = (f, o) => fs.appendFileSync(path.join(OUT, f), JSON.stringify(o) + '\n');
 const TICK = Number(sh('getconf CLK_TCK')) || 100;
 
@@ -60,7 +64,7 @@ function sample(extra = {}) {
   const stale = psql("select coalesce(max(extract(epoch from now())*1000 - last_evaluated_at),0)::bigint from monitors where name like 'soak %'");
   const s = { t: new Date(now).toISOString(), elapsed_min: Math.round((now - t0) / 60000),
     server_rss_mb: Math.round(rssMb(server)), pg_rss_mb: Math.round(rssMb(pg)),
-    db_size_mb: Math.round(Number(psql("select pg_database_size('monitoring')")) / 1048576),
+    db_size_mb: Math.round(Number(psql("select pg_database_size(current_database())")) / 1048576),
     monitor_eval_staleness_s: Math.round(Number(stale) / 1000), rows_inserted_total: Number(ins), ...extra };
   if (prev) {
     const dt = (now - prev.now) / 1000;
@@ -125,8 +129,8 @@ let t0 = Date.now();
     summary.monitor_states = Object.fromEntries(psql("select name, overall_state from monitors where name like 'soak %' order by name").split('\n').filter(Boolean).map((l) => l.split('|')));
     await sleep(30000);
     // loss check (stored vs sent), by loadtest.run
-    const spans = psql(`select count(*) from spans where org_id=1 and start_ms >= ${t0 - 60000} and meta->>'loadtest.run' = '${RUN}'`, 1800000);
-    const logs = psql(`select count(*) from logs where org_id=1 and ts >= ${t0 - 60000} and tags @> array['loadtest.run:${RUN}']`, 1800000);
+    const spans = psql(`select count(*) from spans where org_id=${ORG} and start_ms >= ${t0 - 60000} and meta->>'loadtest.run' = '${RUN}'`, 1800000);
+    const logs = psql(`select count(*) from logs where org_id=${ORG} and ts >= ${t0 - 60000} and tags @> array['loadtest.run:${RUN}']`, 1800000);
     summary.stored = { spans: Number(spans), logs: Number(logs) };
     summary.loss = { spans: sent.sent ? sent.sent.spans - Number(spans) : null, logs: sent.sent ? sent.sent.logs - Number(logs) : null };
     fs.writeFileSync(path.join(OUT, 'summary.json'), JSON.stringify(summary, null, 2));

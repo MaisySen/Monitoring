@@ -757,3 +757,13 @@ Unit: 76/76. CI greens through 43f64b9.
 ## CI live-regression + bounded soak (2026-11-21)
 - New build.yml job live-regression (needs agent+server): downloads the agent artifact from the same run, packs SDKs+agent, boots the server against the postgres service, creates org+keys via /api/auth/setup, and runs bench/regression/run-all.sh. First run failed on MY boot check: /healthz returns 200 locally only via the SPA fallback (web dist present); without a web build it is 404 - the API health route is /api/healthz. Fixed (742d356); live-regression green. The verbatim published-path suite now runs in CI on every dispatch.
 - Bounded soak, current build + agent artifact 44829598532, agent-compose path (SDK -> localhost:4318 -> agent disk queue -> server): 8 min at ~2 rps, 849 ok + 98 err requests (+1 baseline) -> EXACTLY 948 spans stored, 98 error spans, GET /ok 850 / GET /err 98, 948 distinct (trace_id, span_id) = zero loss, zero duplicates, exact error accounting. Org: isolated "regression" org on e2e; db-level verification only (org has no UI user).
+
+## 2026-11-21 11:50 — CI live-regression negative control (gate proven real)
+- Deliberate-break branch (python onboarding snippet re-broken) run 44846196202: live-regression job FAILED at onboarding-snippet `spans 0 -> 0 (published snippet produced NO telemetry)` while node and OTLP checks still passed — failure precisely at the break, not systemic. Branch deleted after run.
+- Develop dc7e6e2: CI success. Develop 334add5 (gitignore fix): dispatched.
+- Fixed downloads/.gitignore being destroyed by installer-clean-deploy.sh (`rm -rf $DL`): pack-sdks.mjs now always writes .gitignore into dest; deploy check restores it from backup if missing. Symptom found in working tree before commit (packed binaries showed as untracked).
+
+## 2026-11-21 12:04 — long-run soak started (2h + ramp)
+- soak.js portability fix: psql now uses DATABASE_URL (was hardcoded db/port), loss check org resolved from the API key (was org_id=1), db size uses current_database(). Shakedown run first: 65443/65443 spans, 11010/11010 logs stored, zero loss, ramp step clean (evidence: bench/evidence/soak-shakedown-2026-11-21/).
+- Soak UI user soak@bench.example created in e2e regression org (id 15) — e2e only, demo org untouched.
+- 2-hour soak at 400 traces/s + ramp launched detached (own_start soak-2h, out: bench/soak/out/soak-1203/). Results recorded on completion.
