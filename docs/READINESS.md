@@ -33,12 +33,17 @@ workflow state and never upgrades one into the other.
   5s sampling confirming fresh 30s-tick evaluations; max sampled staleness
   7.5s at 400 traces/s and 7.7s at the 800 traces/s overload step (probe at
   the end of a ~7s, 111-monitor org chain; thresholds are test choices, not
-  SLAs). Intake-abort fault test: client socket destroyed mid-body stores 0
-  spans (transactional all-or-none at request level).
+  SLAs). Intake-abort fault test (with positive control): a complete request
+  from the same client stores its spans, then a socket destroyed mid-body
+  stores 0 (transactional all-or-none at request level). Keep-alive:
+  server-side idle close measured ~6s after response (Node default
+  keepAliveTimeout), the reuse race behind the soak's 6 ECONNRESETs; fixed
+  with keepAliveTimeout 65s / headersTimeout 66s and pinned by the
+  keepalive-idle check (idle socket must stay open >= 20s).
 
 ## Published-surface coverage (every copyable command verbatim-tested)
 
-bench/regression/run-all.sh — 7 checks, ALL PASS against a live server
+bench/regression/run-all.sh — 9 checks, ALL PASS against a live server
 (isolated "regression" org on the e2e instance; never the demo org):
 
 1. onboarding-snippet.sh — published Python snippet extracted from the UI
@@ -87,7 +92,8 @@ bench/regression/run-all.sh — 7 checks, ALL PASS against a live server
   runs (observed twice on 2026-11-21), killing background processes, so a
   continuous multi-hour soak is not achievable here. Bounded evidence:
   15-min soak at 400 traces/s (99.94% stored, gap fully explained by 6
-  generator-recorded ECONNRESETs) and a ramp finding 800 traces/s as this
+  generator-recorded ECONNRESETs; mechanism since identified and fixed -
+  see keep-alive note above) and a ramp finding 800 traces/s as this
   box's breaking point. Not weeks of operation.
 
 ## Held (authority)

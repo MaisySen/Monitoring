@@ -796,3 +796,25 @@ Unit: 76/76. CI greens through 43f64b9.
 - Cadence verified, not assumed: 5s sampling of a probe monitor shows a clean 30s sawtooth (staleness 0->26s->0), so timeliness numbers reflect fresh evaluations on the intended tick. Evaluation triggers enumerated (30s tick, create, update, manual run, auto-monitor first eval) — none fire for the probe during load phases. Eval durations recorded: min 0 / avg 2 / max 32ms across 141 monitors. The steady ~7.5s load-phase staleness = the probe's position at the end of a ~7s 111-monitor org chain, phase-aligned with sampling; consistent with the 30s tick, now evidenced.
 - UI rework after parent pixel review: single-line "Eval failing · last ok never" with expandable error detail (no more 4-line wrap); stale-only monitors show "last evaluated X ago". Verified at 1440px collapsed/expanded and 800px narrow (bench/evidence/validation-2026-11-21/mon-ui-*.png).
 - Socket-abort test scope recorded: proves that specific incomplete request stored nothing; the original 6 resets' outcome stays bounded by aggregate match + transactional intake, mechanism inferred (keepalive race), unknown preserved.
+
+## 2026-11-21 16:05 AEDT - ECONNRESET mechanism found and fixed; intake-abort vacuity corrected
+
+- Mechanism (confirmed by construction + measurement, no longer inferred): the server never set
+  keepAliveTimeout, so Node's ~5s default applied; measured: idle keep-alive socket closed by the
+  server ~6s after a response. node:http keepAlive agents (the soak loadgen) have no client-side
+  idle close, so a reuse decision racing the FIN writes into a dying socket = "read ECONNRESET".
+  6 resets in 7,492 requests with per-socket idle times straddling 5s is consistent with the
+  millisecond-wide race window (a timed-reuse repro at 4.95-5.2s hit it 0/20: too narrow to force).
+  Fix (artifacts/api-server/src/index.ts): keepAliveTimeout 65s, headersTimeout 66s, env-overridable
+  (MONITORING_KEEPALIVE_TIMEOUT_MS / MONITORING_HEADERS_TIMEOUT_MS). Post-fix: idle socket still
+  open >25s. New regression check bench/correctness/keepalive-idle.js (9th in run-all) requires the
+  idle socket to stay open >= 20s after an accepted request.
+- CORRECTION: the earlier intake-abort result was vacuously green, twice over: it sent a
+  non-existent auth header (x-monitoring-key; the server accepts dc-api-key / dd-api-key / Bearer),
+  so every request 403'd and stored nothing, AND it queried trace_id in hex while spans.trace_id is
+  stored decimal. Rewritten with a positive control (complete request must store its spans first),
+  per-run unique service matching, and the correct header. The conclusion holds (mid-body abort
+  stores 0) but now on valid evidence; the prior run proved nothing. Found by the positive control
+  failing loudly (403) the moment it was added - the check now cannot pass vacuously.
+- The original 6 soak resets remain unknown-outcome events (bounded by aggregate match and
+  transactional intake); the fixed abort test is not generalized to them.

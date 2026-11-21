@@ -30,6 +30,16 @@ const server = app.listen(port, (err) => {
     logger.error({ err }, "Error listening on port");
     process.exit(1);
   }
+  // Node's default keepAliveTimeout is 5s. Keep-alive clients that pool idle sockets longer than that
+  // (node:http Agent has no client-side idle close; undici defaults to 4s but agent/OTLP exporters vary)
+  // can reuse a socket exactly as the server closes it: the request goes into a dying socket and the
+  // client sees ECONNRESET (measured 2026-11-21: server closed idle sockets ~6s after response; 6 such
+  // resets in 7,492 requests under a 400tps soak). Node guidance is to keep the server timeout above
+  // common client/proxy idle timeouts (60s+), with headersTimeout strictly above keepAliveTimeout.
+  server.keepAliveTimeout = Number(process.env.MONITORING_KEEPALIVE_TIMEOUT_MS ?? 65_000);
+  server.headersTimeout = Number(process.env.MONITORING_HEADERS_TIMEOUT_MS ?? 66_000);
+  // Node requires headersTimeout > keepAliveTimeout; clamp an env override that violates it.
+  if (server.headersTimeout <= server.keepAliveTimeout) server.headersTimeout = server.keepAliveTimeout + 1_000;
   logger.info({ port }, "Server listening");
   // Run several API processes against one database by giving all but one MONITORING_BACKGROUND_JOBS=false, so monitors
   // are evaluated (and notifications sent) by exactly one process.
