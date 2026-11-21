@@ -16,7 +16,10 @@ workflow state and never upgrades one into the other.
 - P2: uptime checks; problem acknowledge/resolve/reopen. Multies-native
   delivery (chat/task/mail) is HELD — needs Multies-side bridge authority.
 - Unit suite 110/110. CI (Build checks, develop): green on every pushed
-  commit through b0ff84c.
+  commit. A live-regression CI job runs the full verbatim suite against a
+  server booted from each commit (green since 742d356).
+- Bounded soak (8 min, agent-compose path, current build): 948/948 spans,
+  98/98 errors, zero duplicates (details in ENGINEERING_STATE).
 
 ## Published-surface coverage (every copyable command verbatim-tested)
 
