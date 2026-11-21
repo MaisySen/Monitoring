@@ -24,6 +24,8 @@ export interface Monitor {
   group_states: Record<string, { state: string; value: number | null; tags: string[]; since: number }>;
   muted_until: number | null;
   last_triggered_at: number | null;
+  last_evaluated_at: number | null;
+  last_eval_error: string | null;
   creator: { name: string };
   modified: string;
 }
@@ -32,6 +34,13 @@ const STATES = ["Alert", "Warn", "No Data", "OK"];
 const TYPE_LABEL: Record<string, string> = { "metric alert": "Metric", "query alert": "Metric", "log alert": "Logs", "trace-analytics alert": "APM" };
 
 const STATE_BAR: Record<string, string> = { Alert: "bg-alert", Warn: "bg-warn", "No Data": "bg-nodata", OK: "bg-ok" };
+function staleEval(m: Monitor): string | null {
+  if (!m.last_evaluated_at) return "never";
+  const s = Math.floor((Date.now() - m.last_evaluated_at) / 1000);
+  if (s < 90) return null;
+  return s >= 3600 ? `${Math.floor(s / 3600)}h` : s >= 60 ? `${Math.floor(s / 60)}m` : `${s}s`;
+}
+
 const recipients = (m: Monitor) => [...new Set(m.message.match(/@[\w.\-]+/g) ?? [])];
 
 function FacetGroup({ title, children, defaultOpen = true }: { title: string; children: any; defaultOpen?: boolean }) {
@@ -267,6 +276,13 @@ export function MonitorList() {
                     <td className="text-ink-2">{m.priority ? `P${m.priority}` : "-"}</td>
                     <td>
                       <StatusBadge state={m.overall_state} />
+                      {m.last_eval_error ? (
+                        <span className="mt-1 block text-xs text-alert" title={m.last_eval_error}>
+                          evaluation failing{staleEval(m) ? ` (${staleEval(m)})` : ""}
+                        </span>
+                      ) : staleEval(m) ? (
+                        <span className="mt-1 block text-xs text-warn">last evaluated {staleEval(m)} ago</span>
+                      ) : null}
                     </td>
                     <td className="text-ink-2">
                       {mutedLeft(m) && (

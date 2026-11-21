@@ -292,6 +292,17 @@ CREATE TABLE service_versions (
   PRIMARY KEY (org_id, service, env, version)
 );
 `,
+// 18: consumed on the e2e database by a mis-ordered development build of 2026-11-21 (it applied the
+// old #17 service_versions rebuild under version 18). Keep numbering monotonic so the real #19 runs there.
+`
+select 1;
+`,
+// 19: monitor evaluation health: when evaluation fails, the error is recorded on the monitor instead of
+// only appearing in server logs, so a stalled monitor is visible through the API/UI.
+`
+ALTER TABLE monitors ADD COLUMN IF NOT EXISTS last_eval_error text;
+ALTER TABLE monitors ADD COLUMN IF NOT EXISTS last_eval_duration_ms integer;
+`,
 ];
 
 export async function migrateDatabase() {

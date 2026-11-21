@@ -378,6 +378,7 @@ export function evaluateMonitor(id: number): Promise<void> {
 }
 
 async function evaluateMonitorNow(id: number) {
+  const evalStart = Date.now();
   const mon = (await pool.query("select * from monitors where id=$1", [id])).rows[0];
   if (!mon) return;
   let parsed: Parsed;
@@ -385,6 +386,10 @@ async function evaluateMonitorNow(id: number) {
     parsed = parseMonitorQuery(mon.type, mon.query);
   } catch (e) {
     logger.warn({ id, err: String(e) }, "invalid monitor");
+    // An unparseable monitor is as stuck as a failing one: record it instead of silently keeping the last state.
+    await pool
+      .query("update monitors set last_eval_error=$2 where id=$1", [id, `invalid query: ${String((e as Error)?.message ?? e)}`.slice(0, 500)])
+      .catch((dbErr) => logger.warn({ err: String(dbErr), id }, "recording monitor eval error failed"));
     return;
   }
   const delaySec = Math.min(86_400, Math.max(0, Number(mon.options?.evaluation_delay) || 0));
@@ -443,8 +448,8 @@ async function evaluateMonitorNow(id: number) {
   // Compare-and-set: when two processes evaluate the same monitor at once, only the one whose state write lands sends
   // the events and notifications, so a transition is announced once.
   const saved = await pool.query(
-    "update monitors set overall_state=$2, group_states=$3, last_evaluated_at=$4, last_triggered_at=$5 where id=$1 and last_evaluated_at is not distinct from $6::bigint returning id",
-    [id, overall, next, now, lastTriggered, mon.last_evaluated_at ?? null],
+    "update monitors set overall_state=$2, group_states=$3, last_evaluated_at=$4, last_triggered_at=$5, last_eval_error=null, last_eval_duration_ms=$7 where id=$1 and last_evaluated_at is not distinct from $6::bigint returning id",
+    [id, overall, next, now, lastTriggered, mon.last_evaluated_at ?? null, Date.now() - evalStart],
   );
   if (!saved.rowCount) return;
   for (const t of transitions) {
@@ -511,7 +516,15 @@ export function startMonitorLoop() {
       for (const [orgId, ids] of byOrg) {
         if (orgRuns.has(orgId)) continue;
         const run = (async () => {
-          for (const id of ids) await evaluateMonitor(id).catch((e) => logger.warn({ err: String(e), id }, "monitor eval failed"));
+          for (const id of ids)
+            await evaluateMonitor(id).catch(async (e) => {
+              logger.warn({ err: String(e), id }, "monitor eval failed");
+              // Record the failure on the monitor: last_evaluated_at stays at the last success, so staleness and
+              // the error are both visible instead of the monitor silently showing its last state forever.
+              await pool
+                .query("update monitors set last_eval_error=$2 where id=$1", [id, String((e as Error)?.message ?? e).slice(0, 500)])
+                .catch((dbErr) => logger.warn({ err: String(dbErr), id }, "recording monitor eval error failed"));
+            });
         })().finally(() => orgRuns.delete(orgId));
         orgRuns.set(orgId, run);
       }

@@ -203,6 +203,8 @@ function monOut(r: any) {
     muted_until: r.muted_until ? Number(r.muted_until) : null,
     last_triggered_at: r.last_triggered_at ? Number(r.last_triggered_at) : null,
     last_evaluated_at: r.last_evaluated_at ? Number(r.last_evaluated_at) : null,
+    last_eval_error: r.last_eval_error ?? null,
+    last_eval_duration_ms: r.last_eval_duration_ms == null ? null : Number(r.last_eval_duration_ms),
     creator: { name: r.creator_name },
     created: r.created_at,
     modified: r.modified_at,
