@@ -791,3 +791,8 @@ Unit: 76/76. CI greens through 43f64b9.
 - Migration checks against actual schema: fresh DB applies through version 19 with both columns; the already-18 e2e DB applied 19 and gained both columns. valrun 17->19 clean.
 - UI visually verified (bench/evidence/validation-2026-11-21/monitors-eval-failing-ui.png): broken monitor shows NO DATA + red "evaluation failing (never)" in the Monitors list.
 - e2e carries 110 auto-created default monitors from loadgen service discovery (disposable regression org; left in place as load fixture).
+
+## 2026-11-21 14:40 — eval cadence evidence + eval-health UI polish
+- Cadence verified, not assumed: 5s sampling of a probe monitor shows a clean 30s sawtooth (staleness 0->26s->0), so timeliness numbers reflect fresh evaluations on the intended tick. Evaluation triggers enumerated (30s tick, create, update, manual run, auto-monitor first eval) — none fire for the probe during load phases. Eval durations recorded: min 0 / avg 2 / max 32ms across 141 monitors. The steady ~7.5s load-phase staleness = the probe's position at the end of a ~7s 111-monitor org chain, phase-aligned with sampling; consistent with the 30s tick, now evidenced.
+- UI rework after parent pixel review: single-line "Eval failing · last ok never" with expandable error detail (no more 4-line wrap); stale-only monitors show "last evaluated X ago". Verified at 1440px collapsed/expanded and 800px narrow (bench/evidence/validation-2026-11-21/mon-ui-*.png).
+- Socket-abort test scope recorded: proves that specific incomplete request stored nothing; the original 6 resets' outcome stays bounded by aggregate match + transactional intake, mechanism inferred (keepalive race), unknown preserved.

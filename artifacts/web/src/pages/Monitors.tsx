@@ -34,11 +34,17 @@ const STATES = ["Alert", "Warn", "No Data", "OK"];
 const TYPE_LABEL: Record<string, string> = { "metric alert": "Metric", "query alert": "Metric", "log alert": "Logs", "trace-analytics alert": "APM" };
 
 const STATE_BAR: Record<string, string> = { Alert: "bg-alert", Warn: "bg-warn", "No Data": "bg-nodata", OK: "bg-ok" };
+// Age of the last successful evaluation (last_evaluated_at is only written on success).
+function lastOkAge(m: Monitor): string | null {
+  if (!m.last_evaluated_at) return null;
+  const s = Math.floor((Date.now() - m.last_evaluated_at) / 1000);
+  return s >= 3600 ? `${Math.floor(s / 3600)}h` : s >= 60 ? `${Math.floor(s / 60)}m` : `${s}s`;
+}
 function staleEval(m: Monitor): string | null {
+  const a = lastOkAge(m);
   if (!m.last_evaluated_at) return "never";
   const s = Math.floor((Date.now() - m.last_evaluated_at) / 1000);
-  if (s < 90) return null;
-  return s >= 3600 ? `${Math.floor(s / 3600)}h` : s >= 60 ? `${Math.floor(s / 60)}m` : `${s}s`;
+  return s < 90 ? null : a;
 }
 
 const recipients = (m: Monitor) => [...new Set(m.message.match(/@[\w.\-]+/g) ?? [])];
@@ -277,11 +283,16 @@ export function MonitorList() {
                     <td>
                       <StatusBadge state={m.overall_state} />
                       {m.last_eval_error ? (
-                        <span className="mt-1 block text-xs text-alert" title={m.last_eval_error}>
-                          evaluation failing{staleEval(m) ? ` (${staleEval(m)})` : ""}
-                        </span>
+                        <details className="mt-1 text-xs">
+                          <summary className="cursor-pointer select-none whitespace-nowrap text-alert">
+                            Eval failing · last ok {lastOkAge(m) ?? "never"}
+                          </summary>
+                          <div className="mt-1 max-w-[240px] whitespace-pre-wrap break-words rounded border border-line bg-panel p-1.5 text-ink-3">
+                            {m.last_eval_error}
+                          </div>
+                        </details>
                       ) : staleEval(m) ? (
-                        <span className="mt-1 block text-xs text-warn">last evaluated {staleEval(m)} ago</span>
+                        <span className="mt-1 block whitespace-nowrap text-xs text-warn">last evaluated {staleEval(m)} ago</span>
                       ) : null}
                     </td>
                     <td className="text-ink-2">
