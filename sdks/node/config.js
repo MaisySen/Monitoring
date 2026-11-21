@@ -16,6 +16,10 @@ function config(options = {}, rawEnv = process.env) {
   const bool = (value, fallback) => value === undefined ? fallback : String(value).toLowerCase() !== 'false';
   const url = first(options.url, env.MONITORING_URL);
   const key = first(options.apiKey, env.MONITORING_API_KEY);
+  const metricCustodyTest = env.MONITORING_METRIC_CUSTODY_TEST_ONLY === 'yes';
+  if(metricCustodyTest&&(!env.MONITORING_METRIC_CUSTODY_URL||!key||env.MONITORING_METRICS_RETRY==='true'||env.MONITORING_METRIC_DIRECT_TEST_ONLY==='yes'))throw new Error('Agent custody test requires explicit custody URL/API key, no direct test and extra retries OFF');
+  const metricDirectTest = env.MONITORING_METRIC_DIRECT_TEST_ONLY === 'yes';
+  if (metricDirectTest && (!url || !key || env.MONITORING_METRICS_RETRY === 'true')) throw new Error('Experimental direct metric delivery requires explicit URL/API key and extra retries OFF');
   if (url && !key) throw new Error('MONITORING_URL requires MONITORING_API_KEY');
   const base = (url ? `${url.replace(/\/+$/, '')}/otlp` :
     first(options.agentUrl, env.MONITORING_AGENT_URL, env.OTEL_EXPORTER_OTLP_ENDPOINT, 'http://localhost:4318')).replace(/\/+$/, '');
@@ -41,7 +45,7 @@ function config(options = {}, rawEnv = process.env) {
   attributes['telemetry.distro.name'] = 'monitoring';
   attributes['telemetry.distro.version'] = '0.1.0';
   return {
-    attributes, headers, sampleRate,
+    attributes, headers, sampleRate, metricDirectTest, directUrl: url, metricCustodyTest,custodyUrl:env.MONITORING_METRIC_CUSTODY_URL,custodyKey:key,
     sampleRateOverride: first(options.sampleRate, env.MONITORING_SAMPLE_RATE) !== undefined,
     logsInjection: bool(first(options.logsInjection, env.MONITORING_LOGS_INJECTION), true),
     // Ship log records over OTLP from the app. Turn off when the Monitoring Agent tails the app's log files instead.

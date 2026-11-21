@@ -1,0 +1,5 @@
+'use strict';
+const monitoring=require(process.env.CONTROL_SDK_ROOT||'../../../sdks/node');
+monitoring.init({service:'strict-customer-path',logShipping:false,handleSignals:false,onMetricDelivery:()=>{}});
+(async()=>{monitoring.metrics.increment(process.env.CORRECTNESS_METRIC,7);await monitoring.forceFlush();const before=monitoring.metricDelivery.snapshot();if(process.env.RECOVER==='yes'){const r=before.find(x=>x.state==='blocked');if(!r)throw Error('Expected blocked state');if(process.env.HOLD_FILE)while(!require('node:fs').existsSync(process.env.HOLD_FILE))await new Promise(r=>setTimeout(r,100));await fetch(process.env.MONITORING_URL+'/fixture-release',{method:'POST'});await monitoring.metricDelivery.recover(r.localId);}
+monitoring.metrics.increment(process.env.CORRECTNESS_METRIC,11);await monitoring.forceFlush();const after=monitoring.metricDelivery.snapshot();console.log('SDK_RESULT '+JSON.stringify({before,after,additionalRetries:process.env.MONITORING_METRICS_RETRY==='true',actualInit:true}));await monitoring.shutdown();})().catch(e=>{console.error(e.message);process.exitCode=1;});

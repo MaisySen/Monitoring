@@ -1,3 +1,4 @@
+import { beginStrictWrite, finishStrictWrite, StrictDeliveryError } from "../lib/strictMetricDelivery";
 import { stripAnsi } from "./decode";
 import { redactLog, redactSpan } from "./redact";
 
@@ -29,7 +30,7 @@ import { aggregateErrorGroups, upsertErrorGroupsTx, aggregateServiceVersions, up
 import { ensureServiceMonitors } from "../jobs/autoMonitors";
 import { useClickHouse } from "../lib/storage";
 import { chInsert, ensureChSchema } from "../lib/ch";
-import { getQuotas, admitDaily, seriesCount, QuotaExceeded } from "../lib/quotas";
+import { getQuotas, checkByteRate, admitDaily, seriesCount, QuotaExceeded } from "../lib/quotas";
 import { recordDrop } from "../lib/intakeStats";
 
 /** Batch idempotency rows are only needed for the retry horizon; sweep older ones (bounded table). */
@@ -42,7 +43,13 @@ export async function sweepIntakeBatches(retentionHours = Number(process.env.MON
 export class BatchConflict extends Error {}
 /** writeMetrics duplicate sentinel: the batch was already ingested by an earlier delivery. */
 export const DUPLICATE_BATCH = "duplicate" as const;
-export type BatchIdempotency = { id: string; sha256: string };
+export type BatchIdempotency = {
+  id: string;
+  sha256: string;
+  strictToken?: string;
+  strictBytes?: number;
+  hostInfo?: Map<string, { os?: string; agentVersion?: string; tags: string[] }>;
+};
 
 export interface PointIn {
   metric: string;
@@ -224,11 +231,12 @@ async function writeMetricsCh(orgId: number, series: PointIn[]) {
 /** Stores the batch; returns the number of points refused by the series cap (0 when nothing was refused). */
 export async function writeMetrics(orgId: number, series: PointIn[], batch?: BatchIdempotency): Promise<number | typeof DUPLICATE_BATCH> {
   // ClickHouse does not implement this PG-only protocol; preserve its normal quota path.
+  if (useClickHouse && batch?.strictToken) throw new StrictDeliveryError(422, "Strict metric delivery requires PostgreSQL");
   if (useClickHouse) batch = undefined;
   // Batch idempotency pre-check (cheap, non-transactional): a retry of an already-committed
   // batch must not consume quota or re-do series work. The authoritative dedup is the
   // in-transaction claim below, which also decides concurrent same-batch deliveries.
-  if (batch) {
+  if (batch && !batch.strictToken) {
     const seen = await pool.query("select body_sha256 from intake_batches where org_id=$1 and batch_id=$2", [orgId, batch.id]);
     if (seen.rows.length) {
       if (seen.rows[0].body_sha256 === batch.sha256) return DUPLICATE_BATCH;
@@ -286,34 +294,64 @@ export async function writeMetrics(orgId: number, series: PointIn[], batch?: Bat
     // delivery blocks on the primary key until this commits or rolls back, then dedups or
     // proceeds; a mid-ingest failure rolls the claim back with the points, so a later retry
     // re-ingests from scratch. No partial batch can be marked seen. Quota admission happens
-    // after the claim, on the same transaction. Post-insert effects (last_seen refresh in the
-    // transaction, host/app discovery after commit) run exactly as on the non-batch path:
-    // header traffic must keep series query-visible and hosts linked. A duplicate refreshes
+    // after the claim, on the same transaction. Series freshness AND host/app discovery are
+    // committed with the points. A metadata failure rolls back claim/points/quota so the
+    // SAME immutable retry can repair. No process-local metadata cache is published here.
+    // Header traffic must keep series query-visible and hosts linked. A duplicate refreshes
     // nothing because it stored nothing; last_seen tracks freshly INGESTED data.
     const result = await inTransaction(async (c) => {
-      const claim = (await c.query(
-        "insert into intake_batches (org_id, batch_id, body_sha256) values ($1,$2,$3) on conflict (org_id, batch_id) do nothing returning batch_id",
-        [orgId, batch.id, batch.sha256],
-      )) as { rows: unknown[] };
+      const strict = batch.strictToken ? await beginStrictWrite(c, orgId, batch.id, batch.sha256, batch.strictToken) : null;
+      if (strict?.duplicate) return DUPLICATE_BATCH;
+      if (strict && !(await checkByteRate(orgId, batch.strictBytes ?? 0, quotas.maxIngestBytesPerMinute, c as any)))
+        throw new StrictDeliveryError(429, "Ingest byte rate exceeded; strict batch rolled back");
+      const claim = !strict
+        ? ((await c.query(
+            "insert into intake_batches (org_id, batch_id, body_sha256) values ($1,$2,$3) on conflict (org_id, batch_id) do nothing returning batch_id",
+            [orgId, batch.id, batch.sha256],
+          )) as { rows: unknown[] })
+        : { rows: [true] };
       if (claim.rows.length === 0) {
-        const ex = (await c.query("select body_sha256 from intake_batches where org_id=$1 and batch_id=$2", [orgId, batch.id])) as { rows: { body_sha256: string }[] };
+        const ex = (await c.query("select body_sha256 from intake_batches where org_id=$1 and batch_id=$2", [orgId, batch.id])) as {
+          rows: { body_sha256: string }[];
+        };
         if (ex.rows[0]?.body_sha256 === batch.sha256) return DUPLICATE_BATCH;
         throw new BatchConflict(`intake batch id reused with different content (org ${orgId})`);
       }
-      if (!(await admitDaily(orgId, "points", pointCount, quotas.maxPointsPerDay, c)))
-        throw new QuotaExceeded("metrics", pointCount, "quota:points_per_day");
+      if (!(await admitDaily(orgId, "points", pointCount, quotas.maxPointsPerDay, c))) throw new QuotaExceeded("metrics", pointCount, "quota:points_per_day");
       for (const [q, v] of stmts) await c.query(q, v);
       // Do not publish a process-local touch before commit. Concurrent deliveries may lose
       // the claim or roll back, and must not suppress the winner's metadata refresh.
       const freshIds = [...new Set(ids.filter((id) => id !== undefined))].sort((a, b) => a - b);
-      if (freshIds.length)
-        await c.query("update metric_series set last_seen=$1 where id = any($2::int[])", [now, freshIds]);
+      if (freshIds.length) await c.query("update metric_series set last_seen=$1 where id = any($2::int[])", [now, freshIds]);
+      // Only admitted series contribute host discovery. Refused series must not create hosts.
+      // Sort host rows to keep lock ordering stable for concurrent batches.
+      const hostApps = new Map<string, Set<string>>();
+      for (let i = 0; i < valid.length; i++) {
+        const s = valid[i];
+        if (ids[i] === undefined || !s.host) continue;
+        let apps = hostApps.get(s.host);
+        if (!apps) hostApps.set(s.host, (apps = new Set()));
+        const namespace = s.metric.split(".")[0];
+        if (namespace && !IGNORED_APPS.has(namespace)) apps.add(namespace);
+      }
+      for (const [host, apps] of [...hostApps.entries()].sort(([a], [b]) => a.localeCompare(b))) {
+        const info = batch.hostInfo?.get(host);
+        if (info) apps.add("system");
+        await c.query(
+          `insert into hosts (org_id, name, apps, first_seen, last_seen, os, platform, agent_version, tags)
+           values ($1,$2,$3,$4,$4,$5,$5,$6,$7)
+           on conflict (org_id,name) do update set
+             last_seen=greatest(hosts.last_seen,excluded.last_seen),
+             os=coalesce(excluded.os,hosts.os), platform=coalesce(excluded.platform,hosts.platform),
+             agent_version=coalesce(excluded.agent_version,hosts.agent_version),
+             tags=case when cardinality(excluded.tags)>0 then excluded.tags else hosts.tags end,
+             apps=array(select distinct app from unnest(hosts.apps || excluded.apps) app order by app)`,
+          [orgId, host, [...apps].sort(), now, info?.os ?? null, info?.agentVersion ?? null, info?.tags ?? []],
+        );
+      }
+      if (strict) await finishStrictWrite(c, orgId, batch.id, strict.until, pointCount, refused);
       return refused;
     });
-    if (result !== DUPLICATE_BATCH) {
-      const apps = newApps(orgId, valid);
-      for (const h of hosts) await touchHost(orgId, h, apps.has(h) ? { apps: apps.get(h) } : {}, apps.has(h));
-    }
     return result;
   }
   await runAll(stmts);
@@ -398,7 +436,7 @@ export async function touchHost(
        platform = coalesce(excluded.platform, hosts.platform),
        agent_version = coalesce(excluded.agent_version, hosts.agent_version),
        tags = case when cardinality(excluded.tags) > 0 then excluded.tags else hosts.tags end,
-       apps = case when cardinality(excluded.apps) > 0 then excluded.apps else hosts.apps end,
+       apps = array(select distinct app from unnest(hosts.apps || excluded.apps) app order by app),
        meta = case when excluded.meta = '{}'::jsonb then hosts.meta else hosts.meta || excluded.meta end`,
     [orgId, name, info.os ?? null, info.platform ?? null, info.agentVersion ?? null, info.tags ?? [], info.apps ?? [], info.meta ?? {}, now],
   );
@@ -434,8 +472,7 @@ const nextLogId = () => Date.now() * 4096 + (logSeq = (logSeq + 1) % 4096);
 
 export async function writeLogs(orgId: number, logs: LogIn[]) {
   const quotas = await getQuotas(orgId);
-  if (!(await admitDaily(orgId, "logs", logs.length, quotas.maxLogsPerDay)))
-    throw new QuotaExceeded("logs", logs.length, "quota:logs_per_day");
+  if (!(await admitDaily(orgId, "logs", logs.length, quotas.maxLogsPerDay))) throw new QuotaExceeded("logs", logs.length, "quota:logs_per_day");
   // Sensitive data is masked before anything is stored (intake/redact.ts).
   for (const l of logs) {
     if (typeof l.message === "string") l.message = cut(stripAnsi(l.message), MAX_MESSAGE);
@@ -519,8 +556,7 @@ export function markTopLevel(spans: SpanIn[]) {
 export async function writeSpans(orgId: number, spans: SpanIn[]) {
   if (!spans.length) return;
   const quotas = await getQuotas(orgId);
-  if (!(await admitDaily(orgId, "spans", spans.length, quotas.maxSpansPerDay)))
-    throw new QuotaExceeded("traces", spans.length, "quota:spans_per_day");
+  if (!(await admitDaily(orgId, "spans", spans.length, quotas.maxSpansPerDay))) throw new QuotaExceeded("traces", spans.length, "quota:spans_per_day");
   // service/env are normalized to lowercase so searches can compare exactly and use indexes.
   for (const s of spans) {
     limitValues(s.meta);
@@ -657,8 +693,7 @@ export async function writeSpans(orgId: number, spans: SpanIn[]) {
         // fresh-spans-only transaction discipline as error groups. Observation only - not
         // deployment evidence.
         await upsertServiceVersionsTx(c, orgId, aggregateServiceVersions(freshSpans));
-        if (traceAdmitted && traceIdByKey.size)
-          traceUsedIds = await insertTracePointsTx(c, orgId, deriveTracePoints(freshSpans), traceIdByKey);
+        if (traceAdmitted && traceIdByKey.size) traceUsedIds = await insertTracePointsTx(c, orgId, deriveTracePoints(freshSpans), traceIdByKey);
       }
       fresh = freshSpans;
     });

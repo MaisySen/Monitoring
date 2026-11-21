@@ -8,7 +8,7 @@ if [[ ! -x "$BUILDER" ]]; then
   GOBIN="$(dirname "$BUILDER")" go install go.opentelemetry.io/collector/cmd/builder@v0.165.0
 fi
 "$BUILDER" --config manifest.yaml --skip-compilation
-cp main.go config.go logoperator.go config_test.go logoperator_test.go _build/
+cp main.go config.go logoperator.go custody.go config_test.go logoperator_test.go custody_test.go custody_component_test.go _build/
 cd _build
 # Build with a patched Go toolchain (standard-library security fixes); see docs/AUDIT.md.
 go mod edit -toolchain=go1.26.11

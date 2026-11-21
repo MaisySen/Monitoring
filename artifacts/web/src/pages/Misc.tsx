@@ -1,3 +1,5 @@
+import { AgentCustodyStatus } from "@/components/AgentCustodyStatus";
+import { MetricDeliveryStatus } from "@/components/MetricDeliveryStatus";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useSearch, useParams } from "wouter";
@@ -1367,11 +1369,13 @@ export OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
   };
   return (
     <div>
-      <PageHeader title="Connect your app" sub="First data usually arrives within a minute of starting your app" />
+      <PageHeader title="Connect your app" sub={<span className="hidden sm:inline">First data usually arrives within a minute of starting your app</span>} />
       <div className="p-6 space-y-4 max-w-3xl">
-        <div className={"card p-4 flex items-center gap-3 " + (receiving ? "border-ok" : "")}>
+        <MetricDeliveryStatus />
+        <AgentCustodyStatus />
+        <div className={"card p-4 flex flex-wrap items-center gap-3 " + (receiving ? "border-ok" : "")}>
           <span className={"w-2.5 h-2.5 rounded-full shrink-0 " + (receiving ? "bg-ok" : "bg-warn animate-pulse")} />
-          <div className="flex-1">
+          <div className="flex-1 min-w-[200px]">
             {receiving ? (
               <>
                 <div className="font-semibold">Receiving data{services.length ? ` from ${services.map((s) => s.service).join(", ")}` : ""}</div>
@@ -1388,7 +1392,7 @@ export OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
             )}
           </div>
           {receiving && (
-            <Link href="/" className="btn-primary">
+            <Link href="/" className="btn-primary w-full sm:w-auto text-center justify-center">
               Open your Now page →
             </Link>
           )}

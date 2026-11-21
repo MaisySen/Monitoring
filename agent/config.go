@@ -25,7 +25,12 @@ type logConfig struct {
 	Tags    []string `yaml:"tags"`
 	StartAt string   `yaml:"start_at"`
 }
+type custodyTestConfig struct {
+	Enabled  bool   `yaml:"enabled"`
+	Endpoint string `yaml:"endpoint"`
+}
 type config struct {
+	CustodyTest custodyTestConfig `yaml:"metric_custody_test"`
 	APIKey      string            `yaml:"api_key"`
 	URL         string            `yaml:"url"`
 	Hostname    string            `yaml:"hostname"`
@@ -197,6 +202,14 @@ func generateConfig(c config) ([]byte, error) {
 		extensions["file_storage"] = object{"directory": c.StateDir, "create_directory": true}
 		extensionNames = append(extensionNames, "file_storage")
 	}
+	if c.CustodyTest.Enabled {
+		if c.StateDir == "" || c.CustodyTest.Endpoint == "" {
+			return nil, fmt.Errorf("metric_custody_test requires explicit endpoint and state_dir")
+		}
+		extensions["monitoring_custody_test"] = object{"endpoint": c.CustodyTest.Endpoint, "directory": c.StateDir + "/custody-test", "backend": strings.TrimRight(c.URL, "/"), "api_key": c.APIKey}
+		extensionNames = append(extensionNames, "monitoring_custody_test")
+	}
+
 	for i, l := range c.Logs {
 		if l.Path == "" || l.Service == "" {
 			return nil, fmt.Errorf("logs[%d] requires path and service", i)
@@ -244,9 +257,9 @@ func generateConfig(c config) ([]byte, error) {
 		"memory_limiter": object{"check_interval": "1s", "limit_mib": 256, "spike_limit_mib": 64},
 		"resourcedetection": object{"detectors": []string{"system"}, "timeout": "5s", "override": false,
 			"system": object{"hostname_sources": []string{"os"}}},
-		"resource/monitoring":  object{"attributes": attrs},
-		"cumulativetodelta": object{"initial_value": "drop"},
-		"batch":             object{"timeout": "200ms", "send_batch_size": 1024, "send_batch_max_size": 2048},
+		"resource/monitoring": object{"attributes": attrs},
+		"cumulativetodelta":   object{"initial_value": "drop"},
+		"batch":               object{"timeout": "200ms", "send_batch_size": 1024, "send_batch_max_size": 2048},
 	}
 	pipelines := object{}
 	for _, p := range []struct {

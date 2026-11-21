@@ -1,10 +1,7 @@
 name: Build checks
 # Automated build verification only. This workflow never creates releases, tags, or deployments;
 # release.yml (tag-triggered) is the only release path and is not exercised by branch pushes.
-# Manual trigger only for now: the account's billing restriction blocks hosted runners on private
-# repos, so the repo is temporarily public (user-authorized) to get green builds; push triggers are
-# left off to avoid accidental runs while source preservation pushes happen. Re-add push triggers
-# when the repo returns private after the account billing/runner restriction is resolved.
+# Manual, nonrelease build checks. No deployment or release is performed.
 on:
   workflow_dispatch:
 permissions:

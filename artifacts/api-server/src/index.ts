@@ -1,3 +1,4 @@
+import { closeStrictClock } from "./lib/strictMetricDelivery";
 import app from "./app";
 import { logger } from "./lib/logger";
 import { startMonitorLoop, startRetentionLoop } from "./jobs/monitors";
@@ -67,6 +68,7 @@ for (const sig of ["SIGTERM", "SIGINT"] as const)
     force.unref();
     server.close(async () => {
       await flushSpanStats().catch((e) => logger.warn({ err: e }, "final span stats flush failed"));
+      await closeStrictClock().catch(() => undefined);
       await pool.end().catch(() => undefined);
       process.exit(0);
     });

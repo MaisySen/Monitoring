@@ -1,4 +1,4 @@
-import { test } from "node:test";
+import { test, after } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
@@ -42,4 +42,9 @@ test("F1-F4: warm-cache query/discovery/hosts, encoded duplicate ACK, concurrent
   } finally {
     await pool.query(`DROP DATABASE IF EXISTS ${scratch}`);
   }
+});
+
+// This worker owns the pool; do not keep Node alive for the idle-client timeout.
+after(async () => {
+  await pool.end();
 });

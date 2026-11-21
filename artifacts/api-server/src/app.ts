@@ -3,6 +3,7 @@ import cors from "cors";
 import cookieParser from "cookie-parser";
 import pinoHttp from "pino-http";
 import router from "./routes";
+import { strictIntake } from "./routes/strictMetricDelivery";
 import intakeRouter from "./intake/routes";
 import downloadsRouter from "./routes/downloads";
 import tracerRouter from "./intake/tracer";
@@ -52,6 +53,7 @@ app.use((_req, res, next) => {
 app.use(cors());
 // Agent intake routes take raw (possibly compressed / protobuf) bodies, so they mount before JSON parsing.
 app.use(intakeRouter);
+app.use(strictIntake);
 app.use(downloadsRouter);
 app.use(tracerRouter);
 app.use(express.json({ limit: "10mb" }));

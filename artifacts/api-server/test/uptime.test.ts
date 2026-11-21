@@ -1,4 +1,4 @@
-import { test } from "node:test";
+import { test, after } from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
 import { execFileSync } from "node:child_process";
@@ -152,4 +152,10 @@ test("manual-run rate limiter: fixed window per key", () => {
   assert.equal(rl.allow("org:1", t0 + 2000), true);
   assert.equal(rl.allow("org:1", t0 + 3000), false); // 4th within the window
   assert.equal(rl.allow("org:1", t0 + 61_000), true); // window slid
+});
+
+// This worker owns the pool; do not keep Node alive for the idle-client timeout.
+after(async () => {
+  const { pool } = await import("@workspace/db");
+  await pool.end();
 });

@@ -3,6 +3,7 @@
 const api = require('@opentelemetry/api');
 const { config, tags } = require('./config');
 let sdk;
+let directMetricDelivery;
 let shutdownPromise;
 let timer;
 let loopDelay;
@@ -97,6 +98,8 @@ function init(options = {}) {
       // (migration 20) dedups retries instead of double-counting; backends that ignore the header
       // behave exactly as before. See lib/retry-metric-exporter.js for the exposure note.
       exporter: (() => {
+        if(c.metricCustodyTest){const {AgentMetricCustody}=require('./lib/agent-metric-custody');return directMetricDelivery=new AgentMetricCustody(c.custodyUrl,{'DC-API-KEY':c.custodyKey},options.onMetricDelivery);}
+        if(c.metricDirectTest){const {DirectMetricDelivery}=require('./lib/direct-metric-delivery');return directMetricDelivery=new DirectMetricDelivery(c.directUrl,c.headers,options.onMetricDelivery);}
         const mk = (headers) => new OTLPMetricExporter({ ...exporter('metrics'), headers, temporalityPreference: AggregationTemporality.DELTA });
         if (process.env.MONITORING_METRICS_RETRY !== 'true') return mk(c.headers);
         const tracker = new MetricBatchTracker(c.headers);
@@ -179,4 +182,4 @@ function shutdown() {
   shutdownPromise = sdk ? sdk.shutdown() : Promise.resolve();
   return shutdownPromise;
 }
-module.exports = { init, tracer, metrics, forceFlush, shutdown };
+module.exports = { init, tracer, metrics, forceFlush, shutdown, metricDelivery: { summary:()=>directMetricDelivery?.summary()||null,snapshot:()=>directMetricDelivery?.snapshot()||[],recover:async(id)=>{if(!directMetricDelivery)throw Error('Experimental direct metric delivery is not enabled');return directMetricDelivery.recover(id);} } };

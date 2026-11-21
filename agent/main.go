@@ -37,7 +37,7 @@ func execute(args []string) error {
 	}
 	settings := otelcol.CollectorSettings{
 		BuildInfo: component.BuildInfo{Command: "monitoring-agent", Description: "Monitoring host telemetry agent", Version: agentVersion},
-		Factories: components,
+		Factories: custodyComponents,
 		ConfigProviderSettings: otelcol.ConfigProviderSettings{ResolverSettings: confmap.ResolverSettings{
 			ProviderFactories: []confmap.ProviderFactory{fileprovider.NewFactory(), envprovider.NewFactory(), yamlprovider.NewFactory()},
 		}},
