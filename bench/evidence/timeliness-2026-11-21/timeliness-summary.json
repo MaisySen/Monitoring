@@ -1,0 +1,26 @@
+{
+  "thresholds": {
+    "idle_first_eval_ms": 90000,
+    "load_staleness_ms": 120000,
+    "recovery_within_ms": 180000
+  },
+  "checks": [
+    {
+      "name": "idle-first-eval",
+      "pass": true,
+      "detail": "first evaluation 13ms after creation (limit 90000)"
+    },
+    {
+      "name": "load-staleness",
+      "pass": true,
+      "detail": "max staleness under 400 traces/s: 7519ms (limit 120000)"
+    },
+    {
+      "name": "recovery",
+      "pass": true,
+      "detail": "staleness <=120s again 9ms after load stop (limit 180000); overload peak 7653ms"
+    }
+  ],
+  "overload_max_staleness_ms": 7653,
+  "pass": true
+}
