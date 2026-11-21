@@ -65,3 +65,45 @@ test("migration 4 backfills legacy single-org users into org_memberships", async
     await pool.query(`DROP DATABASE IF EXISTS ${scratch}`);
   }
 });
+
+// Versioning incident guard: an install that already recorded versions 1..N-1 must still receive
+// the tail migration when the array grows by append. (A mis-ordered build once consumed version 18,
+// leaving the eval-health migration unapplied until appended as 19.)
+test("appending migrations upgrades an install already at N-1", async () => {
+  const scratch = `migtail_${crypto.randomBytes(4).toString("hex")}`;
+  await pool.query(`CREATE DATABASE ${scratch}`);
+  try {
+    const dir = mkdtempSync(join(tmpdir(), "migtail-"));
+    const last = migrations.length;
+    // Existing install: versions 1..last-1 recorded and applied.
+    for (let v = 1; v < last; v++) {
+      const f = join(dir, `m${v}.sql`);
+      writeFileSync(f, migrations[v - 1]);
+      psql(scratch, `\\i ${f}`);
+    }
+    psql(
+      scratch,
+      `CREATE TABLE monitoring_migrations (version integer PRIMARY KEY, applied_at timestamptz NOT NULL DEFAULT now());
+       INSERT INTO monitoring_migrations(version) SELECT generate_series(1, ${last - 1});`,
+    );
+    // Server startup migrates: only the appended tail may run, and it must actually land.
+    // Run the real migrateDatabase in a child so its module-level pool binds the scratch DB.
+    const scratchUrl = new URL(baseUrl.toString());
+    scratchUrl.pathname = `/${scratch}`;
+    execFileSync(
+      process.execPath,
+      ["--import", "tsx", "-e", 'import("./src/lib/migrate").then((m) => m.migrateDatabase())'],
+      { cwd: process.cwd(), env: { ...process.env, DATABASE_URL: scratchUrl.toString() }, stdio: "pipe" },
+    );
+    assert.equal(psql(scratch, `SELECT count(*) FROM monitoring_migrations`), String(last));
+    assert.equal(psql(scratch, `SELECT max(version) FROM monitoring_migrations`), String(last));
+    // Tail migration effect is present (eval-health columns), not silently skipped.
+    const cols = psql(
+      scratch,
+      `SELECT string_agg(column_name, ',' ORDER BY column_name) FROM information_schema.columns WHERE table_name='monitors' AND column_name IN ('last_eval_error','last_eval_duration_ms')`,
+    );
+    assert.equal(cols, "last_eval_duration_ms,last_eval_error");
+  } finally {
+    await pool.query(`DROP DATABASE IF EXISTS ${scratch}`);
+  }
+});

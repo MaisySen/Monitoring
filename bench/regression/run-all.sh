@@ -10,5 +10,7 @@ for check in downloads-artifacts onboarding-snippet onboarding-snippet-node onbo
   echo "=== $check"
   if "$DIR/$check.sh"; then :; else fail=1; echo "=== $check FAILED"; fi
 done
+echo "=== intake-abort"
+if node "$DIR/../correctness/intake-abort.js"; then :; else fail=1; echo "=== intake-abort FAILED"; fi
 [ "$fail" = 0 ] && echo "=== ALL REGRESSION CHECKS PASSED" || echo "=== REGRESSION FAILURES PRESENT"
 exit "$fail"
