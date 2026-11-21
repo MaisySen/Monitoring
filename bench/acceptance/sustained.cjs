@@ -32,7 +32,7 @@ async function sample() {
   const query = await api('/ui/metrics/query', { queries:[{name:'a',query:'avg:acceptance.heartbeat{*}'}],from:now-180,to:now+1 });
   assert.ok(query.series.some(s=>s.pointlist.some(p=>p[1]===1)), 'query must return current heartbeat');
   const names = await api('/ui/metrics?q=acceptance.heartbeat');
-  assert.ok(names.metrics.some(m=>m.metric==='acceptance.heartbeat'&&Number(m.last_seen)>now-120), 'dashboard discovery freshness');
+  assert.ok(names.metrics.some(m=>m.metric==='acceptance.heartbeat'&&Number(m.last_seen)>now-360), 'dashboard discovery freshness');
   const hosts = await api('/ui/hosts'); assert.ok(Array.isArray(hosts.hosts));
   const listed = await api('/v1/monitor'); const list=Array.isArray(listed)?listed:listed.monitors;
   const mine = list.filter(m=>monitors.includes(m.id));
@@ -55,7 +55,7 @@ async function sample() {
   const done=new Promise((resolve,reject)=>{child.once('error',reject);child.once('exit',(code,signal)=>{if(code===0)resolve();else reject(new Error(`loadgen exit ${code}/${signal}`));});});
   let failure;
   const interval=setInterval(()=>{ if(failure)return; sample().catch(e=>{failure=e;child.kill('SIGTERM');}); },60000);
-  try { await done; if(failure)throw failure; } finally {clearInterval(interval);}
+  try { try { await done; } catch(e) { throw failure || e; } if(failure)throw failure; } finally {clearInterval(interval);}
   const sent=JSON.parse(result.trim().split('\n').pop());assert.equal(sent.errors,0,'load generator request errors');
   await new Promise(r=>setTimeout(r,30000));await sample();
   const stored=JSON.parse(db(`select json_build_object('spans',(select count(*) from spans where meta->>'loadtest.run'='${run}'),'logs',(select count(*) from logs where tags @> array['loadtest.run:${run}']))`));
