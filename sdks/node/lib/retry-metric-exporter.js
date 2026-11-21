@@ -4,10 +4,13 @@
 // double-count is worse than a dropped batch.
 //
 // What the stock exporter already does (otlp-exporter-base 0.301.1, retrying-transport): every
-// export retries retryable failures up to 5 times with 1s..5s backoff INSIDE the export timeout
+// export retries RETRYABLE failures up to 5 times with 1s..5s backoff INSIDE the export timeout
 // (timeoutMillis, default 10s), then reports the batch failed and PeriodicExportingMetricReader
-// DROPS it. This wrapper extends that horizon to MONITORING_EXPORT_RETRY_SECONDS (default 30s)
-// for outages longer than one export timeout - agent backpressure, server restart seconds. Spans
+// DROPS it. The stock retryable set is narrow (is-export-retryable.cjs): HTTP 429/502/503/504 and
+// certain network errors only - a plain 500 (and every other status) fails immediately at the
+// stock layer. This wrapper extends that horizon to MONITORING_EXPORT_RETRY_SECONDS (default 30s)
+// for outages longer than one export timeout - agent backpressure, server restart seconds - and
+// covers the statuses the stock layer refuses (500 included). Spans
 // (lib/span-exporter.js) and logs (lib/retry-log-exporter.js) already retry on that horizon.
 //
 // This wrapper re-exports the SAME batch with exponential backoff (250 ms .. 5 s, jittered) for
@@ -52,17 +55,33 @@ function statusOf(error) {
 // on the wire. PeriodicExportingMetricReader alone does NOT provide that guarantee: its
 // callWithTimeout can orphan an in-flight export (the reader moves on, the wrapper keeps
 // retrying), and the next collection would flip this cell mid-retry.
+//
+// Age gate at the LAST hook before the wire: the stock transport's internal retry loop performs
+// up to 5 sends per export call against its own deadline, and the wrapper's per-attempt check
+// cannot see between those sends. This callback can: it throws once the active batch is older
+// than maxAgeMs, failing the send BEFORE anything is transmitted, on every internal retry too.
+// (The resulting transport error just fails the export; the wrapper then reports the batch
+// expired.) A send already in flight when the cutoff passes still completes - the gate bounds
+// send INITIATION, not completion.
 class MetricBatchTracker {
   constructor(staticHeaders = {}) {
     this.staticHeaders = staticHeaders;
     this.current = null;
-    this.headers = async () => ({
-      ...this.staticHeaders,
-      ...(this.current ? { 'x-monitoring-batch-id': this.current } : {}),
-    });
+    this.currentBornAt = null;
+    this.maxAgeMs = Infinity; // RetryingMetricExporter overwrites with its own maxAgeMs
+    this.headers = async () => {
+      if (this.currentBornAt != null && Date.now() - this.currentBornAt > this.maxAgeMs) {
+        throw new Error(`metric batch expired (age ${Math.round((Date.now() - this.currentBornAt) / 1000)}s > max ${Math.round(this.maxAgeMs / 1000)}s); send aborted before transmission`);
+      }
+      return {
+        ...this.staticHeaders,
+        ...(this.current ? { 'x-monitoring-batch-id': this.current } : {}),
+      };
+    };
   }
-  beginBatch() {
+  beginBatch(bornAt) {
     this.current = require('node:crypto').randomUUID();
+    this.currentBornAt = bornAt ?? Date.now();
     return this.current;
   }
 }
@@ -85,8 +104,11 @@ class MetricBatchTracker {
 // host suspension, event-loop stalls, operator-set retry budgets/queue sizes, and slow in-flight
 // sends all sit outside any sample. Every batch is therefore stamped (bornAt) at enqueue and the
 // wrapper refuses to START any send once age > maxAgeMs (MONITORING_EXPORT_MAX_AGE_SECONDS,
-// default 600). The check runs at activation and before every attempt, so a batch that sat in the
-// pending queue across a suspend, or whose backoff resumed late, expires instead of sending. Keep
+// default 600). The check runs at activation, before every wrapper attempt, and - via the
+// tracker's headers callback throwing - before EVERY stock-transport internal send, so the
+// built-in retry loop cannot transmit past the cutoff either (its own wall-clock deadline stops
+// it after a suspend, but without the callback gate it would keep sending up to timeoutMillis
+// past the cutoff in normal operation). Keep
 // max age comfortably below the server retention (defaults: 10 min vs 48 h); the client cannot
 // verify the server's retention setting, so that invariant remains operator responsibility.
 // Residual: a send already in flight when the host suspends can still complete after the cutoff
@@ -101,6 +123,7 @@ class RetryingMetricExporter {
     this.maxQueue = Number(opts.maxQueue ?? process.env.MONITORING_EXPORT_RETRY_QUEUE ?? 10);
     this.pending = [];
     this.active = false;
+    if (this.tracker) this.tracker.maxAgeMs = this.maxAgeMs; // per-send gate inside stock internal retries
   }
   export(metrics, resultCallback) {
     if (this.stopped) return resultCallback({ code: 1, error: new Error('exporter shut down') });
@@ -121,7 +144,7 @@ class RetryingMetricExporter {
     this.active = true;
     const expired = this._expired(item);
     if (expired) return this._finish(item, { code: 1, error: expired });
-    if (this.tracker) this.tracker.beginBatch();
+    if (this.tracker) this.tracker.beginBatch(item.bornAt);
     const deadline = Date.now() + this.retryMs;
     const attempt = (n) => {
       const tooOld = this._expired(item);

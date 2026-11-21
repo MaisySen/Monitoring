@@ -87,7 +87,10 @@ function mkExporter(wire, tracker, timeoutMillis) {
 const runExport = (exp, metrics) => new Promise((r) => exp.export(metrics, r));
 
 test('stock transport resends carry one id, byte-identical bodies, headers fn invoked per send', async () => {
-  const wire = await startWire((n) => (n <= 2 ? { status: 500 } : { status: 200 }));
+  // 503 is in the stock transport's retryable set (429/502/503/504 + certain network errors,
+  // per is-export-retryable.cjs), so sends 1-3 happen INSIDE one export call via the built-in
+  // RetryingTransport - this exercises the stock internal retry loop, not the wrapper's.
+  const wire = await startWire((n) => (n <= 2 ? { status: 503 } : { status: 200 }));
   try {
     const tracker = new MetricBatchTracker({});
     let headerCalls = 0;
@@ -264,6 +267,29 @@ test('age cutoff gates every retry attempt (late backoff resume sends nothing)',
     assert.ok(wire.sends.length >= 2, 'retried within the age window');
     const span = wire.sends[wire.sends.length - 1].t - wire.sends[0].t;
     assert.ok(span <= 1200, `no send started after the 1s cutoff (last send at +${span}ms)`);
+    await exp.shutdown();
+  } finally {
+    await wire.stop();
+  }
+});
+
+test('age gate covers stock transport INTERNAL retries: no send past cutoff within one export call', async () => {
+  // With timeoutMillis 6s and a 503 (stock-retryable) the built-in retry loop would normally
+  // send at ~0/1/2.5/4.75s inside a single export call - past the 2s cutoff for the later sends,
+  // and the wrapper's per-attempt check cannot see between them. The tracker headers callback
+  // throws at the cutoff, so those internal sends are aborted before transmission.
+  const wire = await startWire(() => ({ status: 503 }));
+  try {
+    const tracker = new MetricBatchTracker({});
+    const exp = new RetryingMetricExporter(mkExporter(wire, tracker, 6000), { tracker, retrySeconds: 30, maxAgeSeconds: 2 });
+    const res = await runExport(exp, await makeBatch(91));
+    assert.equal(res.code, 1);
+    assert.match(String(res.error && res.error.message), /expired/);
+    assert.ok(wire.sends.length >= 2, `internal retries ran before the cutoff (${wire.sends.length} sends)`);
+    const span = wire.sends[wire.sends.length - 1].t - wire.sends[0].t;
+    assert.ok(span <= 2400, `a stock internal retry transmitted past the 2s cutoff (last send at +${span}ms)`);
+    const ids = new Set(wire.sends.map((s) => s.id));
+    assert.equal(ids.size, 1, 'one id across the internal sends that did happen');
     await exp.shutdown();
   } finally {
     await wire.stop();

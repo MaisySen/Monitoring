@@ -34,13 +34,16 @@ local suites are 27/27).
 | 5ee8190 | exporter serialization mutex + wire tests | success |
 | 0516c2b | retention boundary + retry-age evidence | in progress at packet time |
 | 47fa01e | enforced wall-clock max batch age | in progress at packet time |
+| (this commit) | per-send age gate inside stock internal retries; 503-retryable-set correction; SDK 28/28 | dispatched with this commit |
 
 Correction on record: the stock exporter is NOT first-error-drop — otlp-exporter-base 0.301.1 has a
-built-in RetryingTransport (5 attempts, 1s..5s backoff, inside the export timeout). The wrapper
-extends the horizon; it does not introduce retry where none existed. Mechanism facts verified in
-dependency source: payload serialized once per export call; headers callback invoked per HTTP send
-(also wire-verified); PeriodicExportingMetricReader serializes exports only until its
-callWithTimeout fires, then can orphan an in-flight export.
+built-in RetryingTransport (5 attempts, 1s..5s backoff, inside the export timeout). Its retryable
+set is NARROW (is-export-retryable.cjs: HTTP 429/502/503/504 + certain network errors); a plain 500
+fails immediately at the stock layer and is retried only by the wrapper. The wrapper extends the
+horizon; it does not introduce retry where none existed. Mechanism facts verified in dependency
+source: payload serialized once per export call; headers callback invoked per HTTP send (also
+wire-verified); PeriodicExportingMetricReader serializes exports only until its callWithTimeout
+fires, then can orphan an in-flight export.
 
 ## Binary provenance (re-verified live at packet time)
 
@@ -74,7 +77,11 @@ callWithTimeout fires, then can orphan an in-flight export.
    Sweep cadence (hourly setInterval, no startup run, PG-only) is recorded as a code-level fact.
 7. Retry age: same directory, `retry-age.json` — sample 297.3s under defaults is explicitly NOT a
    bound; the enforced gate is MONITORING_EXPORT_MAX_AGE_SECONDS (default 600s), checked at
-   activation and before every attempt. Residual: in-flight send completion across suspension.
+   activation, before every wrapper attempt, and - via the tracker headers callback throwing -
+   before EVERY stock-transport internal send (the built-in loop otherwise transmits up to
+   timeoutMillis past the cutoff for stock-retryable statuses: demonstrated by disabling the gate,
+   which lets an internal retry through at +4185ms past a 2s cutoff; re-enabled, nothing passes).
+   Residual: an already in-flight send can complete after the cutoff across a host suspension.
 
 ## Known limits (accepted, documented in code comments)
 
