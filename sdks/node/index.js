@@ -68,6 +68,7 @@ function init(options = {}) {
   const { OTLPMetricExporter } = require('@opentelemetry/exporter-metrics-otlp-proto');
   const { OTLPLogExporter } = require('@opentelemetry/exporter-logs-otlp-proto');
   const { RetryingLogExporter } = require('./lib/retry-log-exporter');
+  const { RetryingMetricExporter } = require('./lib/retry-metric-exporter');
   const { PeriodicExportingMetricReader, AggregationTemporality } = require('@opentelemetry/sdk-metrics');
   const { BatchLogRecordProcessor } = require('@opentelemetry/sdk-logs');
   const { ParentBasedSampler, TraceIdRatioBasedSampler } = require('@opentelemetry/sdk-trace');
@@ -90,7 +91,9 @@ function init(options = {}) {
     traceExporter: c.exporter === 'otel' ? new OTLPTraceExporter(exporter('traces')) : new MonitoringSpanExporter(exporter('traces')),
     sampler: c.sampleRateOverride ? new ParentBasedSampler({ root: new TraceIdRatioBasedSampler(c.sampleRate) }) : undefined,
     metricReaders: [new PeriodicExportingMetricReader({
-      exporter: new OTLPMetricExporter({ ...exporter('metrics'), temporalityPreference: AggregationTemporality.DELTA }),
+      // Same retry discipline as spans and logs: the stock exporter drops a batch on the first
+      // transport error, and PeriodicExportingMetricReader then discards it.
+      exporter: new RetryingMetricExporter(new OTLPMetricExporter({ ...exporter('metrics'), temporalityPreference: AggregationTemporality.DELTA })),
       exportIntervalMillis: c.metricInterval,
     })],
     // sdk-logs 3.x takes an options object
