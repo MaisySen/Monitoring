@@ -32,6 +32,18 @@ import { chInsert, ensureChSchema } from "../lib/ch";
 import { getQuotas, admitDaily, seriesCount, QuotaExceeded } from "../lib/quotas";
 import { recordDrop } from "../lib/intakeStats";
 
+/** Batch idempotency rows are only needed for the retry horizon; sweep older ones (bounded table). */
+export async function sweepIntakeBatches(retentionHours = Number(process.env.MONITORING_BATCH_RETENTION_HOURS ?? 48)): Promise<number> {
+  const r = await pool.query("delete from intake_batches where received_at < now() - make_interval(hours => $1)", [retentionHours]);
+  return r.rowCount ?? 0;
+}
+
+/** A batch id arrived with content different from what was first recorded under it (client bug). */
+export class BatchConflict extends Error {}
+/** writeMetrics duplicate sentinel: the batch was already ingested by an earlier delivery. */
+export const DUPLICATE_BATCH = "duplicate" as const;
+export type BatchIdempotency = { id: string; sha256: string };
+
 export interface PointIn {
   metric: string;
   host: string;
@@ -210,7 +222,17 @@ async function writeMetricsCh(orgId: number, series: PointIn[]) {
 }
 
 /** Stores the batch; returns the number of points refused by the series cap (0 when nothing was refused). */
-export async function writeMetrics(orgId: number, series: PointIn[]): Promise<number> {
+export async function writeMetrics(orgId: number, series: PointIn[], batch?: BatchIdempotency): Promise<number | typeof DUPLICATE_BATCH> {
+  // Batch idempotency pre-check (cheap, non-transactional): a retry of an already-committed
+  // batch must not consume quota or re-do series work. The authoritative dedup is the
+  // in-transaction claim below, which also decides concurrent same-batch deliveries.
+  if (batch) {
+    const seen = await pool.query("select body_sha256 from intake_batches where org_id=$1 and batch_id=$2", [orgId, batch.id]);
+    if (seen.rows.length) {
+      if (seen.rows[0].body_sha256 === batch.sha256) return DUPLICATE_BATCH;
+      throw new BatchConflict(`intake batch id reused with different content (org ${orgId})`);
+    }
+  }
   const quotas = await getQuotas(orgId);
   const pointCount = series.reduce((n, s) => n + (s.points?.length ?? 0), 0);
   if (!(await admitDaily(orgId, "points", pointCount, quotas.maxPointsPerDay)))
@@ -254,6 +276,25 @@ export async function writeMetrics(orgId: number, series: PointIn[]): Promise<nu
     }
   }
   if (rows.length) stmts.push([`insert into metric_points (series_id, ts, value, weight) values ${rows.join(",")}`, vals.slice()]);
+  if (batch) {
+    // Claim the batch and insert its points in ONE transaction: a concurrent same-batch
+    // delivery blocks on the primary key until this commits or rolls back, then dedups or
+    // proceeds; a mid-ingest failure rolls the claim back with the points, so a later retry
+    // re-ingests from scratch. No partial batch can be marked seen.
+    return inTransaction(async (c) => {
+      const claim = (await c.query(
+        "insert into intake_batches (org_id, batch_id, body_sha256) values ($1,$2,$3) on conflict (org_id, batch_id) do nothing returning batch_id",
+        [orgId, batch.id, batch.sha256],
+      )) as { rows: unknown[] };
+      if (claim.rows.length === 0) {
+        const ex = (await c.query("select body_sha256 from intake_batches where org_id=$1 and batch_id=$2", [orgId, batch.id])) as { rows: { body_sha256: string }[] };
+        if (ex.rows[0]?.body_sha256 === batch.sha256) return DUPLICATE_BATCH;
+        throw new BatchConflict(`intake batch id reused with different content (org ${orgId})`);
+      }
+      for (const [q, v] of stmts) await c.query(q, v);
+      return refused;
+    });
+  }
   await runAll(stmts);
   if (touch.length) {
     touch.sort((a, b) => a - b);

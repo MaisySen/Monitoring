@@ -5,6 +5,7 @@ import { evalMetricExpression, logWhere } from "../routes/telemetry";
 import { reduce, extractInlineQueries, parseMetricQuery } from "../query/metrics";
 import { compileSearch, spanResolver, SqlBuilder } from "../query/search";
 import { useClickHouse } from "../lib/storage";
+import { sweepIntakeBatches } from "../intake/store";
 import { chQuery } from "../lib/ch";
 import { logWhereCh, spanWhereCh } from "../query/searchCh";
 
@@ -560,6 +561,7 @@ export function startRetentionLoop() {
       await pool.query("delete from metric_points where ts < $1", [Math.floor(cutoff / 1000)]);
       await pool.query("delete from logs where ts < $1", [cutoff]);
       await pool.query("delete from spans where start_ms < $1", [cutoff]);
+      await sweepIntakeBatches();
     } catch (e) {
       logger.warn({ err: String(e) }, "retention failed");
     }

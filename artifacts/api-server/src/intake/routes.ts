@@ -4,7 +4,8 @@ import { MetricPayload, SketchPayload, decodeProto } from "./proto";
 import { agentPayloadToSpans, decodeAgentPayload } from "./agentTraces";
 import { recordDrop, recordStored, splitPoints } from "../lib/intakeStats";
 import { getQuotas, checkByteRate } from "../lib/quotas";
-import { writeMetrics, touchHost, writeLogs, writeSpans, type PointIn, type LogIn } from "./store";
+import { writeMetrics, touchHost, writeLogs, writeSpans, BatchConflict, DUPLICATE_BATCH, type PointIn, type LogIn } from "./store";
+import { createHash } from "node:crypto";
 import { orgForApiKey } from "../lib/org";
 import { decodeOtlp, encodeEmptyResponse, encodePartialSuccess, otlpToSpans, otlpToLogs, otlpToMetrics, type OtlpSignal } from "./otlp";
 import { logger } from "../lib/logger";
@@ -484,7 +485,28 @@ function otlpRoute(signal: OtlpSignal) {
         const { valid, invalid } = splitPoints(points);
         if (invalid) recordDrop(orgId, path, invalid, "points without a numeric value");
         n = valid;
-        refused = await writeMetrics(orgId, points);
+        // Optional batch idempotency (x-monitoring-batch-id): a retry of the same export batch
+        // after a lost response dedups instead of double-counting; distinct batches with
+        // identical points (legitimate same-timestamp samples) always land.
+        const batchIdRaw = req.headers["x-monitoring-batch-id"];
+        const batchId = typeof batchIdRaw === "string" && /^[A-Za-z0-9_-]{8,100}$/.test(batchIdRaw) ? batchIdRaw : undefined;
+        const batch = batchId
+          ? { id: batchId, sha256: createHash("sha256").update(Buffer.isBuffer(req.body) ? req.body : Buffer.from(req.body ?? "")).digest("hex") }
+          : undefined;
+        try {
+          const wm = await writeMetrics(orgId, points, batch);
+          if (wm === DUPLICATE_BATCH) {
+            res.status(200).json({ code: 0, message: "duplicate batch ignored", partialSuccess: { rejectedDataPoints: 0 } });
+            return;
+          }
+          refused = wm;
+        } catch (e) {
+          if (e instanceof BatchConflict) {
+            res.status(409).json({ code: 3, message: (e as Error).message });
+            return;
+          }
+          throw e;
+        }
         commit();
       }
     } catch (e) {

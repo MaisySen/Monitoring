@@ -303,6 +303,16 @@ select 1;
 ALTER TABLE monitors ADD COLUMN IF NOT EXISTS last_eval_error text;
 ALTER TABLE monitors ADD COLUMN IF NOT EXISTS last_eval_duration_ms integer;
 `,
+// 20: intake batch idempotency for metrics. A client that retries an export batch after a lost
+// response (stored server-side, connection reset before the client saw the result) sends the same
+// batch id with the same body hash; the claim and the point inserts commit in one transaction, so
+// duplicates dedup, concurrent same-batch deliveries serialize on the primary key, and a failed
+// ingest rolls the claim back so a later retry re-ingests. Rows are swept after a bounded
+// retention (MONITORING_BATCH_RETENTION_HOURS, default 48) - longer than any exporter retry
+// window; metric export has no disk spool, so no path retries older batches.
+`
+CREATE TABLE IF NOT EXISTS intake_batches (org_id integer NOT NULL, batch_id text NOT NULL, body_sha256 text NOT NULL, received_at timestamptz NOT NULL DEFAULT now(), PRIMARY KEY (org_id, batch_id));
+`,
 ];
 
 export async function migrateDatabase() {
