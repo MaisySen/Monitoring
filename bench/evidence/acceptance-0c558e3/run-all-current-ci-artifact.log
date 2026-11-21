@@ -1,0 +1,45 @@
+=== downloads-artifacts
+PASS [monitoring-agent-linux-amd64]: 135864482 bytes, magic ok
+PASS [monitoring-trace-0.1.0.tgz]: 25880 bytes, magic ok
+PASS [monitoring_trace-0.1.0-py3-none-any.whl]: 23296 bytes, magic ok
+=== onboarding-snippet
+extracted 1 published python snippet(s)
+PASS [snippet-0]: spans 4 -> 5 (verbatim published snippet produced telemetry)
+=== onboarding-snippet-node
+extracted 1 published node snippet(s)
+PASS [snippet-0]: spans 5 -> 6 (verbatim published snippet produced telemetry)
+=== onboarding-snippet-otlp
+published endpoint: http://127.0.0.1:4731/otlp
+published header name: DC-API-KEY
+PASS: spans 3 -> 4 (published OTLP endpoint/header accepted a raw OTLP SDK payload)
+=== onboarding-agent-compose
+PASS: spans 2 -> 3 via agent forward; service_versions has checkout 1.0.0/prod (verbatim agent path works)
+=== onboarding-dd-compat
+PASS [series]: published command accepted and point queryable
+PASS [logs]: published command accepted and log searchable
+PASS [events]: published command accepted and event listed
+PASS [monitor]: published command created a listed monitor
+PASS [auth]: wrong application key refused (403)
+DD-COMPAT ALL PASSED
+=== installer-clean-deploy
+== 1. clean pack from a wiped downloads dir
+verified binaries packed: 5
+== 2. served artifact set integrity
+PASS [monitoring-agent-linux-amd64]: 135864482 bytes, magic ok
+PASS [monitoring-trace-0.1.0.tgz]: 25880 bytes, magic ok
+PASS [monitoring_trace-0.1.0-py3-none-any.whl]: 23296 bytes, magic ok
+== 3. published installer, verbatim (prefix-relocated)
+installer completed
+== 4. installed-artifact assertions
+installed binary: ELF, sha256 matches served SHA256SUMS, config 0600, executes
+== 5. negative controls: pack fails closed
+PASS: pack refuses to run without SHA256SUMS
+PASS: pack refuses a tampered binary (checksum mismatch)
+ALL CHECKS PASSED
+=== intake-abort
+{"pass":true,"control_stored":2,"stored_after_client_abort":0}
+=== keepalive-idle
+{"pass":true,"idle_socket_open_ms_observed":20000,"note":"still open at threshold, closed by client"}
+=== ALL REGRESSION CHECKS PASSED
+
+RUN_ALL_EXIT=0

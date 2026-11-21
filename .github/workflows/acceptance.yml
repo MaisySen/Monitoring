@@ -1,0 +1,146 @@
+name: Bounded local acceptance
+on:
+  workflow_dispatch:
+    inputs:
+      duration_minutes:
+        description: "5-minute harness smoke or 180-minute sustained test"
+        required: true
+        default: "5"
+        type: choice
+        options: ["5", "180"]
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: bounded-local-acceptance
+  cancel-in-progress: false
+jobs:
+  acceptance:
+    # Fail closed on private-repository compute. No larger runners, artifact uploads or caches.
+    if: github.event.repository.private == false
+    runs-on: ubuntu-24.04
+    timeout-minutes: 215
+    services:
+      postgres:
+        image: postgres:14
+        env:
+          POSTGRES_PASSWORD: synthetic-local-only
+        ports: ["127.0.0.1:5432:5432"]
+        options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      ACCEPTANCE_SOURCE_SHA: 0c558e370abb9a883e8243e4df5f2255ca618450
+      DATABASE_URL: postgresql://postgres:synthetic-local-only@127.0.0.1:5432/postgres
+      MONITORING_SETUP_TOKEN: ephemeral-synthetic-local-only
+      PORT: "4730"
+      MONITORING_METRICS_RETRY: "false"
+      ACCEPTANCE_MINUTES: ${{ inputs.duration_minutes }}
+    steps:
+      - name: Checkout acceptance harness
+        uses: actions/checkout@v4
+        with:
+          path: harness
+      - name: Checkout exact accepted product source
+        uses: actions/checkout@v4
+        with:
+          ref: 0c558e370abb9a883e8243e4df5f2255ca618450
+          path: product
+      - uses: pnpm/action-setup@v4
+        with:
+          version: "10.11.0"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Exact-source agent artifact, no new artifact storage
+        uses: actions/download-artifact@v4
+        with:
+          name: agent
+          path: product/agent/dist
+          github-token: ${{ github.token }}
+          run-id: 44878114550
+      - name: Verify provenance and bounded runtime
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "$(git -C product rev-parse HEAD)" = "$ACCEPTANCE_SOURCE_SHA"
+          gh api repos/MaisySen/Monitoring/actions/runs/44878114550 --jq '{head_sha,conclusion,id}' > /tmp/provenance.json
+          jq -e --arg sha "$ACCEPTANCE_SOURCE_SHA" '.head_sha==$sha and .conclusion=="success"' /tmp/provenance.json
+          (cd product/agent/dist && sha256sum -c SHA256SUMS)
+          chmod +x product/agent/dist/monitoring-agent-*
+          printf 'PRODUCT_ROOT=%s/product\nACCEPTANCE_OUT=%s/acceptance-output\n' "$GITHUB_WORKSPACE" "$RUNNER_TEMP" >> "$GITHUB_ENV"
+          mkdir -p "$RUNNER_TEMP/acceptance-output"
+          test "$ACCEPTANCE_MINUTES" = 5 || test "$ACCEPTANCE_MINUTES" = 180
+          echo "Source $ACCEPTANCE_SOURCE_SHA, artifact run44878114550, standard ubuntu24.04 VM, local-only; duration=${ACCEPTANCE_MINUTES}min"
+      - name: Install build dependencies without cache
+        working-directory: product
+        run: pnpm install --frozen-lockfile
+      - name: Pack and build exact source
+        working-directory: product
+        run: |
+          set -euo pipefail
+          python3 -m venv /tmp/acceptance-build-venv
+          /tmp/acceptance-build-venv/bin/pip -q install build
+          export PATH=/tmp/acceptance-build-venv/bin:$PATH
+          node scripts/pack-sdks.mjs > "$ACCEPTANCE_OUT/pack.log" 2>&1
+          (cd artifacts/api-server && pnpm run build) > "$ACCEPTANCE_OUT/build.log" 2>&1
+      - name: Start loopback-only test server
+        run: |
+          set -euo pipefail
+          node --require "$GITHUB_WORKSPACE/harness/bench/acceptance/loopback.cjs" --enable-source-maps "$PRODUCT_ROOT/artifacts/api-server/dist/index.mjs" > "$ACCEPTANCE_OUT/server.log" 2>&1 &
+          pid=$!
+          echo "$pid" > "$RUNNER_TEMP/acceptance-server.pid"
+          echo "SERVER_PID=$pid" >> "$GITHUB_ENV"
+          ready=0
+          for i in $(seq 1 40); do
+            if curl -fsS http://127.0.0.1:4730/api/healthz > /tmp/acceptance-health; then ready=1; break; fi
+            sleep 1
+          done
+          test "$ready" = 1
+          ss -ltn | grep '127.0.0.1:4730'
+      - name: Create synthetic local fixture, mask keys
+        run: node harness/bench/acceptance/bootstrap.cjs
+      - name: Published default-path systemd lifecycle, not a reboot test
+        env:
+          MONITORING_URL: http://127.0.0.1:4730
+          MONITORING_HOSTNAME: ci-systemd-acceptance
+        run: |
+          set -euo pipefail
+          export MONITORING_API_KEY="$API_KEY"
+          test -d /run/systemd/system
+          curl -fsS "$MONITORING_URL/install.sh" -o "$RUNNER_TEMP/acceptance-install.sh"
+          unset MONITORING_PREFIX
+          sh "$RUNNER_TEMP/acceptance-install.sh" > "$ACCEPTANCE_OUT/install.log" 2>&1
+          test "$(sudo stat -c %a /etc/monitoring/monitoring.yaml)" = 600
+          sudo systemctl is-enabled monitoring-agent
+          sudo systemctl is-active monitoring-agent
+          sleep 35
+          sudo systemctl stop monitoring-agent
+          test "$(systemctl is-active monitoring-agent || true)" = inactive
+          sudo systemctl start monitoring-agent
+          sleep 20
+          sudo systemctl is-active monitoring-agent
+          before=$(systemctl show monitoring-agent -p MainPID --value)
+          sudo systemctl restart monitoring-agent
+          sleep 20
+          after=$(systemctl show monitoring-agent -p MainPID --value)
+          sudo systemctl is-active monitoring-agent
+          test "$before" != "$after"
+          sudo systemctl stop monitoring-agent
+          node "$GITHUB_WORKSPACE/harness/bench/acceptance/check-agent.cjs"
+          echo 'Default path, permissions, systemd enable/start/stop/start/restart verified; no VM reboot performed.'
+      - name: Sustained mixed ingest and query/monitor checks
+        timeout-minutes: 190
+        run: node harness/bench/acceptance/sustained.cjs
+      - name: Evidence summary, no paid artifact or cache storage
+        if: always()
+        run: |
+          echo "Tested source: $ACCEPTANCE_SOURCE_SHA; workflow: $GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"
+          echo 'Agent artifact run44878114550, id14696432658; no VM reboot test; retry defaultOFF.' >> "$GITHUB_STEP_SUMMARY"
+          if test -f "$ACCEPTANCE_OUT/evidence.jsonl"; then tail -3 "$ACCEPTANCE_OUT/evidence.jsonl" >> "$GITHUB_STEP_SUMMARY"; fi
+      - name: Cleanup owned ephemeral services
+        if: always()
+        run: |
+          sudo systemctl disable --now monitoring-agent || true
+          if test -f "$RUNNER_TEMP/acceptance-server.pid"; then kill "$(cat "$RUNNER_TEMP/acceptance-server.pid")" || true; fi
+          sudo rm -f /etc/systemd/system/monitoring-agent.service /etc/monitoring/monitoring.yaml
+          sudo systemctl daemon-reload
