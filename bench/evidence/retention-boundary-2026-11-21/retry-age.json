@@ -1,0 +1,101 @@
+{
+  "config": {
+    "retrySeconds": 30,
+    "maxQueue": 10,
+    "transportTimeoutMs": 10000,
+    "note": "library defaults, no env overrides"
+  },
+  "batchesFired": 12,
+  "admitted": 10,
+  "overflowError": "metric retry queue full (10); dropping batch",
+  "resultCodes": [
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1
+  ],
+  "maxRetryAgeMs": 297323,
+  "maxRetryAgeSeconds": 297.3,
+  "retentionHours": 48,
+  "maxAgeVsRetentionRatio": 0.0017,
+  "perBatch": [
+    {
+      "batch": 1,
+      "id": "f910f770-e6f1-47bb-8e32-6bcc3980853c",
+      "sends": 3,
+      "firedToFirstSendMs": 22,
+      "firedToLastSendMs": 20687
+    },
+    {
+      "batch": 2,
+      "id": "3ef86992-c627-4bbd-9dc4-089ffc23323b",
+      "sends": 3,
+      "firedToFirstSendMs": 30690,
+      "firedToLastSendMs": 51338
+    },
+    {
+      "batch": 3,
+      "id": "1fe2c147-75fc-41c9-90ad-b79941ec5bb9",
+      "sends": 3,
+      "firedToFirstSendMs": 61340,
+      "firedToLastSendMs": 82120
+    },
+    {
+      "batch": 4,
+      "id": "4b6c1d6e-0e66-49b2-b3ad-46649b3d21e5",
+      "sends": 3,
+      "firedToFirstSendMs": 92122,
+      "firedToLastSendMs": 112999
+    },
+    {
+      "batch": 5,
+      "id": "d9e65827-f57c-4841-8abc-adb7ee6e2380",
+      "sends": 3,
+      "firedToFirstSendMs": 123001,
+      "firedToLastSendMs": 143717
+    },
+    {
+      "batch": 6,
+      "id": "6fc41c69-7164-4a21-9eda-fb7046eee2c7",
+      "sends": 3,
+      "firedToFirstSendMs": 153719,
+      "firedToLastSendMs": 174546
+    },
+    {
+      "batch": 7,
+      "id": "80eb3dbb-db9f-4865-902e-7527f0810b7a",
+      "sends": 3,
+      "firedToFirstSendMs": 184548,
+      "firedToLastSendMs": 205161
+    },
+    {
+      "batch": 8,
+      "id": "1b8e1775-6826-448c-a627-e85f7f15c5c0",
+      "sends": 3,
+      "firedToFirstSendMs": 215162,
+      "firedToLastSendMs": 235874
+    },
+    {
+      "batch": 9,
+      "id": "6cb5cef9-e1b4-4999-b47b-e27af06c6fee",
+      "sends": 3,
+      "firedToFirstSendMs": 245876,
+      "firedToLastSendMs": 266547
+    },
+    {
+      "batch": 10,
+      "id": "5c6f287d-681d-4e10-a96b-83a9b1447237",
+      "sends": 3,
+      "firedToFirstSendMs": 276548,
+      "firedToLastSendMs": 297323
+    }
+  ]
+}
