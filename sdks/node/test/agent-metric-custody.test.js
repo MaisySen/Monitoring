@@ -61,3 +61,17 @@ test("new journal epoch or unknown receipt never creates replacement input ident
   assert.equal(r.body, null);
   assert.deepEqual(paths, ["/receipt"]);
 });
+
+test("expired backend eligibility preserves unconfirmed status, never relabels as app memory loss or renews identity", async () => {
+  const e = new AgentMetricCustody("http://unused", {});
+  e.publish = () => {};
+  const r = { localId: "x", id: "same", epoch: "original", token: "same", state: "custody", body: null, born: Date.now()-31000, attempts: 1 };
+  e.records.set("x", r);
+  const paths=[];
+  e.request=async path=>{paths.push(path);return {ok:true,json:async()=>({id:"same",epoch:"original",state:"expired-unconfirmed",custody:false,backendStored:false,reason:"Backend eligibility ended; never renew identity",retainUntil:Date.now()+300000})};};
+  await e.recover("x");
+  assert.equal(r.state,"expired-unconfirmed");
+  assert.match(r.reason,/Backend eligibility/);
+  assert.deepEqual(paths,["/receipt"]);
+  assert.equal(e.snapshot()[0].backendStored,false);
+});

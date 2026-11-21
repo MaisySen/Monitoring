@@ -28,12 +28,15 @@ func execute(args []string) error {
 		return fmt.Errorf("enable migration trace correlation: %w", err)
 	}
 	if len(args) == 0 || args[0] == "--help" || args[0] == "help" {
-		fmt.Println("Monitoring Agent " + agentVersion + "\n\nUsage:\n  monitoring-agent run -c /etc/monitoring/monitoring.yaml\n  monitoring-agent config -c FILE [--show-secrets]\n  monitoring-agent collector --config FILE\n  monitoring-agent version\n\nconfig redacts the API key unless --show-secrets is given.\ncollector accepts an unmodified OpenTelemetry Collector configuration.")
+		fmt.Println("Monitoring Agent " + agentVersion + "\n\nUsage:\n  monitoring-agent run -c /etc/monitoring/monitoring.yaml\n  monitoring-agent config -c FILE [--show-secrets]\n  monitoring-agent collector --config FILE\n  monitoring-agent custody status -c FILE\n  monitoring-agent custody recover --id ID --epoch E -c FILE\n  monitoring-agent version\n\nconfig redacts the API key unless --show-secrets is given.\ncollector accepts an unmodified OpenTelemetry Collector configuration.")
 		return nil
 	}
 	if args[0] == "version" || args[0] == "--version" {
 		fmt.Println("Monitoring Agent " + agentVersion + " (OpenTelemetry Collector 0.165.0)")
 		return nil
+	}
+	if args[0] == "custody" {
+		return executeCustodyCLI(args[1:])
 	}
 	settings := otelcol.CollectorSettings{
 		BuildInfo: component.BuildInfo{Command: "monitoring-agent", Description: "Monitoring host telemetry agent", Version: agentVersion},

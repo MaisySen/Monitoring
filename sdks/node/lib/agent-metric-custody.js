@@ -54,7 +54,7 @@ class AgentMetricCustody extends DirectMetricDelivery {
     if (this.stopped) return;
     if (r.token) {
       await this.receipt(r);
-      if (["custody", "stored", "unknown"].includes(r.state)) {
+      if (["custody", "stored", "unknown", "expired-unconfirmed"].includes(r.state)) {
         this.publish();
         return;
       }
@@ -117,7 +117,7 @@ class AgentMetricCustody extends DirectMetricDelivery {
       if (r.state === "custody") {
         const res = await this.request("/recover", { id: r.id, epoch: r.epoch });
         if (res.ok) this.apply(r, await res.json());
-      } else if (!["stored", "unknown"].includes(r.state)) await this.attempt(r);
+      } else if (!["stored", "unknown", "expired-unconfirmed"].includes(r.state)) await this.attempt(r);
       this.publish();
     });
     await this.chain;
