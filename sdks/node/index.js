@@ -3,6 +3,10 @@
 const api = require('@opentelemetry/api');
 const { config, tags } = require('./config');
 let sdk;
+let candidateAppDelivery;
+let normalCustodyDelivery;
+let normalCustodySelection;
+let directMetricDelivery;
 let shutdownPromise;
 let timer;
 let loopDelay;
@@ -50,7 +54,14 @@ const tracer = {
 };
 
 function init(options = {}) {
-  if (sdk) return module.exports;
+  if (sdk) {
+    const next = require('./lib/normal-custody-selector').selectNormalCustody(options, process.env);
+    if (next.normalCustodyTest !== normalCustodySelection.normalCustodyTest ||
+        (next.normalCustodyTest && (next.normalCustodyUrl !== normalCustodySelection.normalCustodyUrl || next.normalCustodyKey !== normalCustodySelection.normalCustodyKey || next.normalCustodyShutdown !== normalCustodySelection.normalCustodyShutdown))) {
+      throw Error('Cannot change normal custody mode or binding after SDK initialization');
+    }
+    return module.exports;
+  }
   // Flush spans and logs every 500 ms (the OTel default is 5 s) so data shows up in Monitoring quickly.
   process.env.OTEL_BSP_SCHEDULE_DELAY ??= '500';
   process.env.OTEL_BLRP_SCHEDULE_DELAY ??= '500';
@@ -58,6 +69,7 @@ function init(options = {}) {
   process.env.OTEL_BSP_MAX_EXPORT_BATCH_SIZE ??= '256'; // small batches keep each main-thread encode short (tail latency)
   process.env.OTEL_BSP_MAX_QUEUE_SIZE ??= '16384';
   const c = config(options);
+  normalCustodySelection = {normalCustodyTest:c.normalCustodyTest,normalCustodyUrl:c.normalCustodyUrl,normalCustodyKey:c.normalCustodyKey,normalCustodyShutdown:c.normalCustodyShutdown};
   const { NodeSDK } = require('@opentelemetry/sdk-node');
   const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumentations-node');
   const { resourceFromAttributes, defaultResource, processDetector, hostDetector, osDetector } = require('@opentelemetry/resources');
@@ -65,10 +77,8 @@ function init(options = {}) {
   const { MonitoringSpanExporter } = require('./lib/span-exporter');
   const { AsyncLocalStorageContextManager } = require('@opentelemetry/context-async-hooks');
   const contextManager = new AsyncLocalStorageContextManager();
-  const { OTLPMetricExporter } = require('@opentelemetry/exporter-metrics-otlp-proto');
   const { OTLPLogExporter } = require('@opentelemetry/exporter-logs-otlp-proto');
   const { RetryingLogExporter } = require('./lib/retry-log-exporter');
-  const { RetryingMetricExporter, MetricBatchTracker } = require('./lib/retry-metric-exporter');
   const { PeriodicExportingMetricReader, AggregationTemporality } = require('@opentelemetry/sdk-metrics');
   const { BatchLogRecordProcessor } = require('@opentelemetry/sdk-logs');
   const { ParentBasedSampler, TraceIdRatioBasedSampler } = require('@opentelemetry/sdk-trace');
@@ -96,13 +106,21 @@ function init(options = {}) {
       // one x-monitoring-batch-id across every resend, so a server with intake batch idempotency
       // (migration 20) dedups retries instead of double-counting; backends that ignore the header
       // behave exactly as before. See lib/retry-metric-exporter.js for the exposure note.
-      exporter: (() => {
+      exporter: require('./lib/normal-custody-selector').selectMetricExporter(c,
+        (url,key) => { const {NormalCustodyExporter}=require('./lib/normal-custody-exporter'); return normalCustodyDelivery=new NormalCustodyExporter(url,key,options.onNormalCustodyDelivery); },
+        () => {
+        if(c.candidateAppTest){const {CandidateAppExporter}=require('./lib/candidate-app-exporter');return candidateAppDelivery=new CandidateAppExporter(c.directUrl,c.candidateKey,options.onCandidateMetricDelivery);}
+        if(c.metricCustodyTest){const {AgentMetricCustody}=require('./lib/agent-metric-custody');return directMetricDelivery=new AgentMetricCustody(c.custodyUrl,{'DC-API-KEY':c.custodyKey},options.onMetricDelivery);}
+        if(c.metricDirectTest){const {DirectMetricDelivery}=require('./lib/direct-metric-delivery');return directMetricDelivery=new DirectMetricDelivery(c.directUrl,c.headers,options.onMetricDelivery);}
+        const { OTLPMetricExporter } = require('@opentelemetry/exporter-metrics-otlp-proto');
+        const { RetryingMetricExporter, MetricBatchTracker } = require('./lib/retry-metric-exporter');
         const mk = (headers) => new OTLPMetricExporter({ ...exporter('metrics'), headers, temporalityPreference: AggregationTemporality.DELTA });
         if (process.env.MONITORING_METRICS_RETRY !== 'true') return mk(c.headers);
         const tracker = new MetricBatchTracker(c.headers);
         return new RetryingMetricExporter(mk(tracker.headers), { tracker });
-      })(),
+      }),
       exportIntervalMillis: c.metricInterval,
+      ...(c.normalCustodyTest ? {exportTimeoutMillis:25000} : {}),
     })],
     // sdk-logs 3.x takes an options object
     // The stock log exporter drops a batch on the first transport error; wrap it in the same retry
@@ -173,10 +191,15 @@ async function forceFlush() {
     .filter(Boolean).map(provider => provider.forceFlush()));
 }
 function shutdown() {
+  // Installed NodeSDK owns the metric reader's graceful final collect/flush and
+  // exporter shutdown. Do not shutdown the exporter first and discard that
+  // collection. All HTTP calls remain bounded; no fallback or DATA replay.
   if (shutdownPromise) return shutdownPromise;
   clearInterval(timer);
   loopDelay?.disable();
-  shutdownPromise = sdk ? sdk.shutdown() : Promise.resolve();
+  shutdownPromise = normalCustodySelection?.normalCustodyShutdown && sdk ?
+    require('./lib/normal-custody-barrier').coordinatedShutdown(sdk,normalCustodyDelivery,normalCustodySelection) :
+    (sdk ? sdk.shutdown() : Promise.resolve());
   return shutdownPromise;
 }
-module.exports = { init, tracer, metrics, forceFlush, shutdown };
+module.exports = { init, tracer, metrics, forceFlush, shutdown, normalCustodyDelivery: { summary:()=>normalCustodyDelivery?.summary()||null,snapshot:()=>normalCustodyDelivery?.snapshot()||[],recover:async(id)=>{if(!normalCustodyDelivery)throw Error('Normal custody disabled');return normalCustodyDelivery.recover(id);} }, candidateMetricDelivery: { summary:()=>candidateAppDelivery?.summary()||null,snapshot:()=>candidateAppDelivery?.snapshot()||[],recover:async(id)=>{if(!candidateAppDelivery)throw Error('Candidate metrics disabled');return candidateAppDelivery.recover(id);} }, metricDelivery: { summary:()=>directMetricDelivery?.summary()||null,snapshot:()=>directMetricDelivery?.snapshot()||[],recover:async(id)=>{if(!directMetricDelivery)throw Error('Experimental direct metric delivery is not enabled');return directMetricDelivery.recover(id);} } };

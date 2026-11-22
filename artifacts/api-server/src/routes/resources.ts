@@ -1,3 +1,4 @@
+import { onboardingSignal, onboardingLabel } from "../lib/onboardingSignal";
 import { Router, type Request, type Response } from "express";
 import { h, HttpError, rangeOf, parseTime, pageLimit, encodeCursor, decodeCursor, nextLink } from "../lib/http";
 import crypto from "crypto";
@@ -23,7 +24,7 @@ import { logger } from "../lib/logger";
 
 const router: Router = Router();
 router.use(
-  ["/v1/dashboard", "/v1/monitor", "/v1/events", "/ui/org", "/ui/events", "/ui/channels", "/ui/monitors", "/ui/now", "/ui/errors", "/ui/problems", "/ui/uptime", "/v1/integration/webhooks", "/v1/intake"],
+  ["/v1/dashboard", "/v1/monitor", "/v1/events", "/ui/org", "/ui/events", "/ui/channels", "/ui/monitors", "/ui/now", "/ui/onboarding-signal", "/ui/errors", "/ui/problems", "/ui/uptime", "/v1/integration/webhooks", "/v1/intake"],
   requireOrg,
 );
 
@@ -348,6 +349,16 @@ router.get(
 // Service health is derived only from what the data shows: silence is reported as "quiet"
 // (Monitoring cannot tell idle from down), sparse traffic as "low" (not judged), and error
 // rates come with their raw counts. Nothing here invents health certainty.
+router.get(
+  "/ui/onboarding-signal",
+  h(async (req, res) => {
+    const { service, env } = req.query;
+    if (!onboardingLabel(service) || !onboardingLabel(env))
+      throw new HttpError(400, "Use 1-80 letters, numbers, dots, underscores or hyphens for service and environment; start with a letter or number.");
+    res.json(await onboardingSignal(req.orgId!, service, env));
+  }),
+);
+
 router.get(
   "/ui/now",
   h(async (req, res) => {

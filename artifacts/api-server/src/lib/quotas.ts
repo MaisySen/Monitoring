@@ -10,7 +10,9 @@ import { logger } from "./logger";
  * org_usage_minute); the in-memory cache of the *limits* refreshes within ~2 seconds per process, so a limit change reaches every process of a multi-process deployment within that bound.
  *
  * Crash/retry semantics: reservation happens before storage, so a crash between the two over-counts
- * usage (conservative; intake is refused earlier, never over-admitted). A client retry of an accepted
+ * usage (conservative; intake is refused earlier, never over-admitted). The explicit TEST-ONLY strict
+ * Node-direct metric path is the exception: byte and daily-point charges share the metric transaction
+ * after duplicate ownership, so a rollback or stored replay charges neither again. A client retry of an accepted
  * batch after an ambiguous failure counts usage again, same conservative direction. A refused batch is
  * all-or-nothing: it is rejected whole with 429 even when part of it would fit.
  *
@@ -141,10 +143,10 @@ export async function usageToday(orgId: number): Promise<{ day: string; points: 
 
 const n_fits = (n: number, limit: number) => n <= limit;
 
-export async function checkByteRate(orgId: number, bytes: number, limit: number | null): Promise<boolean> {
+export async function checkByteRate(orgId: number, bytes: number, limit: number | null, client?: { query: typeof pool.query }): Promise<boolean> {
   if (limit == null || bytes <= 0) return true;
   const minute = Math.floor(Date.now() / 60_000);
-  const r = await pool.query(
+  const r = await (client ?? pool).query(
     `insert into org_usage_minute (org_id, minute, bytes) values ($1, $2, least($3::bigint, $4::bigint))
      on conflict (org_id, minute) do update set bytes = org_usage_minute.bytes + $3::bigint
      where org_usage_minute.bytes + $3::bigint <= $4
@@ -170,7 +172,9 @@ export class QuotaExceeded extends Error {
     public readonly count: number,
     public readonly quotaReason: string,
   ) {
-    super(`Organization ${quotaReason.replace("quota:", "").replaceAll("_", " ")} limit reached; data was not stored. Raise the limit in Organization Settings or reduce volume.`);
+    super(
+      `Organization ${quotaReason.replace("quota:", "").replaceAll("_", " ")} limit reached; data was not stored. Raise the limit in Organization Settings or reduce volume.`,
+    );
     this.name = "QuotaExceeded";
   }
 }

@@ -1,8 +1,11 @@
+import { createCandidateRouter } from "./routes/candidateApp";
+import { CANDIDATE_PREFIX } from "./lib/candidateAppService";
 import express, { type Express } from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
 import pinoHttp from "pino-http";
 import router from "./routes";
+import { strictIntake } from "./routes/strictMetricDelivery";
 import intakeRouter from "./intake/routes";
 import downloadsRouter from "./routes/downloads";
 import tracerRouter from "./intake/tracer";
@@ -13,6 +16,13 @@ import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 
 const app: Express = express();
+// Candidate namespace bypasses ordinary body/auth/logging/CORS middleware.
+// Disabled has no service operation handlers or schema side effects. Reserve
+// this namespace from SPA/ordinary fallback without logging credential input.
+const candidate = createCandidateRouter();
+export const closeCandidateApp = candidate.close;
+app.use(candidate.router);
+app.use(CANDIDATE_PREFIX, (_req, res) => { res.setHeader("Cache-Control", "no-store"); res.status(404).json({ error: "unavailable" }); });
 // Trust X-Forwarded-* only from proxies you configure (MONITORING_TRUST_PROXY, e.g. 1 for one reverse proxy in front).
 const trustProxy = (process.env.MONITORING_TRUST_PROXY ?? "").trim();
 app.set(
@@ -52,6 +62,7 @@ app.use((_req, res, next) => {
 app.use(cors());
 // Agent intake routes take raw (possibly compressed / protobuf) bodies, so they mount before JSON parsing.
 app.use(intakeRouter);
+app.use(strictIntake);
 app.use(downloadsRouter);
 app.use(tracerRouter);
 app.use(express.json({ limit: "10mb" }));

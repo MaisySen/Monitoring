@@ -1,0 +1,130 @@
+name: Monitoring Agent acceptance (one run)
+on:
+  workflow_dispatch:
+    inputs:
+      expected_tree:
+        description: 'Git tree hash the reviewer computed for the final published tree'
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: monitoring-agent-one-acceptance
+  cancel-in-progress: false
+jobs:
+  acceptance:
+    # Public standard VM only. No paid larger/private runner fallback.
+    if: github.event.repository.private == false
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    services:
+      postgres:
+        # PostgreSQL 14.24 pinned by index digest, not by moving tag.
+        image: postgres:14.24@sha256:834a046089d76edd1d2e81c4741f3ad5d1853646ededc86c2708936aad31c1ed
+        env:
+          POSTGRES_PASSWORD: ci-throwaway-not-a-secret
+        ports:
+          - 127.0.0.1:5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Verify the dispatched tree is the reviewed tree
+        shell: bash
+        env:
+          EXPECTED_TREE: ${{ inputs.expected_tree }}
+        run: |
+          set -euo pipefail
+          [[ "$EXPECTED_TREE" =~ ^[0-9a-f]{40}$ ]]
+          actual="$(git rev-parse 'HEAD^{tree}')"
+          printf 'TREE=%s COMMIT=%s\n' "$actual" "$GITHUB_SHA"
+          test "$actual" = "$EXPECTED_TREE"
+          sha256sum -c agent-ci/SHA256SUMS
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version: '1.26.11'
+          cache: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22.23.5'
+          package-manager-cache: false
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+        with:
+          version: 10.11.0
+      - name: Check toolchain and PostgreSQL image identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(node -v)" = v22.23.5
+          test "$(pnpm -v)" = 10.11.0
+          id="$(docker ps --filter ancestor=postgres:14.24@sha256:834a046089d76edd1d2e81c4741f3ad5d1853646ededc86c2708936aad31c1ed -q | head -n1)"
+          test -n "$id"
+          docker inspect --format '{{.Config.Image}}' "$id"
+          docker exec "$id" postgres --version | tee /tmp/pgver.txt
+          grep -q 'PostgreSQL) 14.24' /tmp/pgver.txt
+      - name: Build the agent from the verified source (flags unchanged)
+        working-directory: agent-ci
+        shell: bash
+        env:
+          GOTOOLCHAIN: local
+          CGO_ENABLED: '0'
+          GOMAXPROCS: '2'
+          GOMEMLIMIT: 12GiB
+          GOGC: '100'
+        run: |
+          set -euo pipefail
+          go mod download
+          sha256sum -c SHA256SUMS
+          go build -p 1 -mod=readonly -trimpath -tags grpcnotrace -o "$RUNNER_TEMP/monitoring-agent" .
+          sha256sum "$RUNNER_TEMP/monitoring-agent" | cut -d' ' -f1 > "$RUNNER_TEMP/monitoring-agent.sha256"
+          printf 'BUILD_BINARY_SHA256=%s\n' "$(cat "$RUNNER_TEMP/monitoring-agent.sha256")"
+          sha256sum -c SHA256SUMS
+      - name: Install locked dependencies without lifecycle scripts
+        shell: bash
+        run: |
+          set -euo pipefail
+          pnpm install --frozen-lockfile --ignore-scripts --filter "@workspace/api-server..."
+          (cd sdks/node && npm ci --omit=dev --ignore-scripts)
+      - name: Negative gates (mock-only tests of ownership, cleanup and guards)
+        working-directory: bench/evidence/normal-real-agent-c-source-2026-11-22
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test ownership.test.cjs coordinator.test.cjs full-orchestration.test.cjs
+      - name: Run the happy scenario once (owned processes, owned database)
+        working-directory: artifacts/api-server
+        shell: bash
+        env:
+          NORMAL_REAL_C_SOURCE_EXECUTE: reviewed-real-agent-c-v1
+          NORMAL_REAL_C_PG_AUTHORITY: owned-local-create-drop-reviewed
+          DATABASE_URL: postgres://postgres:ci-throwaway-not-a-secret@127.0.0.1:5432/postgres
+        run: |
+          set -euo pipefail
+          H="$GITHUB_WORKSPACE/bench/evidence/normal-real-agent-c-source-2026-11-22"
+          RESULT="$RUNNER_TEMP/real-c-result.json"
+          CUSTODY="$RUNNER_TEMP/same-job-custody.json"
+          set +e
+          # setsid --wait: the coordinator must be its own process group leader.
+          timeout 600 setsid --wait "$(command -v node)" --import tsx "$H/ci_main.cjs" \
+            "$GITHUB_WORKSPACE" happy "$RUNNER_TEMP/monitoring-agent" "$(cat "$RUNNER_TEMP/monitoring-agent.sha256")" \
+            "$H/node-closure-ci.json" "$RESULT" "$CUSTODY"
+          code=$?
+          set -e
+          echo "scenario exit code: $code"
+          for f in "$RESULT" "$CUSTODY"; do if [ -f "$f" ]; then cat "$f"; fi; done
+          {
+            echo '## Monitoring Agent acceptance'
+            echo "- tree: $(git rev-parse 'HEAD^{tree}'), commit: $GITHUB_SHA"
+            echo "- exit code: $code"
+            for f in "$RESULT" "$CUSTODY"; do
+              if [ -f "$f" ]; then echo '```'; cat "$f"; echo '```'; fi
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$code"
+      # Deliberately no artifact or cache upload, release, tag, package publish,
+      # deployment or authenticated write. The VM and service container are discarded.

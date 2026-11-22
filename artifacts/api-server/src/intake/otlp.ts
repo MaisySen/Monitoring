@@ -11,6 +11,7 @@
  */
 import protobuf from "protobufjs";
 import { normalizeTraceId } from "./decode";
+import { deltaHistogramDistribution } from "./histogramDistribution";
 import { type PointIn, type LogIn, type SpanIn } from "./store";
 
 const PROTO = `
@@ -51,11 +52,11 @@ message Histogram { repeated HistogramDataPoint data_points = 1; int32 aggregati
 message ExponentialHistogram { repeated ExponentialHistogramDataPoint data_points = 1; int32 aggregation_temporality = 2; }
 message Summary { repeated SummaryDataPoint data_points = 1; }
 message NumberDataPoint { repeated KeyValue attributes = 7; fixed64 start_time_unix_nano = 2; fixed64 time_unix_nano = 3; oneof value { double as_double = 4; sfixed64 as_int = 6; } repeated Exemplar exemplars = 5; uint32 flags = 8; }
-message HistogramDataPoint { repeated KeyValue attributes = 9; fixed64 start_time_unix_nano = 2; fixed64 time_unix_nano = 3; fixed64 count = 4; double sum = 5; repeated fixed64 bucket_counts = 6; repeated double explicit_bounds = 7; repeated Exemplar exemplars = 8; uint32 flags = 10; double min = 11; double max = 12; }
+message HistogramDataPoint { repeated KeyValue attributes = 9; fixed64 start_time_unix_nano = 2; fixed64 time_unix_nano = 3; fixed64 count = 4; optional double sum = 5; repeated fixed64 bucket_counts = 6; repeated double explicit_bounds = 7; repeated Exemplar exemplars = 8; uint32 flags = 10; optional double min = 11; optional double max = 12; }
 message ExponentialHistogramDataPoint {
-  repeated KeyValue attributes = 1; fixed64 start_time_unix_nano = 2; fixed64 time_unix_nano = 3; fixed64 count = 4; double sum = 5;
+  repeated KeyValue attributes = 1; fixed64 start_time_unix_nano = 2; fixed64 time_unix_nano = 3; fixed64 count = 4; optional double sum = 5;
   sint32 scale = 6; fixed64 zero_count = 7; Buckets positive = 8; Buckets negative = 9; uint32 flags = 10; repeated Exemplar exemplars = 11;
-  double min = 12; double max = 13; double zero_threshold = 14;
+  optional double min = 12; optional double max = 13; double zero_threshold = 14;
   message Buckets { sint32 offset = 1; repeated uint64 bucket_counts = 2; }
 }
 message SummaryDataPoint { repeated KeyValue attributes = 7; fixed64 start_time_unix_nano = 2; fixed64 time_unix_nano = 3; fixed64 count = 4; double sum = 5; repeated ValueAtQuantile quantile_values = 6; uint32 flags = 8; message ValueAtQuantile { double quantile = 1; double value = 2; } }
@@ -630,10 +631,17 @@ export function otlpToMetrics(
             const { tags } = tagsOf(dp);
             const ts = tsOf(dp);
             let count = Number(dp.count ?? 0);
+            if (delta && (!Number.isSafeInteger(count) || count < 0 || (dp.count !== undefined && typeof dp.count !== "number" && (typeof dp.count !== "string" || !/^(0|[1-9][0-9]*)$/.test(dp.count))))) continue;
             let sum = Number(dp.sum ?? 0);
-            let { bounds, counts } = m.histogram
-              ? { bounds: (dp.explicitBounds ?? []).map(Number), counts: (dp.bucketCounts ?? []).map(Number) }
-              : expoToExplicit(dp);
+            // DELTA-only output repair: absence is not a zero measurement.
+            // Cumulative reference semantics remain unchanged in this checkpoint.
+            const deltaSum = dp.sum !== undefined && typeof dp.sum === "number" && Number.isFinite(dp.sum);
+            const distribution = delta ? deltaHistogramDistribution(dp, !!m.exponentialHistogram) : null;
+            let { bounds, counts } = delta && distribution?.state !== "available"
+              ? { bounds: [], counts: [] }
+              : m.histogram
+                ? { bounds: (dp.explicitBounds ?? []).map(Number), counts: (dp.bucketCounts ?? []).map(Number) }
+                : expoToExplicit(dp);
             if (!delta) {
               const k = cumKey(orgId, name, resKey, scopeKey, attrs(dp.attributes), dp.startTimeUnixNano);
               const prev = refOf(k);
@@ -647,16 +655,25 @@ export function otlpToMetrics(
               counts = counts.map((c: number, i: number) => c - (prev.counts[i] ?? 0));
             }
             if (!count) continue;
-            const min = dp.min !== undefined ? Number(dp.min) : undefined,
-              max = dp.max !== undefined ? Number(dp.max) : undefined;
+            const min = dp.min !== undefined && (!delta || (typeof dp.min === "number" && Number.isFinite(dp.min))) ? Number(dp.min) : undefined,
+              max = dp.max !== undefined && (!delta || (typeof dp.max === "number" && Number.isFinite(dp.max))) ? Number(dp.max) : undefined;
             emit(`${name}.count`, "count", ts, count, tags);
-            emit(`${name}.sum`, "count", ts, sum, tags);
-            emit(`${name}.avg`, "gauge", ts, sum / count, tags);
+            if (!delta || deltaSum) {
+              emit(`${name}.sum`, "count", ts, sum, tags);
+              emit(`${name}.avg`, "gauge", ts, sum / count, tags);
+            }
             if (max !== undefined && delta) emit(`${name}.max`, "gauge", ts, max, tags);
             if (min !== undefined && delta) emit(`${name}.min`, "gauge", ts, min, tags);
-            emit(`${name}.median`, "gauge", ts, quantileFromBuckets(bounds, counts, 0.5, min, max), tags);
-            emit(`${name}.95percentile`, "gauge", ts, quantileFromBuckets(bounds, counts, 0.95, min, max), tags);
-            emit(`${name}.99percentile`, "gauge", ts, quantileFromBuckets(bounds, counts, 0.99, min, max), tags);
+            if (!delta || (distribution?.state === "available" && (min === undefined || max === undefined || min <= max))) {
+              const quantiles = [0.5, 0.95, 0.99].map((q) => quantileFromBuckets(bounds, counts, q, min, max));
+              // A DELTA population gets either the complete finite quantile
+              // representation or none, never overflow-selected partial output.
+              if (!delta || quantiles.every(Number.isFinite)) {
+                emit(`${name}.median`, "gauge", ts, quantiles[0], tags);
+                emit(`${name}.95percentile`, "gauge", ts, quantiles[1], tags);
+                emit(`${name}.99percentile`, "gauge", ts, quantiles[2], tags);
+              }
+            }
           }
         } else if (m.summary) {
           for (const dp of m.summary.dataPoints ?? []) {

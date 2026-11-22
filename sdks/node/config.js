@@ -12,10 +12,21 @@ function tags(value) {
 
 function config(options = {}, rawEnv = process.env) {
   const env = rawEnv;
+  const normalCustody = require('./lib/normal-custody-selector').selectNormalCustody(options, env);
   const first = (...values) => values.find(v => v !== undefined && v !== '');
   const bool = (value, fallback) => value === undefined ? fallback : String(value).toLowerCase() !== 'false';
   const url = first(options.url, env.MONITORING_URL);
   const key = first(options.apiKey, env.MONITORING_API_KEY);
+  const candidateAppTest = env.MONITORING_NODE_APP_CANDIDATE === 'test-v1';
+  if (env.MONITORING_NODE_APP_CANDIDATE !== undefined && !['off', 'test-v1'].includes(env.MONITORING_NODE_APP_CANDIDATE)) throw new Error('Invalid candidate TEST gate');
+  if (candidateAppTest) {
+    if (!url || !key || env.MONITORING_METRICS_RETRY === 'true' || env.MONITORING_METRIC_DIRECT_TEST_ONLY === 'yes' || env.MONITORING_METRIC_CUSTODY_TEST_ONLY === 'yes') throw new Error('Candidate needs explicit URL/key and exclusive TEST mode');
+    require('./lib/candidate-app-exporter').destination(url);
+  }
+  const metricCustodyTest = env.MONITORING_METRIC_CUSTODY_TEST_ONLY === 'yes';
+  if(metricCustodyTest&&(!env.MONITORING_METRIC_CUSTODY_URL||!key||env.MONITORING_METRICS_RETRY==='true'||env.MONITORING_METRIC_DIRECT_TEST_ONLY==='yes'))throw new Error('Agent custody test requires explicit custody URL/API key, no direct test and extra retries OFF');
+  const metricDirectTest = env.MONITORING_METRIC_DIRECT_TEST_ONLY === 'yes';
+  if (metricDirectTest && (!url || !key || env.MONITORING_METRICS_RETRY === 'true')) throw new Error('Experimental direct metric delivery requires explicit URL/API key and extra retries OFF');
   if (url && !key) throw new Error('MONITORING_URL requires MONITORING_API_KEY');
   const base = (url ? `${url.replace(/\/+$/, '')}/otlp` :
     first(options.agentUrl, env.MONITORING_AGENT_URL, env.OTEL_EXPORTER_OTLP_ENDPOINT, 'http://localhost:4318')).replace(/\/+$/, '');
@@ -40,8 +51,16 @@ function config(options = {}, rawEnv = process.env) {
   if (environment) attributes['deployment.environment'] = environment;
   attributes['telemetry.distro.name'] = 'monitoring';
   attributes['telemetry.distro.version'] = '0.1.0';
+  const metricInterval = Number(first(options.metricInterval, env.OTEL_METRIC_EXPORT_INTERVAL, normalCustody.normalCustodyTest ? 30000 : 10000));
+  // The explicit custody path can make four sequential bounded5s requests before
+  // its callback. Do not let the reader's default clamp silently time it out.
+  if (normalCustody.normalCustodyTest && (!Number.isSafeInteger(metricInterval) || metricInterval < 25000 || metricInterval > 2147483647)) throw Error('Normal custody metric interval must be25000-2147483647ms');
+  const handleSignals=bool(first(options.handleSignals,env.MONITORING_HANDLE_SIGNALS),true);
+  if(normalCustody.normalCustodyShutdown && handleSignals) throw Error('Read-only stored shutdown barrier requires handleSignals:false and awaited explicit shutdown; Agent owner must stay alive');
   return {
-    attributes, headers, sampleRate,
+    ...normalCustody,
+    candidateAppTest, candidateKey: candidateAppTest ? key : undefined,
+    attributes, headers, sampleRate, metricDirectTest, directUrl: url, metricCustodyTest,custodyUrl:env.MONITORING_METRIC_CUSTODY_URL,custodyKey:key,
     sampleRateOverride: first(options.sampleRate, env.MONITORING_SAMPLE_RATE) !== undefined,
     logsInjection: bool(first(options.logsInjection, env.MONITORING_LOGS_INJECTION), true),
     // Ship log records over OTLP from the app. Turn off when the Monitoring Agent tails the app's log files instead.
@@ -51,7 +70,7 @@ function config(options = {}, rawEnv = process.env) {
     traceMiddleware: bool(first(options.traceMiddleware, env.MONITORING_TRACE_MIDDLEWARE), false),
     // Connection-pool checkout spans (pg-pool.connect) are opt-in: they add ~1.3 spans per query-bearing request and carry no query.
     // Flush buffered spans, logs and metrics when the process gets SIGTERM/SIGINT (Node skips beforeExit on signals).
-    handleSignals: bool(first(options.handleSignals, env.MONITORING_HANDLE_SIGNALS), true),
+    handleSignals,
     traceDbConnect: bool(first(options.traceDbConnect, env.MONITORING_TRACE_DB_CONNECT), false),
     traceRouter: bool(first(options.traceRouter, env.MONITORING_TRACE_ROUTER), false),
     // Route-handler child spans are opt-in: the server span already carries the route (GET /users/:id), and skipping them cuts ~25% of per-request CPU.
@@ -60,7 +79,7 @@ function config(options = {}, rawEnv = process.env) {
     exporter: first(options.exporter, env.MONITORING_EXPORTER) || 'monitoring',
     fastHttp: bool(first(options.fastHttp, env.MONITORING_FAST_HTTP), true),
     ignorePaths: first(options.ignorePaths, env.MONITORING_IGNORE_PATHS ? env.MONITORING_IGNORE_PATHS.split(',') : undefined) || [],
-    metricInterval: Number(first(options.metricInterval, env.OTEL_METRIC_EXPORT_INTERVAL, 10000)),
+    metricInterval,
     endpoint: signal => !url && !options.agentUrl && !env.MONITORING_AGENT_URL && env[`OTEL_EXPORTER_OTLP_${signal.toUpperCase()}_ENDPOINT`] ||
       `${base}/v1/${signal}`,
   };

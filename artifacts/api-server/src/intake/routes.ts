@@ -480,8 +480,6 @@ function otlpRoute(signal: OtlpSignal) {
         await writeLogs(orgId, logs);
       } else {
         const { points, hosts, commit } = otlpToMetrics(orgId, body);
-        for (const [name, h] of hosts)
-          await touchHost(orgId, name, { os: h.os, platform: h.os, agentVersion: h.agentVersion, tags: h.tags, apps: ["system"] }, true);
         const { valid, invalid } = splitPoints(points);
         if (invalid) recordDrop(orgId, path, invalid, "points without a numeric value");
         n = valid;
@@ -497,8 +495,20 @@ function otlpRoute(signal: OtlpSignal) {
         // SDK wire tests cover byte identity across tested stock and wrapper resends; other
         // clients must honor the same contract. Changed content requires a new batch id.
         const batch = batchId
-          ? { id: batchId, sha256: createHash("sha256").update(Buffer.isBuffer(req.body) ? req.body : Buffer.from(req.body ?? "")).digest("hex") }
+          ? {
+              id: batchId,
+              sha256: createHash("sha256")
+                .update(Buffer.isBuffer(req.body) ? req.body : Buffer.from(req.body ?? ""))
+                .digest("hex"),
+              hostInfo: hosts,
+            }
           : undefined;
+        // Header-bearing PG host resource details commit with points/claim/quota. A duplicate
+        // must not refresh route-level host metadata before writeMetrics recognizes it.
+        // ClickHouse and unheaded intake retain their existing route metadata behavior.
+        if (!batch || process.env.MONITORING_STORAGE?.trim().toLowerCase() === "clickhouse")
+          for (const [name, h] of hosts)
+            await touchHost(orgId, name, { os: h.os, platform: h.os, agentVersion: h.agentVersion, tags: h.tags, apps: ["system"] }, true);
         try {
           const wm = await writeMetrics(orgId, points, batch);
           if (wm === DUPLICATE_BATCH) {
