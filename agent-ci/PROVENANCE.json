@@ -1,0 +1,167 @@
+{
+  "source_commit": "665c7e61b2730206d9d51837dacc2b8075aa96d7",
+  "generated_factory_source_commit": "6b9fb0dbb15ed373846cd616290015cc65bb7799",
+  "production_source_inventory_commit": "8e8169d011baf86e877548465fb7b8938e0b8ae9",
+  "local_evidence_commits": [
+    "19908549e5beb84f589f6c2d78201877f2350057",
+    "665c7e61b2730206d9d51837dacc2b8075aa96d7"
+  ],
+  "source_files": [
+    {
+      "source": "bench/evidence/normal-real-factory-build-2026-11-22/tree/components.go",
+      "publish": "agent-ci/components.go",
+      "bytes": 6711,
+      "sha256": "b76c8c240abadf8b9f42ca658ff50ea3cd535e1191ad97d6a248e19a1e1f444f"
+    },
+    {
+      "source": "bench/evidence/normal-real-factory-build-2026-11-22/tree/config.go",
+      "publish": "agent-ci/config.go",
+      "bytes": 12482,
+      "sha256": "dcdaa9d850b0774fe7133010328e9b6e0083068bfd57fec05e3b412c88304d89"
+    },
+    {
+      "source": "bench/evidence/normal-real-factory-build-2026-11-22/tree/custody.go",
+      "publish": "agent-ci/custody.go",
+      "bytes": 18206,
+      "sha256": "058faec773968b01e56f1a1ee99fff4d3749b68ab09ad57dff632693a93cd11b"
+    },
+    {
+      "source": "bench/evidence/normal-real-factory-build-2026-11-22/tree/custody_cli.go",
+      "publish": "agent-ci/custody_cli.go",
+      "bytes": 7006,
+      "sha256": "a2695d579e4517be3ed5a79c3e7bf3409434ce2b8251f735c43fa5f4562590fd"
+    },
+    {
+      "source": "bench/evidence/normal-real-factory-build-2026-11-22/tree/go.mod",
+      "publish": "agent-ci/go.mod",
+      "bytes": 23708,
+      "sha256": "124e9827105f5a6750e226e73102814c7138818fc669cdd08b1950f33b16d9fa"
+    },
+    {
+      "source": "bench/evidence/normal-real-factory-build-2026-11-22/tree/go.sum",
+      "publish": "agent-ci/go.sum",
+      "bytes": 110149,
+      "sha256": "1ac8b423b9fef9563b702c4c488c63b97ce0cac2190060d772096de0dd352e20"
+    },
+    {
+      "source": "bench/evidence/normal-real-factory-build-2026-11-22/tree/logoperator.go",
+      "publish": "agent-ci/logoperator.go",
+      "bytes": 5517,
+      "sha256": "296ef83c7d62fcbaca40f5c519c382c05f7dff649e536f1b66c8a156934933d5"
+    },
+    {
+      "source": "bench/evidence/normal-real-factory-build-2026-11-22/tree/main.go",
+      "publish": "agent-ci/main.go",
+      "bytes": 3937,
+      "sha256": "5b223a8d6349858e5398352d1ac045b0e985c6c5d994b52c50c0526b4ebf084d"
+    },
+    {
+      "source": "bench/evidence/normal-real-factory-build-2026-11-22/tree/normal_custody_barrier.go",
+      "publish": "agent-ci/normal_custody_barrier.go",
+      "bytes": 2072,
+      "sha256": "4fcc3a628d3cfaecd6412610076fc2f6f3ff814fc22e9eb890a555fa06737017"
+    },
+    {
+      "source": "bench/evidence/normal-real-factory-build-2026-11-22/tree/normal_custody_clock_linux.go",
+      "publish": "agent-ci/normal_custody_clock_linux.go",
+      "bytes": 875,
+      "sha256": "a7bf335815edb0cfd8225600a46f9d5aa4309d1652b5b6de5d9b4be3e76c9b57"
+    },
+    {
+      "source": "bench/evidence/normal-real-factory-build-2026-11-22/tree/normal_custody_clock_other.go",
+      "publish": "agent-ci/normal_custody_clock_other.go",
+      "bytes": 410,
+      "sha256": "306cddf929aef555525b64f00a06762fc715e10c131e0102d67c39d8947ea84b"
+    },
+    {
+      "source": "bench/evidence/normal-real-factory-build-2026-11-22/tree/normal_custody_command.go",
+      "publish": "agent-ci/normal_custody_command.go",
+      "bytes": 2077,
+      "sha256": "16f3b42dd2cd5b2036fc52dcd2d5a7869199720ac0d45c6c831d8770532fb8bc"
+    },
+    {
+      "source": "bench/evidence/normal-real-factory-build-2026-11-22/tree/normal_custody_component.go",
+      "publish": "agent-ci/normal_custody_component.go",
+      "bytes": 3871,
+      "sha256": "11d853c3c4375b0685d8ed98d70a2dc695c79447aab0f2b683a66e29e3bb8b77"
+    },
+    {
+      "source": "bench/evidence/normal-real-factory-build-2026-11-22/tree/normal_custody_contract.go",
+      "publish": "agent-ci/normal_custody_contract.go",
+      "bytes": 10295,
+      "sha256": "76c6153bfb97971abb19fb94845e5a4d497ed6bf81038fbc030871f7a00e38a3"
+    },
+    {
+      "source": "bench/evidence/normal-real-factory-build-2026-11-22/tree/normal_custody_drain.go",
+      "publish": "agent-ci/normal_custody_drain.go",
+      "bytes": 5871,
+      "sha256": "6a8f3d92c411ed79a26b7d9d04502283c6588589126a848a6aeb04146b7a2594"
+    },
+    {
+      "source": "bench/evidence/normal-real-factory-build-2026-11-22/tree/normal_custody_ingress.go",
+      "publish": "agent-ci/normal_custody_ingress.go",
+      "bytes": 11185,
+      "sha256": "fd2e08fb3d4930feb1e14ff39851457023ea35fabc269316728bce4502d8f0a9"
+    },
+    {
+      "source": "bench/evidence/normal-real-factory-build-2026-11-22/tree/normal_custody_listener.go",
+      "publish": "agent-ci/normal_custody_listener.go",
+      "bytes": 11529,
+      "sha256": "777116730bf88f2de38c70d12b30d1e5d9c01a0d10d8a0ce433197354f9aa953"
+    },
+    {
+      "source": "bench/evidence/normal-real-factory-build-2026-11-22/tree/normal_custody_model.go",
+      "publish": "agent-ci/normal_custody_model.go",
+      "bytes": 9281,
+      "sha256": "56d0cdc87a70e9d50f13e9b39297bcac644b3276e5925e0bc88513380a3a9b0e"
+    },
+    {
+      "source": "bench/evidence/normal-real-factory-build-2026-11-22/tree/normal_custody_resume.go",
+      "publish": "agent-ci/normal_custody_resume.go",
+      "bytes": 6185,
+      "sha256": "d93279098d9300f9d22785106fb77aad4aaab8beec4207ca028aa82b503ab0f1"
+    },
+    {
+      "source": "bench/evidence/normal-real-factory-build-2026-11-22/tree/normal_custody_resume_store.go",
+      "publish": "agent-ci/normal_custody_resume_store.go",
+      "bytes": 6803,
+      "sha256": "e41753cfe48eac03f10212428d4d06c807215790f893b93ac5c9262f7a80519f"
+    },
+    {
+      "source": "bench/evidence/normal-real-factory-build-2026-11-22/tree/normal_custody_runtime.go",
+      "publish": "agent-ci/normal_custody_runtime.go",
+      "bytes": 5342,
+      "sha256": "7ea4eec5571de4f79ad3f60749113a2b2084d7c81086b278f2af36380d8ad1ca"
+    },
+    {
+      "source": "bench/evidence/normal-real-factory-build-2026-11-22/tree/normal_custody_store.go",
+      "publish": "agent-ci/normal_custody_store.go",
+      "bytes": 17239,
+      "sha256": "7129d1c77aa985015ebfdfb4e60e820b4ed8a8578610ed2f67fabeee0a5f74b3"
+    },
+    {
+      "source": "bench/evidence/normal-real-factory-build-2026-11-22/tree/normal_custody_store_runtime.go",
+      "publish": "agent-ci/normal_custody_store_runtime.go",
+      "bytes": 1458,
+      "sha256": "8fcce6219399621dfcffeb6b268454869d0afb481282cbfaf14906d7c73bb08a"
+    },
+    {
+      "source": "bench/evidence/normal-real-factory-build-2026-11-22/tree/normal_custody_worker.go",
+      "publish": "agent-ci/normal_custody_worker.go",
+      "bytes": 7124,
+      "sha256": "35d864fc2bbc2d3bbc89c7a7cf0d7a8bae938ae478d8399f6b0fe55fc62d9950"
+    }
+  ],
+  "purpose": "compile/link only; no test execution, startup, deployment, release or acceptance",
+  "flags": [
+    "-p",
+    "1",
+    "-mod=readonly",
+    "-trimpath",
+    "-tags",
+    "grpcnotrace"
+  ],
+  "toolchain": "go1.26.11",
+  "factory_generation": "unchanged actual generated components.go; no stubs or regeneration",
+  "publication_policy": "new narrowly scoped payload commit, not local evidence/history push"
+}

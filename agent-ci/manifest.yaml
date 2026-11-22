@@ -1,0 +1,33 @@
+dist:
+  module: monitoring.local/agent
+  name: monitoring-agent
+  description: Monitoring host telemetry agent
+  version: 0.1.0
+  output_path: ./_build
+  build_tags: grpcnotrace
+
+receivers:
+  - gomod: go.opentelemetry.io/collector/receiver/otlpreceiver v0.165.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/hostmetricsreceiver v0.165.1
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/filelogreceiver v0.165.1
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/statsdreceiver v0.165.1
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/datadogreceiver v0.165.1
+processors:
+  - gomod: go.opentelemetry.io/collector/processor/batchprocessor v0.165.0
+  - gomod: go.opentelemetry.io/collector/processor/memorylimiterprocessor v0.165.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/resourcedetectionprocessor v0.165.1
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/resourceprocessor v0.165.1
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/attributesprocessor v0.165.1
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/transformprocessor v0.165.1
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/cumulativetodeltaprocessor v0.165.1
+exporters:
+  - gomod: go.opentelemetry.io/collector/exporter/otlphttpexporter v0.165.0
+  - gomod: go.opentelemetry.io/collector/exporter/debugexporter v0.165.0
+extensions:
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/extension/healthcheckextension v0.165.1
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/extension/storage/filestorage v0.165.1
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/extension/pprofextension v0.165.1
+providers:
+  - gomod: go.opentelemetry.io/collector/confmap/provider/envprovider v1.71.0
+  - gomod: go.opentelemetry.io/collector/confmap/provider/fileprovider v1.71.0
+  - gomod: go.opentelemetry.io/collector/confmap/provider/yamlprovider v1.71.0

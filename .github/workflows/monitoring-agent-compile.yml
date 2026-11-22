@@ -1,0 +1,70 @@
+name: Monitoring Agent compile only
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: monitoring-agent-one-compile
+  cancel-in-progress: false
+jobs:
+  compile:
+    # Public standard VM only. No paid larger/private runner fallback.
+    if: github.event.repository.private == false
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version: '1.26.11'
+          cache: false
+      - name: Verify exact published source
+        working-directory: agent-ci
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha256sum -c SHA256SUMS
+          test "$(find . -maxdepth 1 -name '*.go' | wc -l)" = 22
+          printf 'SOURCE_COMMIT=%s\n' "$GITHUB_SHA"
+          sha256sum PROVENANCE.json components.go go.mod go.sum manifest.yaml
+          free -m
+          df -h .
+      - name: Fetch pinned dependencies and compile all real factories
+        working-directory: agent-ci
+        shell: bash
+        env:
+          GOTOOLCHAIN: local
+          CGO_ENABLED: '0'
+          GOMAXPROCS: '2'
+          GOMEMLIMIT: 12GiB
+          GOGC: '100'
+        run: |
+          set -euo pipefail
+          # Pinned readonly module/checksums, no tidy, generation, tests or startup.
+          go version
+          go mod download
+          sha256sum -c SHA256SUMS
+          go list -mod=readonly -tags grpcnotrace -deps . | wc -l
+          go build -p 1 -mod=readonly -trimpath -tags grpcnotrace -o "$RUNNER_TEMP/monitoring-agent-COMPILE-ONLY" .
+          BIN="$RUNNER_TEMP/monitoring-agent-COMPILE-ONLY"
+          sha256sum "$BIN"
+          go version -m "$BIN"
+          go tool buildid "$BIN"
+          sha256sum -c SHA256SUMS
+          stat --format='%s bytes' "$BIN"
+          printf 'Full factory compile/link only. Binary NOT executed. No runtime, deployment or release claim.\n'
+          {
+            echo '## Monitoring Agent compile evidence'
+            echo 'Compile and link only. The binary was not executed, is not retained and is not a usable build.'
+            echo "- source commit: $GITHUB_SHA"
+            echo "- run: $GITHUB_RUN_ID attempt $GITHUB_RUN_ATTEMPT, event $GITHUB_EVENT_NAME"
+            echo "- binary sha256: $(sha256sum "$BIN" | cut -d' ' -f1)"
+            echo "- binary size: $(stat --format='%s' "$BIN") bytes"
+            echo "- go build id: $(go tool buildid "$BIN")"
+            echo "- flags: -p 1 -mod=readonly -trimpath -tags grpcnotrace, CGO_ENABLED=0, $(go version)"
+          } >> "$GITHUB_STEP_SUMMARY"
+      # Deliberately no artifact or cache upload, release, tag, package publish, test,
+      # service startup, deploy command or authenticated write. The binary is discarded
+      # with the runner. Evidence is kept only in the run log and job summary.
