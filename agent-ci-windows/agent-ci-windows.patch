@@ -1,0 +1,262 @@
+diff -ruN a/agent-ci/config.go b/agent-ci/config.go
+--- a/agent-ci/config.go	2026-11-23 19:54:59.988973703 +1100
++++ b/agent-ci/config.go	2026-11-23 19:54:59.999708909 +1100
+@@ -5,6 +5,7 @@
+ 	"fmt"
+ 	"net/url"
+ 	"os"
++	"runtime"
+ 	"sort"
+ 	"strings"
+ 	"time"
+@@ -67,8 +68,52 @@
+ 	return "zstd"
+ }
+ 
++// hostOS is the target OS. Tests override it to exercise another platform's behaviour.
++var hostOS = runtime.GOOS
++
++// defaultStateDir keeps the Linux and macOS default unchanged; Windows uses %ProgramData%.
++func defaultStateDir(goos string, getenv func(string) string) string {
++	if goos == "windows" {
++		return programData(getenv) + `\Monitoring\state`
++	}
++	return "/var/lib/monitoring-agent"
++}
++
++// defaultConfigPathFor keeps /etc/monitoring/monitoring.yaml everywhere except Windows.
++func defaultConfigPathFor(goos string, getenv func(string) string) string {
++	if goos == "windows" {
++		return programData(getenv) + `\Monitoring\monitoring.yaml`
++	}
++	return "/etc/monitoring/monitoring.yaml"
++}
++
++func programData(getenv func(string) string) string {
++	if base := strings.TrimRight(getenv("ProgramData"), `\/`); base != "" {
++		return base
++	}
++	return `C:\ProgramData`
++}
++
++// hostScrapers returns the hostmetrics scraper set. The `processes` scraper is not supported on Windows by the
++// pinned hostmetrics receiver (its README lists Linux, Mac, FreeBSD, OpenBSD), so it is left out there only.
++func hostScrapers(goos string, connections bool) object {
++	scrapers := object{}
++	for _, s := range []string{"load", "filesystem", "disk", "paging"} {
++		scrapers[s] = object{}
++	}
++	if goos != "windows" {
++		scrapers["processes"] = object{}
++	}
++	// Connection-state counts walk every process's sockets in /proc on each scrape (the agent's
++	// biggest idle CPU cost); they are opt-in (host_metrics.connections).
++	scrapers["network"] = object{"metrics": object{"system.network.connections": object{"enabled": connections}}}
++	scrapers["cpu"] = object{"metrics": object{"system.cpu.utilization": object{"enabled": true}}}
++	scrapers["memory"] = object{"metrics": object{"system.memory.utilization": object{"enabled": true}}}
++	return scrapers
++}
++
+ func defaults() config {
+-	c := config{URL: "http://localhost:3000", Listen: "127.0.0.1", StateDir: "/var/lib/monitoring-agent"}
++	c := config{URL: "http://localhost:3000", Listen: "127.0.0.1", StateDir: defaultStateDir(hostOS, os.Getenv)}
+ 	c.HostMetrics = hostMetricsConfig{Enabled: true, Interval: "15s"}
+ 	c.APM.OTLP, c.APM.DatadogCompat = true, true
+ 	c.Dogstatsd.Enabled, c.Dogstatsd.Port = true, 8125
+@@ -184,15 +229,7 @@
+ 		metrics = append(metrics, "statsd")
+ 	}
+ 	if c.HostMetrics.Enabled {
+-		scrapers := object{}
+-		for _, s := range []string{"load", "filesystem", "disk", "network", "paging", "processes"} {
+-			scrapers[s] = object{}
+-		}
+-		// Connection-state counts walk every process's sockets in /proc on each scrape (the agent's
+-		// biggest idle CPU cost); they are opt-in (host_metrics.connections).
+-		scrapers["network"] = object{"metrics": object{"system.network.connections": object{"enabled": c.HostMetrics.Connections}}}
+-		scrapers["cpu"] = object{"metrics": object{"system.cpu.utilization": object{"enabled": true}}}
+-		scrapers["memory"] = object{"metrics": object{"system.memory.utilization": object{"enabled": true}}}
++		scrapers := hostScrapers(hostOS, c.HostMetrics.Connections)
+ 		receivers["hostmetrics"] = object{"collection_interval": c.HostMetrics.Interval, "scrapers": scrapers}
+ 		metrics = append(metrics, "hostmetrics")
+ 	}
+diff -ruN a/agent-ci/config_platform_test.go b/agent-ci/config_platform_test.go
+--- a/agent-ci/config_platform_test.go	1970-01-01 10:00:00.000000000 +1000
++++ b/agent-ci/config_platform_test.go	2026-11-23 19:54:59.999857198 +1100
+@@ -0,0 +1,111 @@
++package main
++
++import (
++	"testing"
++
++	"go.yaml.in/yaml/v3"
++)
++
++func fakeEnv(m map[string]string) func(string) string { return func(k string) string { return m[k] } }
++
++func TestPlatformDefaults(t *testing.T) {
++	if got := defaultStateDir("linux", fakeEnv(nil)); got != "/var/lib/monitoring-agent" {
++		t.Fatal(got)
++	}
++	if got := defaultStateDir("darwin", fakeEnv(nil)); got != "/var/lib/monitoring-agent" {
++		t.Fatal(got)
++	}
++	if got := defaultConfigPathFor("linux", fakeEnv(nil)); got != "/etc/monitoring/monitoring.yaml" {
++		t.Fatal(got)
++	}
++	if got := defaultConfigPathFor("darwin", fakeEnv(nil)); got != "/etc/monitoring/monitoring.yaml" {
++		t.Fatal("macOS default must be unchanged:", got)
++	}
++	env := fakeEnv(map[string]string{"ProgramData": `D:\Data\`})
++	if got := defaultStateDir("windows", env); got != `D:\Data\Monitoring\state` {
++		t.Fatal(got)
++	}
++	if got := defaultConfigPathFor("windows", env); got != `D:\Data\Monitoring\monitoring.yaml` {
++		t.Fatal(got)
++	}
++	if got := defaultStateDir("windows", fakeEnv(nil)); got != `C:\ProgramData\Monitoring\state` {
++		t.Fatal(got)
++	}
++}
++
++func scraperKeys(t *testing.T, goos string) map[string]bool {
++	old := hostOS
++	hostOS = goos
++	defer func() { hostOS = old }()
++	c := defaults()
++	c.APIKey = "unit-test-key"
++	out, err := generateConfig(c)
++	if err != nil {
++		t.Fatal(err)
++	}
++	var doc map[string]any
++	if err := yaml.Unmarshal(out, &doc); err != nil {
++		t.Fatal(err)
++	}
++	sc := doc["receivers"].(map[string]any)["hostmetrics"].(map[string]any)["scrapers"].(map[string]any)
++	keys := map[string]bool{}
++	for k := range sc {
++		keys[k] = true
++	}
++	return keys
++}
++
++func TestHostScrapersUnixSetUnchanged(t *testing.T) {
++	for _, goos := range []string{"linux", "darwin"} {
++		got := scraperKeys(t, goos)
++		want := []string{"load", "filesystem", "disk", "network", "paging", "processes", "cpu", "memory"}
++		if len(got) != len(want) {
++			t.Fatalf("%s: %v", goos, got)
++		}
++		for _, k := range want {
++			if !got[k] {
++				t.Fatalf("%s missing %s", goos, k)
++			}
++		}
++	}
++}
++
++func TestHostScrapersWindowsOmitsProcessesOnly(t *testing.T) {
++	got := scraperKeys(t, "windows")
++	if got["processes"] {
++		t.Fatal("processes scraper must not be configured on Windows")
++	}
++	for _, k := range []string{"load", "filesystem", "disk", "network", "paging", "cpu", "memory"} {
++		if !got[k] {
++			t.Fatalf("windows missing %s", k)
++		}
++	}
++	if len(got) != 7 {
++		t.Fatal(got)
++	}
++}
++
++func TestWindowsStateDirAndLogPathsSurviveGenerate(t *testing.T) {
++	old := hostOS
++	hostOS = "windows"
++	defer func() { hostOS = old }()
++	c := defaults()
++	c.APIKey = "unit-test-key"
++	c.Logs = []logConfig{{Path: `C:\logs\app.log`, Service: "app"}}
++	out, err := generateConfig(c)
++	if err != nil {
++		t.Fatal(err)
++	}
++	var doc map[string]any
++	if err := yaml.Unmarshal(out, &doc); err != nil {
++		t.Fatal(err)
++	}
++	fs := doc["extensions"].(map[string]any)["file_storage"].(map[string]any)
++	if fs["directory"] != c.StateDir || c.StateDir == "/var/lib/monitoring-agent" {
++		t.Fatal("state dir not the Windows default:", fs["directory"])
++	}
++	inc := doc["receivers"].(map[string]any)["filelog/service_0"].(map[string]any)["include"].([]any)
++	if inc[0] != `C:\logs\app.log` {
++		t.Fatal(inc)
++	}
++}
+diff -ruN a/agent-ci/main.go b/agent-ci/main.go
+--- a/agent-ci/main.go	2026-11-23 19:54:59.989079263 +1100
++++ b/agent-ci/main.go	2026-11-23 19:54:59.999788978 +1100
+@@ -105,13 +105,7 @@
+ 	return runInteractive(settings)
+ }
+ 
+-func runInteractive(settings otelcol.CollectorSettings) error {
+-	cmd := otelcol.NewCommand(settings)
+-	cmd.SetArgs([]string{})
+-	return cmd.Execute()
+-}
+-
+-// defaultConfigPath is /etc/monitoring/monitoring.yaml.
++// defaultConfigPath is /etc/monitoring/monitoring.yaml, or %ProgramData%\\Monitoring\\monitoring.yaml on Windows.
+ func defaultConfigPath() string {
+-	return "/etc/monitoring/monitoring.yaml"
++	return defaultConfigPathFor(hostOS, os.Getenv)
+ }
+diff -ruN a/agent-ci/run_other.go b/agent-ci/run_other.go
+--- a/agent-ci/run_other.go	1970-01-01 10:00:00.000000000 +1000
++++ b/agent-ci/run_other.go	2026-11-23 19:54:59.999825348 +1100
+@@ -0,0 +1,11 @@
++//go:build !windows
++
++package main
++
++import "go.opentelemetry.io/collector/otelcol"
++
++func runInteractive(settings otelcol.CollectorSettings) error {
++	cmd := otelcol.NewCommand(settings)
++	cmd.SetArgs([]string{})
++	return cmd.Execute()
++}
+diff -ruN a/agent-ci/run_windows.go b/agent-ci/run_windows.go
+--- a/agent-ci/run_windows.go	1970-01-01 10:00:00.000000000 +1000
++++ b/agent-ci/run_windows.go	2026-11-23 19:54:59.999841048 +1100
+@@ -0,0 +1,27 @@
++//go:build windows
++
++package main
++
++import (
++	"go.opentelemetry.io/collector/otelcol"
++	"golang.org/x/sys/windows/svc"
++)
++
++// windowsServiceName is the Service Control Manager name the installer registers.
++const windowsServiceName = "MonitoringAgent"
++
++// runInteractive runs under the Service Control Manager when started by it, using the collector's own
++// Windows service handler (go.opentelemetry.io/collector/otelcol NewSvcHandler, which reports Running only
++// once the collector is running and writes to the Windows Event Log). Started from a console it runs as before.
++func runInteractive(settings otelcol.CollectorSettings) error {
++	isService, err := svc.IsWindowsService()
++	if err != nil {
++		return err
++	}
++	if isService {
++		return svc.Run(windowsServiceName, otelcol.NewSvcHandler(settings))
++	}
++	cmd := otelcol.NewCommand(settings)
++	cmd.SetArgs([]string{})
++	return cmd.Execute()
++}
